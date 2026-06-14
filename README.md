@@ -76,59 +76,59 @@ graph LR
     utils_hashing["utils.hashing<br/>Content Hashing Utilities"]
     utils_validation["utils.validation<br/>Configuration Validation"]
 
-    bootstrap --> core_manager
     bootstrap --> core_queue
+    bootstrap --> core_manager
     bootstrap --> core_scheduling
     cli --> core_platform
-    cli --> core_metadata
-    cli --> core_manifest_format
     cli --> core_config
+    cli --> core_manifest_format
+    cli --> core_metadata
     core_capability --> core_errors
     core_diagnostics_store --> core_wire
     core_empirical_store --> utils_hashing
-    core_interface --> core_capability
     core_interface --> core
-    core_interface --> core_interface
+    core_interface --> core_capability
     core_interface --> core_wire
+    core_interface --> core_interface
     core_manager --> core_empirical_store
-    core_manager --> core_metadata
-    core_manager --> core__telemetry
-    core_manager --> utils_validation
-    core_manager --> core_journal_store
-    core_manager --> core_scheduling
-    core_manager --> core_secret_store
-    core_manager --> core_manifest_format
-    core_manager --> core_config_store
-    core_manager --> core_diagnostics_store
-    core_manager --> core_adapter_manifest
-    core_manager --> core_errors
-    core_manager --> core_config
     core_manager --> core_capability
+    core_manager --> core_journal_store
     core_manager --> core_proxy
+    core_manager --> core_errors
+    core_manager --> core_adapter_manifest
+    core_manager --> core_config
+    core_manager --> core_config_store
+    core_manager --> core_manifest_format
+    core_manager --> core_metadata
+    core_manager --> core_diagnostics_store
+    core_manager --> core_secret_store
+    core_manager --> utils_validation
+    core_manager --> core_scheduling
+    core_manager --> core__telemetry
     core_manifest_format --> core_metadata
     core_manifest_format --> utils_hashing
     core_platform --> core_config
     core_ports --> core_errors
-    core_proxy --> core_platform
-    core_proxy --> core_journal_store
-    core_proxy --> core_wire
     core_proxy --> core_diagnostics_store
-    core_proxy --> core_errors
-    core_proxy --> core_config
     core_proxy --> core_capability
+    core_proxy --> core_wire
+    core_proxy --> core_errors
+    core_proxy --> core_journal_store
+    core_proxy --> core_config
+    core_proxy --> core_platform
+    core_queue --> core_journal_store
+    core_queue --> core_wire
+    core_queue --> core_ports
+    core_queue --> core_diagnostics_store
     core_queue --> core_errors
     core_queue --> core__telemetry
-    core_queue --> core_journal_store
-    core_queue --> core_ports
-    core_queue --> core_wire
-    core_queue --> core_diagnostics_store
     core_scheduling --> core_metadata
     core_worker --> core_wire
-    core_worker --> core_errors
+    core_worker --> core_platform
     core_worker --> core_journal_store
     core_worker --> core_diagnostics_store
+    core_worker --> core_errors
     core_worker --> core_capability
-    core_worker --> core_platform
     utils_cache_paths --> core_empirical_store
     utils_cache_paths --> utils_hashing
     utils_validation --> core_errors
@@ -167,8 +167,6 @@ graph LR
     │                            plugins.yaml.                                     │
     │ setup-host                 Install interface libraries in the current Python │
     │                            environment.                                      │
-    │ estimate-size              Estimate disk space required for plugin           │
-    │                            environments.                                     │
     │ list                       List installed plugins from manifest directory.   │
     │ logs                       Tail / follow the observability stores (CR-14).   │
     │ retention                  Apply the diagnostics retention policy now        │
@@ -1271,7 +1269,6 @@ from cjm_plugin_system.cli import (
     generate_adapter_manifest,
     install_all,
     setup_host,
-    estimate_size,
     list_plugins,
     logs_command,
     retention_command,
@@ -1444,7 +1441,8 @@ def _conda_env_exists_configured(
 
 ``` python
 def install_all(
-    plugins_path:str=typer.Option("plugins.yaml", "--plugins", help="Path to plugins.yaml file"),
+    plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml (default: cjm.yaml plugins_config)"),
+    substrate_source:str=typer.Option("cjm-plugin-system", "--substrate-source", help="Substrate package spec installed into every worker env (default: published; pass a path or '-e <path>' for local-editable dev)"),
     force:bool=typer.Option(False, help="Force recreation of environments")
 ) -> None
     """
@@ -1501,15 +1499,6 @@ def _estimate_pip_sizes(
     packages: list[str]  # List of pip package specs
 ) -> tuple[int, int, list[tuple[str, int]]]:  # (total_bytes, found_count, [(name, size), ...])
     "Estimate pip package sizes from PyPI."
-```
-
-``` python
-def estimate_size(
-    plugins_path:str=typer.Option("plugins.yaml", "--plugins", help="Path to plugins.yaml file"),
-    plugin_name:Optional[str]=typer.Option(None, "--plugin", "-p", help="Estimate for a single plugin"),
-    verbose:bool=typer.Option(False, "--verbose", "-v", help="Show per-package breakdown")
-) -> None
-    "Estimate disk space required for plugin environments."
 ```
 
 ``` python
@@ -5574,6 +5563,7 @@ class CompositionNode:
     priority: int = 0  # Per-node priority override (0 = inherit composition priority)
     task_name: Optional[str]  # Task-channel address: adapter task (stage 4; None = execute channel)
     method: Optional[str]  # Task-channel address: adapter method (set with task_name)
+    control: Dict[str, Any] = field(...)  # Per-call control flags (force/cache-bypass); threaded into the member Job's CallEnvelope.control
 ```
 
 ``` python
@@ -6459,6 +6449,7 @@ async def submit(
     method: Optional[str] = None,  # Task-channel address: adapter method (set with task)
     run_id: Optional[str] = None,  # Host-tier run correlation (CR-14 follow-up; reserved name, never a plugin kwarg)
     actor: Optional[str] = None,  # Who/what initiated (CR-14 follow-up; reserved name)
+    control: Optional[Dict[str, Any]] = None,  # Per-call control flags (force/cache-bypass); reserved name, never a plugin kwarg
     **kwargs
 ) -> str:  # Returns job_id
     """
@@ -7407,6 +7398,7 @@ class Job:
     method: Optional[str]  # Task-channel address: adapter method (stage 4)
     run_id: Optional[str]  # Host-tier run correlation (CR-14 follow-up; core run manifests)
     actor: Optional[str]  # Who/what initiated the work (CR-14 follow-up)
+    control: Dict[str, Any] = field(...)  # Per-call control flags (force/cache-bypass — CR-15 cat 4); rides CallEnvelope.control
     cancel_requested_at: Optional[datetime]  # When cancel was requested (Stage 4)
     cancel_phase: Optional[CancelPhase]  # Active cancel phase (Stage 4)
     block_reason: Optional[str]  # Why the scheduler is blocking (Stage 4)
