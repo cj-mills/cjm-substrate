@@ -6,8 +6,8 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcli.html.md"""
 
 # %% auto #0
 __all__ = ['app', 'main', 'setup_runtime', 'run_cmd', 'regenerate_manifest', 'generate_adapter_manifest', 'install_all',
-           'setup_host', 'estimate_size', 'list_plugins', 'logs_command', 'retention_command', 'remove_plugin',
-           'validate_file', 'set_secret', 'list_secrets']
+           'setup_host', 'list_plugins', 'logs_command', 'retention_command', 'remove_plugin', 'validate_file',
+           'set_secret', 'list_secrets']
 
 # %% ../nbs/cli.ipynb #8385ac8c
 import json
@@ -243,44 +243,83 @@ def _generate_manifest(
     introspection_script = f'''
 import json
 import importlib
-from {module_name}.meta import get_plugin_metadata
-
-meta = get_plugin_metadata()
-
-# SG-7: verify the declared interface FQN actually resolves. The previous
-# substrate shipped a sqlite-graph manifest whose interface field pointed to
-# a non-existent module; nothing caught it until runtime discovery.
-iface_fqn = meta.get("interface") or ""
-if not iface_fqn:
-    raise SystemExit("[introspection] interface FQN is missing in get_plugin_metadata()")
-if "." not in iface_fqn:
-    raise SystemExit(f"[introspection] interface FQN must be a dotted path, got: {{iface_fqn!r}}")
-_iface_mod_path, _iface_cls_name = iface_fqn.rsplit(".", 1)
+# DUAL-MODE (stage 8 / PILLAR 1c): OLD-STYLE plugins expose
+# get_plugin_metadata(); re-based NEW-STYLE capabilities (no meta module) are
+# introspected entirely from the installed distribution + the capability class.
 try:
-    _iface_mod = importlib.import_module(_iface_mod_path)
-except ImportError as e:
-    raise SystemExit(f"[introspection] interface module not importable: {{_iface_mod_path}} ({{e}})")
-if not hasattr(_iface_mod, _iface_cls_name):
-    raise SystemExit(
-        f"[introspection] interface class {{_iface_cls_name!r}} not found in module "
-        f"{{_iface_mod_path}}"
-    )
+    from {module_name}.meta import get_plugin_metadata
+    meta = get_plugin_metadata()
+    _new_style = False
+except (ImportError, AttributeError):
+    meta = {{}}
+    _new_style = True
 
-# CR-1: derive the taxonomy block. Substrate stores strings only.
-# domain: extracted from cjm_<domain>_plugin_system package root.
-# role: the interface class name (last segment of the FQCN).
-_iface_root = _iface_mod_path.split(".")[0]
-if _iface_root.startswith("cjm_") and _iface_root.endswith("_plugin_system"):
-    _domain = _iface_root[len("cjm_"):-len("_plugin_system")]
+if not _new_style:
+    # ===== OLD-STYLE: get_plugin_metadata() + SG-7 interface check + CR-1 taxonomy =====
+    # SG-7: verify the declared interface FQN actually resolves. The previous
+    # substrate shipped a sqlite-graph manifest whose interface field pointed to
+    # a non-existent module; nothing caught it until runtime discovery.
+    iface_fqn = meta.get("interface") or ""
+    if not iface_fqn:
+        raise SystemExit("[introspection] interface FQN is missing in get_plugin_metadata()")
+    if "." not in iface_fqn:
+        raise SystemExit(f"[introspection] interface FQN must be a dotted path, got: {{iface_fqn!r}}")
+    _iface_mod_path, _iface_cls_name = iface_fqn.rsplit(".", 1)
+    try:
+        _iface_mod = importlib.import_module(_iface_mod_path)
+    except ImportError as e:
+        raise SystemExit(f"[introspection] interface module not importable: {{_iface_mod_path}} ({{e}})")
+    if not hasattr(_iface_mod, _iface_cls_name):
+        raise SystemExit(
+            f"[introspection] interface class {{_iface_cls_name!r}} not found in module "
+            f"{{_iface_mod_path}}"
+        )
+    # CR-1: derive the taxonomy block. Substrate stores strings only.
+    # domain: extracted from cjm_<domain>_plugin_system package root.
+    # role: the interface class name (last segment of the FQCN).
+    _iface_root = _iface_mod_path.split(".")[0]
+    if _iface_root.startswith("cjm_") and _iface_root.endswith("_plugin_system"):
+        _domain = _iface_root[len("cjm_"):-len("_plugin_system")]
+    else:
+        # Non-conventional interface library; substrate falls back to the package
+        # root so the manifest still has a usable domain string.
+        _domain = _iface_root
+    meta["taxonomy"] = {{
+        "domain": _domain,
+        "role": _iface_cls_name,
+        "interface_fqcn": iface_fqn,
+    }}
 else:
-    # Non-conventional interface library; substrate falls back to the package
-    # root so the manifest still has a usable domain string.
-    _domain = _iface_root
-meta["taxonomy"] = {{
-    "domain": _domain,
-    "role": _iface_cls_name,
-    "interface_fqcn": iface_fqn,
-}}
+    # ===== NEW-STYLE (Option C / PILLAR 1c): derive identity from the installed
+    # distribution + discover the capability class. interface / taxonomy / type /
+    # resources / db_path are intentionally OMITTED — task comes from bound
+    # adapters, admission measures resources empirically, and db_path is an
+    # adapter-derived persistence concern. =====
+    import sys as _sys
+    import importlib.metadata as _md
+    import inspect as _inspect
+    from cjm_plugin_system.core.capability import ToolCapability
+    _pmod = importlib.import_module("{module_name}.plugin")
+    _cands = [obj for _n, obj in _inspect.getmembers(_pmod, _inspect.isclass)
+              if issubclass(obj, ToolCapability) and obj is not ToolCapability
+              and not _inspect.isabstract(obj)
+              and obj.__module__ == _pmod.__name__]
+    if len(_cands) != 1:
+        raise SystemExit(
+            "[introspection] new-style capability discovery expected exactly 1 "
+            "concrete ToolCapability subclass in " + _pmod.__name__ + ", found "
+            + str(len(_cands)) + ": " + str([c.__name__ for c in _cands])
+            + ". Declare a pyproject [project.entry-points] entry to disambiguate.")
+    _cap = _cands[0]
+    _dist_list = _md.packages_distributions().get("{module_name}")
+    _dist = _dist_list[0] if _dist_list else "{module_name}".replace("_", "-")
+    _dm = _md.metadata(_dist)
+    meta["name"] = _dm.get("Name", _dist)
+    meta["version"] = _dm.get("Version", "") or ""
+    meta["description"] = _dm.get("Summary", "") or ""
+    meta["module"] = _pmod.__name__
+    meta["class"] = _cap.__name__
+    meta["python_path"] = _sys.executable  # the worker-env interpreter (proxy spawns it)
 
 # Try to get config_schema from plugin instance if not in metadata
 if "config_schema" not in meta:
@@ -781,7 +820,8 @@ def _conda_env_exists_configured(
 # %% ../nbs/cli.ipynb #fn-install-all
 @app.command()
 def install_all(
-    plugins_path:str=typer.Option("plugins.yaml", "--plugins", help="Path to plugins.yaml file"),
+    plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml (default: cjm.yaml plugins_config)"),
+    substrate_source:str=typer.Option("cjm-plugin-system", "--substrate-source", help="Substrate package spec installed into every worker env (default: published; pass a path or '-e <path>' for local-editable dev)"),
     force:bool=typer.Option(False, help="Force recreation of environments")
 ) -> None:
     """Install and register all plugins defined in plugins.yaml.
@@ -795,6 +835,11 @@ def install_all(
     """
     cfg = get_config()
     
+    # Schema v2 (PILLAR 2): default the plugins file from cjm.yaml's
+    # plugins_config (parent-walk-discovered) so install-all runs flagless.
+    if plugins_path is None:
+        plugins_path = str(cfg.plugins_config)
+
     # Check runtime availability
     _check_runtime_available()
     
@@ -853,6 +898,12 @@ def install_all(
 
             # 3. Install Dependencies (Pip)
             base_pip_cmd = f"{conda_cmd} run -n {env_name} pip install"
+
+            # Schema v2 (PILLAR 2): the substrate is AUTO-INJECTED into every
+            # worker env (was carried implicitly via each plugin's interface_libs).
+            # Default = the published package; --substrate-source overrides for
+            # local-editable dev.
+            run_cmd(f"{base_pip_cmd} {substrate_source}")
             
             if 'interface_libs' in plugin:
                 libs = " ".join(plugin['interface_libs'])
@@ -1088,100 +1139,6 @@ def _estimate_pip_sizes(
             found_count += 1
     
     return total_size, found_count, details
-
-# %% ../nbs/cli.ipynb #kuad748fs2k
-from typing import List
-
-@app.command("estimate-size")
-def estimate_size(
-    plugins_path:str=typer.Option("plugins.yaml", "--plugins", help="Path to plugins.yaml file"),
-    plugin_name:Optional[str]=typer.Option(None, "--plugin", "-p", help="Estimate for a single plugin"),
-    verbose:bool=typer.Option(False, "--verbose", "-v", help="Show per-package breakdown")
-) -> None:
-    """Estimate disk space required for plugin environments."""
-    if not os.path.exists(plugins_path):
-        typer.echo(f"Plugins file not found: {plugins_path}", err=True)
-        raise typer.Exit(code=1)
-
-    with open(plugins_path) as f:
-        config = yaml.safe_load(f)
-
-    plugins = config.get('plugins', [])
-    
-    # Filter to single plugin if specified
-    if plugin_name:
-        plugins = [p for p in plugins if p.get('name') == plugin_name]
-        if not plugins:
-            typer.echo(f"Plugin not found: {plugin_name}", err=True)
-            raise typer.Exit(code=1)
-
-    typer.echo(f"=== Disk Space Estimates ===\n")
-    
-    total_conda = 0
-    total_pip = 0
-    
-    for plugin in plugins:
-        name = plugin.get('name', 'unknown')
-        env_name = plugin.get('env_name', '')
-        
-        typer.echo(f"{name} (env: {env_name})")
-        
-        # Estimate conda packages
-        conda_size = 0
-        conda_count = 0
-        if 'env_file' in plugin:
-            typer.echo(f"  Analyzing conda environment...")
-            conda_size, conda_count = _estimate_conda_size(plugin['env_file'], env_name)
-            total_conda += conda_size
-            
-            if conda_size > 0:
-                typer.echo(f"  Conda packages: {_format_size(conda_size)} ({conda_count} packages)")
-            else:
-                typer.echo(f"  Conda packages: Unable to estimate (env may already exist)")
-        
-        # Estimate pip packages
-        pip_packages: List[str] = []
-        if 'interface_libs' in plugin:
-            pip_packages.extend(plugin['interface_libs'])
-        for entry in plugin.get('adapters') or []:
-            if isinstance(entry, dict) and entry.get('lib'):
-                pip_packages.append(entry['lib'])
-        if 'package' in plugin:
-            pip_packages.append(plugin['package'])
-        
-        if pip_packages:
-            pip_size, found_count, details = _estimate_pip_sizes(pip_packages)
-            total_pip += pip_size
-            
-            not_found = len(pip_packages) - found_count
-            size_str = _format_size(pip_size) if pip_size > 0 else "unknown"
-            
-            status_parts = []
-            if found_count > 0:
-                status_parts.append(f"{found_count} found on PyPI")
-            if not_found > 0:
-                status_parts.append(f"{not_found} not on PyPI")
-            
-            typer.echo(f"  Pip packages:   {size_str} compressed ({', '.join(status_parts)})")
-            
-            if verbose and details:
-                for pkg_name, pkg_size in details:
-                    if pkg_size > 0:
-                        typer.echo(f"    - {pkg_name}: {_format_size(pkg_size)}")
-                    else:
-                        typer.echo(f"    - {pkg_name}: (not found)")
-        
-        typer.echo("")
-    
-    # Summary
-    typer.echo("─" * 40)
-    typer.echo("TOTAL ESTIMATES")
-    typer.echo(f"  Conda packages: {_format_size(total_conda)}")
-    typer.echo(f"  Pip packages:   {_format_size(total_pip)} (compressed)")
-    typer.echo(f"  Combined:       {_format_size(total_conda + total_pip)}")
-    typer.echo("")
-    typer.echo("Note: Pip sizes are compressed downloads. Installed size is typically 2-5x larger.")
-    typer.echo("      Conda estimates require the environment to not already exist.")
 
 # %% ../nbs/cli.ipynb #8bvmucsze7m
 def _get_conda_envs() -> set[str]: # Set of existing conda environment names

@@ -196,9 +196,17 @@ def load_config(
     # 1. Start with defaults
     config = CJMConfig()
 
-    # 2. Load cjm.yaml if exists (specified or in cwd)
-    yaml_path = config_path or Path("cjm.yaml")
-    if yaml_path.exists():
+    # 2. Load cjm.yaml: specified path, else walk UP from CWD to the first
+    #    cjm.yaml (schema v2 — install-all/setup-host run flagless from anywhere
+    #    in the project tree; plugins_config then resolves relative to it).
+    yaml_path = config_path
+    if yaml_path is None:
+        for _d in [Path.cwd(), *Path.cwd().parents]:
+            _cand = _d / "cjm.yaml"
+            if _cand.exists():
+                yaml_path = _cand
+                break
+    if yaml_path is not None and yaml_path.exists():
         config = _load_from_yaml(yaml_path)
 
     # 3. Override with environment variables

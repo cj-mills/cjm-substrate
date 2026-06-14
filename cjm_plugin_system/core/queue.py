@@ -171,6 +171,7 @@ class Job:
     method: Optional[str] = None  # Task-channel address: adapter method (stage 4)
     run_id: Optional[str] = None  # Host-tier run correlation (CR-14 follow-up; core run manifests)
     actor: Optional[str] = None  # Who/what initiated the work (CR-14 follow-up)
+    control: Dict[str, Any] = field(default_factory=dict)  # Per-call control flags (force/cache-bypass — CR-15 cat 4); rides CallEnvelope.control
     cancel_requested_at: Optional[datetime] = None  # When cancel was requested (Stage 4)
     cancel_phase: Optional[CancelPhase] = None  # Active cancel phase (Stage 4)
     block_reason: Optional[str] = None  # Why the scheduler is blocking (Stage 4)
@@ -448,6 +449,7 @@ async def submit(
     method: Optional[str] = None,  # Task-channel address: adapter method (set with task)
     run_id: Optional[str] = None,  # Host-tier run correlation (CR-14 follow-up; reserved name, never a plugin kwarg)
     actor: Optional[str] = None,  # Who/what initiated (CR-14 follow-up; reserved name)
+    control: Optional[Dict[str, Any]] = None,  # Per-call control flags (force/cache-bypass); reserved name, never a plugin kwarg
     **kwargs
 ) -> str:  # Returns job_id
     """Submit a job to the queue.
@@ -498,6 +500,7 @@ async def submit(
         method=method,
         run_id=run_id if run_id is not None else self.default_run_id,
         actor=actor if actor is not None else self.default_actor,
+        control=control or {},
     )
     return await self._enqueue_job(job)
 
@@ -1066,6 +1069,7 @@ async def _start_ready_nodes(
                     else self.default_run_id),
             actor=(run.composition.actor if run.composition.actor is not None
                    else self.default_actor),
+            control=node.control,
         )
         run.record_started(nid, member.id)
         await self._enqueue_job(member)
@@ -1911,6 +1915,7 @@ async def _execute_with_cancellation(
         composition_id=job.composition_id,
         node_id=job.node_id,
         actor=job.actor,
+        control=job.control or {},
     ))
     try:
         # Start execution. Task-addressed jobs (stage 4, CR-17 pt 2) route via
