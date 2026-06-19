@@ -23,14 +23,14 @@ from typing import Any, Callable, Dict, Generator, Iterator, List, Mapping, Opti
 from .errors import CapabilityCancelledError, CapabilityConfigError, CapabilityInputError
 
 # CR-4: metadata key for declarative reload triggers on config dataclass fields.
-# Plugin authors annotate fields whose changes require resource release:
+# Capability authors annotate fields whose changes require resource release:
 #
 #     @dataclass
 #     class WhisperConfig:
 #         model: str = field(default="base", metadata={RELOAD_TRIGGER: "model"})
 #         temperature: float = field(default=0.0)  # no reload needed on change
 #
-# Plugins then implement `_release_<trigger>()` methods (e.g. `_release_model`)
+# Capabilities then implement `_release_<trigger>()` methods (e.g. `_release_model`)
 # and the substrate-provided `reconfigure_with_triggers` walks the diff between
 # old and new configs, firing each affected trigger's release method.
 RELOAD_TRIGGER = "reload_trigger"
@@ -51,8 +51,8 @@ class FieldOptions:
     """CR-11: the live option domain for one dynamic config field.
 
     Kept SEPARATE from the static config_schema (which CR-8 hashes for drift
-    detection). The plugin-config UI merges these live options on top of the
-    static schema; folding them into the schema would make every API plugin
+    detection). The capability-config UI merges these live options on top of the
+    static schema; folding them into the schema would make every API capability
     perpetually 'drift'.
     """
     options: List[ConfigOption]                                            # current valid options
@@ -62,9 +62,9 @@ class FieldOptions:
 # %% ../../nbs/core/capability.ipynb #da9319fb
 @dataclasses.dataclass
 class EnvVarSpec:
-    """CR-12: one entry of a plugin's spawn-time worker-environment contract.
+    """CR-12: one entry of a capability's spawn-time worker-environment contract.
 
-    A plugin declares the environment variables its worker subprocess reads at
+    A capability declares the environment variables its worker subprocess reads at
     startup via `WORKER_ENV: ClassVar[List[EnvVarSpec]]`. Worker env vars are
     FIXED AT SPAWN — changing one requires a worker RESPAWN, so the substrate
     routes such changes through `reload_capability`, never `reconfigure` (the env is
@@ -86,12 +86,12 @@ class EnvVarSpec:
     {name: value} overlay at load time and injects it into the worker env at
     spawn (extending the existing CJM_CAPABILITY_DATA_DIR / CJM_MODELS_DIR injection).
     This is "derive from behaviour, not metadata" applied to the spawn env: the
-    plugin declares WHICH vars it consumes + whether each is secret/required;
+    capability declares WHICH vars it consumes + whether each is secret/required;
     the substrate owns resolution + injection.
 
     `options` is a forward seam for visible vars with a finite domain (e.g. a
     device selector enumerating GPUs); unused today but reserved so the
-    plugin-config UI / a future `set-env` surface isn't blocked.
+    capability-config UI / a future `set-env` surface isn't blocked.
     """
     name: str                              # The env var the worker reads, e.g. "GEMINI_API_KEY"
     secret: bool = False                   # True -> value resolved from the SecretStore, masked
@@ -108,10 +108,10 @@ class EnvVarSpec:
 #
 # Why templating: 7 of 8 local-model capabilities carry derived path vars
 # (`HF_HOME=<CJM_MODELS_DIR>/huggingface`, `TORCH_HOME`, `NLTK_DATA`, etc.) that
-# were computed at install time in each plugin's `meta.py` and baked into
+# were computed at install time in each capability's `meta.py` and baked into
 # `install.env_vars` as install-machine absolute paths. Moving derivation into a
 # templated `EnvVarSpec.default` lets the substrate own the resolution, keeps
-# the plugin declaration portable across machines (SG-23), and removes the
+# the capability declaration portable across machines (SG-23), and removes the
 # author footgun of "remember to put os.environ.setdefault before the ML import"
 # (the lifecycle hazard Option B carried).
 #
@@ -125,8 +125,8 @@ class EnvVarSpec:
 # Allowed placeholders (the minimum viable set per the audit):
 #   - ${CJM_MODELS_DIR}   — substrate-injected models directory (may be None)
 #   - ${CJM_CAPABILITY_DATA_DIR}     — substrate-injected data directory base
-#   - ${CAPABILITY_DATA_DIR}  — plugin's own data subdirectory (CJM_CAPABILITY_DATA_DIR/<name>)
-#   - ${CAPABILITY_NAME}      — plugin name (for one-off path components like NLTK)
+#   - ${CAPABILITY_DATA_DIR}  — capability's own data subdirectory (CJM_CAPABILITY_DATA_DIR/<name>)
+#   - ${CAPABILITY_NAME}      — capability name (for one-off path components like NLTK)
 WORKER_ENV_TEMPLATE_PLACEHOLDERS: Set[str] = {
     "CJM_MODELS_DIR",
     "CJM_CAPABILITY_DATA_DIR",
@@ -139,7 +139,7 @@ def expand_worker_env_template(
     template: str,                       # The raw EnvVarSpec.default value (may contain ${...} placeholders)
     placeholders: Mapping[str, Optional[str]],  # Resolved values keyed by placeholder name
     *,
-    capability_name: str = "",               # For error context ("template X on plugin Y references ...")
+    capability_name: str = "",               # For error context ("template X on capability Y references ...")
     var_name: str = "",                  # For error context ("on EnvVarSpec(name=Z)")
 ) -> str:
     """Substitute `${VAR}` placeholders in `template` using `placeholders`.
@@ -154,7 +154,7 @@ def expand_worker_env_template(
     A `${FOO}` whose name is in the vocabulary but whose RESOLVED value is None
     (e.g. `CJM_MODELS_DIR` when the operator hasn't configured one) raises
     `CapabilityConfigError` with the same shape — operators get a clear signal that
-    the plugin needs a value they haven't provided, rather than a silent
+    the capability needs a value they haven't provided, rather than a silent
     substitution of empty string into a load-bearing path.
     """
     # Fast path: nothing to substitute.
@@ -172,7 +172,7 @@ def expand_worker_env_template(
     # Validate against the allowed vocabulary.
     unknown = referenced - WORKER_ENV_TEMPLATE_PLACEHOLDERS
     if unknown:
-        ctx = f"on plugin {capability_name!r}" if capability_name else ""
+        ctx = f"on capability {capability_name!r}" if capability_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
         raise CapabilityConfigError(
@@ -182,10 +182,10 @@ def expand_worker_env_template(
         )
     # Resolve. A referenced-but-unresolved placeholder (allowed vocabulary,
     # value None in `placeholders`) is a configuration error from the operator
-    # side, NOT a plugin author bug — distinguished error message.
+    # side, NOT a capability author bug — distinguished error message.
     missing = [n for n in referenced if placeholders.get(n) is None]
     if missing:
-        ctx = f"on plugin {capability_name!r}" if capability_name else ""
+        ctx = f"on capability {capability_name!r}" if capability_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
         raise CapabilityConfigError(
@@ -206,7 +206,7 @@ def template_check_placeholders(
     
     Validates the vocabulary (unknown names raise CapabilityConfigError) without
     requiring a placeholder-value mapping. Useful for `cjm-ctl validate`'s
-    dry-run check at install/release time — surface the bug BEFORE the plugin
+    dry-run check at install/release time — surface the bug BEFORE the capability
     tries to spawn a worker with a malformed default.
     
     Templates without `${...}` return an empty set.
@@ -263,14 +263,14 @@ class ToolCapability(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str: # Unique identifier for this plugin
-        """Unique plugin identifier."""
+    def name(self) -> str: # Unique identifier for this capability
+        """Unique capability identifier."""
         ...
 
     @property
     @abstractmethod
     def version(self) -> str: # Semantic version string (e.g., "1.0.0")
-        """Plugin version."""
+        """Capability version."""
         ...
 
     @abstractmethod
@@ -278,13 +278,13 @@ class ToolCapability(ABC):
         self,
         config: Optional[Dict[str, Any]] = None # Configuration dictionary
     ) -> None:
-        """Initialize or re-configure the plugin.
+        """Initialize or re-configure the capability.
         
         CR-4: this is "first-time setup" — called once after construction with
         the initial config. Substrate uses `reconfigure(old, new)` for delta
-        updates afterwards. Plugins predating CR-4 see no behavior change since
+        updates afterwards. Capabilities predating CR-4 see no behavior change since
         the default `reconfigure()` body delegates to `reconfigure_with_triggers`
-        which is a no-op unless the plugin opts in via RELOAD_TRIGGER metadata.
+        which is a no-op unless the capability opts in via RELOAD_TRIGGER metadata.
         """
         ...
 
@@ -298,7 +298,7 @@ class ToolCapability(ABC):
         TRANSITIONAL(option-c-cascade): streaming is substrate/composition-
         supplied under the pass-2 fracture (off both interfaces); the default
         stays here only because fused-era capabilities rely on it (it calls the
-        plugin's own `execute`, which a split tool capability does not have).
+        capability's own `execute`, which a split tool capability does not have).
         Relocates when CR-17 adapter routing lands (execution stage 4).
         """
         # Fused-era default: yield single result from execute().
@@ -306,7 +306,7 @@ class ToolCapability(ABC):
 
     @abstractmethod
     def get_config_schema(self) -> Dict[str, Any]: # JSON Schema for configuration
-        """Return JSON Schema describing the plugin's configuration options."""
+        """Return JSON Schema describing the capability's configuration options."""
         ...
 
     @abstractmethod
@@ -321,22 +321,22 @@ class ToolCapability(ABC):
         domain is determined at runtime (e.g. an API model list), return a
         `FieldOptions` carrying current `ConfigOption` values + per-option
         metadata (token limits, etc.) + optional derived constraints. Runs in
-        the worker subprocess (has the plugin's deps + credentials).
+        the worker subprocess (has the capability's deps + credentials).
 
         Kept SEPARATE from get_config_schema(): the schema is static + hashed for
         CR-8 drift detection; these options are the live, un-hashed companion the
-        plugin-config UI merges on top. A fetch failure should raise a typed CR-5
+        capability-config UI merges on top. A fetch failure should raise a typed CR-5
         error; the substrate's CapabilityManager.get_config_options accessor degrades
         to {} so the UI can fall back to the static schema.
         """
         return {}
 
     def cleanup(self) -> None:
-        """Clean up resources when plugin is unloaded.
+        """Clean up resources when capability is unloaded.
         
         CR-4: made optional (SG-43 closure). Was `@abstractmethod` before; every
-        audited plugin overrode it with a near-no-op, so the default is now a
-        no-op and plugin authors override only when they have non-trivial
+        audited capability overrode it with a near-no-op, so the default is now a
+        no-op and capability authors override only when they have non-trivial
         teardown (file handles, GPU memory, database connections). The
         substrate's worker /cleanup endpoint calls this regardless.
         """
@@ -345,10 +345,10 @@ class ToolCapability(ABC):
     def prefetch(self) -> None:
         """Acquire heavy resources eagerly without invoking execute().
         
-        CR-4 (SG-19): default no-op. Plugin authors override when downstream
+        CR-4 (SG-19): default no-op. Capability authors override when downstream
         callers benefit from eager acquisition — typically transcription /
         inference capabilities that lazy-download models on first execute. The
-        substrate's prefetch_plugin(name) API + worker /prefetch endpoint
+        substrate's prefetch_capability(name) API + worker /prefetch endpoint
         invoke this. Should be idempotent (safe to call multiple times) since
         the substrate may pre-warm at load time AND on operator request.
         """
@@ -372,7 +372,7 @@ class ToolCapability(ABC):
         update_capability_config path.
         """
         self.reconfigure_with_triggers(old_config or {}, new_config or {})
-        # CR-4 completion: re-apply config + run config-derived setup. Plugins
+        # CR-4 completion: re-apply config + run config-derived setup. Capabilities
         # that factor config into `_apply_config(config)` get the clean
         # init-once / reconfigure-delta split; others fall back to a full
         # `initialize(new_config)` (idempotent; retained manual diff-and-reload
@@ -407,8 +407,8 @@ class ToolCapability(ABC):
         
         Resolution sequence:
         
-          1. Find the plugin's `config_class` attribute (a dataclass). Absent
-             means the plugin hasn't opted into the declarative pattern; the
+          1. Find the capability's `config_class` attribute (a dataclass). Absent
+             means the capability hasn't opted into the declarative pattern; the
              helper returns silently.
           2. Compute the diff between `old_config` and `new_config` via
              `fields_that_changed`.
@@ -418,13 +418,13 @@ class ToolCapability(ABC):
           4. For each trigger, call `self._release_<trigger>()` if it exists
              on the instance.
         
-        Plugin authors opt in by:
+        Capability authors opt in by:
         
           - Setting `config_class = MyConfigDataclass` as a class attribute.
           - Annotating field metadata with `{RELOAD_TRIGGER: "model"}` etc.
           - Implementing matching `_release_model(self)` instance methods.
         
-        Plugins WITHOUT config_class or RELOAD_TRIGGER metadata land here as a
+        Capabilities WITHOUT config_class or RELOAD_TRIGGER metadata land here as a
         no-op — safe default for the SG-T3tr migration window where the
         cascade hasn't yet adopted the declarative pattern everywhere.
         """
@@ -460,10 +460,10 @@ class ToolCapability(ABC):
         CR-4: default sets the substrate-tracked `_cancel_requested` flag and
         fires any callbacks registered via `register_cancel_callback`.
         
-        Plugin authors who need extra teardown logic (signaling a subprocess,
+        Capability authors who need extra teardown logic (signaling a subprocess,
         closing a network connection) override `cancel()` and SHOULD call
         `super().cancel()` to preserve the flag-setting + callback-fire
-        behavior. The plugin's `execute()` polls via `check_cancel()` at safe
+        behavior. The capability's `execute()` polls via `check_cancel()` at safe
         interruption points and unwinds when it raises `CapabilityCancelledError`.
         """
         self._cancel_requested = True
@@ -481,7 +481,7 @@ class ToolCapability(ABC):
     def check_cancel(self) -> None:
         """Raise `CapabilityCancelledError` if cancellation has been requested.
         
-        CR-4 (SG-16 polling primitive): plugin authors call this at safe
+        CR-4 (SG-16 polling primitive): capability authors call this at safe
         interruption points inside `execute()`. The substrate sets the flag via
         `cancel()` (typically driven by an operator's "Cancel" button); the
         next `check_cancel` call surfaces the cancellation as a typed exception
@@ -500,7 +500,7 @@ class ToolCapability(ABC):
         """Register a callback that fires when cancel() is called.
         
         CR-4 (SG-16 callback primitive): for capabilities that can't easily insert
-        polling at strategic points (e.g., a plugin wrapping a blocking C
+        polling at strategic points (e.g., a capability wrapping a blocking C
         extension). Callbacks should be non-blocking and idempotent. Multiple
         callbacks can be registered; all fire in registration order when
         cancel() is invoked. A misbehaving callback that raises is logged
@@ -540,19 +540,19 @@ class ToolCapability(ABC):
                     pass  # Already removed (e.g. by an aliased call); silent OK.
 
     def on_disable(self) -> None:
-        """CR-2: signal that the substrate has marked this plugin as disabled.
+        """CR-2: signal that the substrate has marked this capability as disabled.
         
-        Worker stays alive; plugin can release heavy resources here (e.g., free
+        Worker stays alive; capability can release heavy resources here (e.g., free
         GPU memory, close model files). The substrate fires this hook AFTER any
-        in-flight job for this plugin finishes — see CapabilityManager.disable_capability
+        in-flight job for this capability finishes — see CapabilityManager.disable_capability
         deferred-hook semantics. Default: no-op; capabilities opt in by overriding.
         """
         pass
 
     def on_enable(self) -> None:
-        """CR-2: signal that the substrate has marked this plugin as re-enabled.
+        """CR-2: signal that the substrate has marked this capability as re-enabled.
         
-        Plugin can eagerly re-acquire heavy resources here, or rely on lazy
+        Capability can eagerly re-acquire heavy resources here, or rely on lazy
         re-acquisition via the next execute() call (substrate doesn't prefer
         one strategy over the other). Default: no-op; capabilities opt in by overriding.
         """
@@ -570,18 +570,18 @@ class ToolCapability(ABC):
 
     def report_usage(
         self,
-        usage: Dict[str, float],  # Measured usage for this execute, keyed by plugin-defined unit name
+        usage: Dict[str, float],  # Measured usage for this execute, keyed by capability-defined unit name
     ) -> None:
         """SG-54: report measured API/service usage for the current execute() call.
 
-        Unit-agnostic by design — the plugin (which holds the API response)
+        Unit-agnostic by design — the capability (which holds the API response)
         supplies whatever unit names it measures: {"input_tokens": .., "output_tokens": ..}
         for an LLM, {"pages": ..} for OCR, {"characters": ..} for TTS,
         {"credits"/"requests"/"minutes": ..} for others. The substrate stores +
         accumulates per unit name WITHOUT interpreting them (summed across runs in
         the empirical store's api_usage_totals). Pricing is deliberately NOT here
         (volatile, per-service, often not API-accessible) — a consumer-side rate
-        table turns raw units into cost. "Derive from behaviour": the plugin
+        table turns raw units into cost. "Derive from behaviour": the capability
         MEASURES actual usage from the response; the substrate aggregates.
 
         Stored on `self._last_api_usage`; the worker exposes it via /stats and the
@@ -596,12 +596,12 @@ class ToolCapability(ABC):
 #
 # The substrate's prefetch stall-detector (Session A 2026-05-27) SIGTERMs a
 # worker if the (progress, message) tuple stays unchanged for
-# `SubstrateConfig.prefetch_stall_threshold_seconds`. Plugins with quiet
+# `SubstrateConfig.prefetch_stall_threshold_seconds`. Capabilities with quiet
 # lifecycle ops (HF Hub `from_pretrained`, `torch.hub.load_state_dict_from_url`,
 # whisper's urllib download) are silently at risk: their _load_model() blocks for
 # 60+ seconds without emitting progress updates.
 #
-# Voxtral-vLLM is the first adopter (single-threaded, plugin-owned poll loop —
+# Voxtral-vLLM is the first adopter (single-threaded, capability-owned poll loop —
 # the heartbeat is "call report_progress on every iteration of my loop"). The 5
 # remaining model-loading capabilities (Whisper / Voxtral-HF / Qwen3-FA / Demucs /
 # LavaSR) have a different shape: ONE blocking call inside third-party code
@@ -611,8 +611,8 @@ class ToolCapability(ABC):
 # This cell ships TWO sibling primitives:
 #
 #   - `report_progress` thread-safety upgrade: report_progress is now safe to
-#     call from any thread (the heartbeat thread + the plugin's main thread
-#     may both call it). Single lazy-init lock per plugin instance; single-
+#     call from any thread (the heartbeat thread + the capability's main thread
+#     may both call it). Single lazy-init lock per capability instance; single-
 #     threaded callers (the existing majority) get a `getattr is None` fast
 #     path with zero lock overhead until the first heartbeat() call.
 #
@@ -620,12 +620,12 @@ class ToolCapability(ABC):
 #     daemon thread that re-writes `_status_message` every `interval` seconds
 #     with `<base> ({elapsed:.1f}s)`. The thread NEVER touches `_progress` or
 #     `_status_message_base` — those stay owned by explicit `report_progress`
-#     calls. So the plugin can still drive real progress fractions during the
+#     calls. So the capability can still drive real progress fractions during the
 #     block; the heartbeat just guarantees the (progress, message) tuple
 #     advances even when nothing else is happening.
 #
 # Per Q2 Option C: this is opt-in convenience on top of the existing
-# report_progress seam, NOT a forced shape. Voxtral-vLLM's plugin-owned loop
+# report_progress seam, NOT a forced shape. Voxtral-vLLM's capability-owned loop
 # stays as-is. 5 model-loading capabilities adopt this CM in Phase 3.
 def _report_progress_threadsafe(
     self,
@@ -635,19 +635,19 @@ def _report_progress_threadsafe(
     """Thread-safe report_progress — replaces ToolCapability.report_progress.
     
     Writes `_progress` + `_status_message_base` + `_status_message` under the
-    plugin's `_progress_lock` if one exists (lazy-init by `heartbeat()` before
+    capability's `_progress_lock` if one exists (lazy-init by `heartbeat()` before
     spawning its thread). When no lock exists yet — the single-threaded common
     case before any heartbeat() call — the writes happen without lock overhead.
     
     The heartbeat thread reads `_status_message_base` (NOT `_status_message`)
     so heartbeat-amended messages don't accumulate elapsed-time suffixes when
-    `report_progress` is called concurrently. The plugin's call overwrites both
+    `report_progress` is called concurrently. The capability's call overwrites both
     fields atomically; the next heartbeat tick reads the new base.
     """
     lock = getattr(self, "_progress_lock", None)
     if lock is None:
         # Fast path for single-threaded callers (the majority — Voxtral-vLLM
-        # and any plugin that hasn't entered a heartbeat() block). No lock
+        # and any capability that hasn't entered a heartbeat() block). No lock
         # overhead. heartbeat() initializes the lock before spawning its
         # thread, so concurrent multi-thread access always sees a lock.
         self._progress = progress
@@ -692,7 +692,7 @@ def _heartbeat(
       explicit `report_progress(0.3, "downloading weights")` from inside the
       block makes the next heartbeat tick display "downloading weights (Xs)".
     - At exit: signals the thread to stop, joins with timeout (the thread is
-      daemon so cleanup is best-effort but reliable). The plugin's final
+      daemon so cleanup is best-effort but reliable). The capability's final
       `_status_message` state is left as the last heartbeat-amended value;
       callers wanting a clean "completed" state should call
       `report_progress(1.0, "done")` after the with-block.
@@ -711,7 +711,7 @@ def _heartbeat(
     # nested or interleaved at the millisecond level — in practice capabilities
     # never call heartbeat() reentrantly, and the GIL makes the dict write
     # atomic anyway. Belt-and-suspenders: if the attribute already exists
-    # (e.g. from a previous heartbeat() call in the same plugin lifetime),
+    # (e.g. from a previous heartbeat() call in the same capability lifetime),
     # we reuse it.
     if getattr(self, "_progress_lock", None) is None:
         self._progress_lock = threading.Lock()
@@ -729,7 +729,7 @@ def _heartbeat(
         # The thread NEVER touches _progress or _status_message_base — those
         # stay owned by explicit report_progress calls. The thread only refreshes
         # _status_message with the elapsed-time suffix. This means the substrate
-        # sees the tuple advance (message changes every tick); the plugin's
+        # sees the tuple advance (message changes every tick); the capability's
         # explicit progress fractions and base messages propagate cleanly.
         while not stop_event.is_set():
             elapsed = time.time() - start_time
@@ -758,9 +758,9 @@ ToolCapability.heartbeat = _heartbeat
 def capability_action(
     action_name: str  # Public action name the decorated method handles
 ) -> Callable[[Callable], Callable]:  # Decorator
-    """Marker decorator tagging a plugin method as the handler for `action_name`.
+    """Marker decorator tagging a capability method as the handler for `action_name`.
     
-    Sets `func._capability_action = action_name`. Plugin authors with dispatcher-style
+    Sets `func._capability_action = action_name`. Capability authors with dispatcher-style
     `execute(action, **kwargs)` use `collect_capability_actions(cls)` to derive their
     `supported_actions` set from these markers rather than maintaining a separate
     list. The decorator does not change call semantics — the wrapped function is
@@ -780,7 +780,7 @@ def collect_capability_actions(
     Walks the class's MRO so subclasses inherit action handlers from base
     classes automatically. The returned set is suitable for
     `supported_actions: ClassVar[Set[str]] = collect_capability_actions(MyCapability)`
-    once the plugin class body has been defined.
+    once the capability class body has been defined.
     """
     actions: Set[str] = set()
     for ancestor in cls.__mro__:
@@ -806,7 +806,7 @@ def _dispatch_to_action(
 
     Dispatcher-style capabilities (MediaProcessing / Graph / Text) collapse their
     `execute` to a one-liner instead of reimplementing the MRO walk in every
-    plugin (the 5x copy SG-44 + this helper retire):
+    capability (the 5x copy SG-44 + this helper retire):
 
         @capability_action("separate_vocals")
         def _separate_vocals(self, **kwargs): ...
@@ -829,7 +829,7 @@ ToolCapability.dispatch_to_action = _dispatch_to_action
 
 # %% ../../nbs/core/capability.ipynb #9342f856-f07e-4e18-b016-4f089a50c4c4
 class _CR4MinimalCapability(ToolCapability):
-    """Concrete plugin satisfying abstracts; relies on CR-4 default cleanup()."""
+    """Concrete capability satisfying abstracts; relies on CR-4 default cleanup()."""
     @property
     def name(self) -> str: return "cr4-minimal"
     @property

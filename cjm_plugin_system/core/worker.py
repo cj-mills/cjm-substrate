@@ -1,4 +1,4 @@
-"""FastAPI server that runs inside isolated plugin environments
+"""FastAPI server that runs inside isolated capability environments
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/worker.html.md"""
 
@@ -88,10 +88,10 @@ def parent_monitor(
 
 # %% ../../nbs/core/worker.ipynb #19319501
 def _load_capability_instance(
-    module_name: str, # Python module path (e.g., "my_plugin.plugin")
+    module_name: str, # Python module path (e.g., "my_capability.capability")
     class_name: str   # Capability class name (e.g., "WhisperCapability")
-):                    # Instantiated plugin object
-    """Dynamically load + instantiate the plugin class.
+):                    # Instantiated capability object
+    """Dynamically load + instantiate the capability class.
 
     Runs synchronously before app construction so a load failure terminates
     the worker process with exit code 1 (matches pre-lifespan behavior;
@@ -107,9 +107,9 @@ def _load_capability_instance(
 
 # %% ../../nbs/core/worker.ipynb #45de0055
 def _make_lifespan(
-    capability_instance  # The loaded plugin object (closure-captured for shutdown cleanup)
+    capability_instance  # The loaded capability object (closure-captured for shutdown cleanup)
 ):                   # FastAPI lifespan async context manager
-    """Build the FastAPI lifespan that invokes plugin.cleanup() on shutdown."""
+    """Build the FastAPI lifespan that invokes capability.cleanup() on shutdown."""
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """FastAPI lifespan replacing the deprecated @app.on_event("shutdown") path.
@@ -118,29 +118,29 @@ def _make_lifespan(
         of the lifespan context manager (the DeprecationWarning fired in worker
         logs post-Session-A publish). Behavior is preserved verbatim:
 
-        - Startup half is empty: the plugin is already instantiated above
+        - Startup half is empty: the capability is already instantiated above
           BEFORE the FastAPI app is constructed (load failure exits the
           process before lifespan runs). No async startup work is needed.
-        - Shutdown half: invoke plugin.cleanup() before uvicorn exits.
+        - Shutdown half: invoke capability.cleanup() before uvicorn exits.
 
         Session A 2026-05-27 rationale (still applies): both the parent_monitor
         watchdog (SIGTERM via terminate_self) and an external SIGTERM (e.g.,
         substrate's proxy stall-detection killing a wedged prefetch) route
         through uvicorn's graceful-shutdown path, which fires this lifespan
-        teardown. Pre-Session-A the plugin's cleanup() hook was only invoked
+        teardown. Pre-Session-A the capability's cleanup() hook was only invoked
         on the manager-driven unload_capability path — never on watchdog or
         stall-triggered termination — so capabilities that spawn grandchild
         subprocesses (Voxtral-vLLM's vLLM server is the driving case) leaked
         them as orphans whenever the worker died abnormally. Cleanup failures
         are swallowed-with-log because they must NOT prevent uvicorn shutdown.
 
-        cleanup() is synchronous (PluginInterface contract). Calling a sync
+        cleanup() is synchronous (ToolCapability contract). Calling a sync
         function from this async block briefly blocks the event loop during
         shutdown, which is acceptable — uvicorn is already winding down.
         """
-        # Startup: nothing to do (plugin loaded above synchronously).
+        # Startup: nothing to do (capability loaded above synchronously).
         yield
-        # Shutdown: invoke plugin.cleanup() best-effort.
+        # Shutdown: invoke capability.cleanup() best-effort.
         try:
             cleanup = getattr(capability_instance, "cleanup", None)
             if cleanup is not None:
@@ -149,7 +149,7 @@ def _make_lifespan(
             try:
                 import logging as _lg
                 _lg.getLogger(__name__).warning(
-                    f"plugin.cleanup() raised during worker shutdown: {e}"
+                    f"capability.cleanup() raised during worker shutdown: {e}"
                 )
             except Exception:
                 pass
@@ -159,7 +159,7 @@ def _make_lifespan(
 # %% ../../nbs/core/worker.ipynb #6b3a081a
 def _register_identity_endpoints(
     app,             # FastAPI app under construction
-    capability_instance, # The loaded plugin object
+    capability_instance, # The loaded capability object
 ) -> None:
     """/health + /stats: worker identity + process-subtree telemetry."""
     @app.get("/health")
@@ -194,7 +194,7 @@ def _register_identity_endpoints(
         managed vLLM server is the driving case) report subtree totals rather
         than worker-only values. `subtree_pids` is emitted alongside so the
         substrate's GPU-attribution helper can intersect with the system-
-        monitor plugin's per-PID GPU enumeration without needing its own
+        monitor capability's per-PID GPU enumeration without needing its own
         process-tree walk (which would duplicate this one).
         """
         worker_pid = os.getpid()
@@ -241,7 +241,7 @@ def _register_identity_endpoints(
             "cpu_percent": total_cpu,  # Worker + descendants (subtree sum)
             "memory_rss_mb": total_rss / 1024 / 1024,
             "subtree_pids": subtree_pids,  # Worker + descendants; substrate intersects with sysmon GPU PIDs
-            # SG-54: unit-agnostic measured usage the plugin reported via
+            # SG-54: unit-agnostic measured usage the capability reported via
             # report_usage() during the last execute (None if it reported none).
             "usage": getattr(capability_instance, "_last_api_usage", None),
         }
@@ -261,13 +261,13 @@ def _register_identity_endpoints(
 # %% ../../nbs/core/worker.ipynb #a96c1c47
 def _register_lifecycle_endpoints(
     app,             # FastAPI app under construction
-    capability_instance, # The loaded plugin object
+    capability_instance, # The loaded capability object
 ) -> None:
     """/initialize /prefetch /reconfigure /on_disable /on_enable /cleanup:
     the tool-capability lifecycle surface."""
     @app.post("/initialize")
     async def initialize(request: Request) -> Dict[str, str]:
-        """Initialize or reconfigure the plugin."""
+        """Initialize or reconfigure the capability."""
         try:
             config = await request.json()
             capability_instance.initialize(config)
@@ -277,12 +277,12 @@ def _register_lifecycle_endpoints(
 
     @app.post("/prefetch")
     def prefetch() -> Dict[str, str]:
-        """CR-4: invoke the plugin's prefetch() hook for eager resource acquisition.
+        """CR-4: invoke the capability's prefetch() hook for eager resource acquisition.
         
-        Default PluginInterface.prefetch() is a no-op (SG-19 hook with opt-in
-        semantics). Plugins override when downstream callers benefit from
+        Default ToolCapability.prefetch() is a no-op (SG-19 hook with opt-in
+        semantics). Capabilities override when downstream callers benefit from
         eager model-download / cache-warming. Errors surface as 500 with the
-        exception detail; idempotent calls are the plugin's responsibility.
+        exception detail; idempotent calls are the capability's responsibility.
         """
         if not hasattr(capability_instance, "prefetch"):
             return {"status": "not_supported"}
@@ -294,12 +294,12 @@ def _register_lifecycle_endpoints(
 
     @app.post("/reconfigure")
     async def reconfigure(request: Request) -> Dict[str, str]:
-        """CR-4: invoke the plugin's reconfigure(old_config, new_config) hook.
+        """CR-4: invoke the capability's reconfigure(old_config, new_config) hook.
         
         Request body: `{"old_config": {...}, "new_config": {...}}`. Default
-        PluginInterface.reconfigure() delegates to reconfigure_with_triggers
-        which walks RELOAD_TRIGGER metadata on the plugin's config_class.
-        Plugins predating CR-4 (no config_class) land in the silent-no-op
+        ToolCapability.reconfigure() delegates to reconfigure_with_triggers
+        which walks RELOAD_TRIGGER metadata on the capability's config_class.
+        Capabilities predating CR-4 (no config_class) land in the silent-no-op
         branch — substrate falls back to /initialize when reconfigure is a
         no-op.
         """
@@ -316,11 +316,11 @@ def _register_lifecycle_endpoints(
 
     @app.post("/on_disable")
     def on_disable() -> Dict[str, str]:
-        """CR-2: forward the substrate's on_disable signal to the loaded plugin.
+        """CR-2: forward the substrate's on_disable signal to the loaded capability.
         
-        Worker stays alive; plugin's on_disable() hook gets a chance to
+        Worker stays alive; capability's on_disable() hook gets a chance to
         release heavy resources (GPU memory, model files, etc.). Default
-        PluginInterface.on_disable() is a no-op so capabilities that don't
+        ToolCapability.on_disable() is a no-op so capabilities that don't
         opt in see no behavior change.
         """
         if hasattr(capability_instance, 'on_disable'):
@@ -333,11 +333,11 @@ def _register_lifecycle_endpoints(
 
     @app.post("/on_enable")
     def on_enable() -> Dict[str, str]:
-        """CR-2: forward the substrate's on_enable signal to the loaded plugin.
+        """CR-2: forward the substrate's on_enable signal to the loaded capability.
         
-        Plugin can eagerly re-acquire heavy resources or rely on lazy
+        Capability can eagerly re-acquire heavy resources or rely on lazy
         re-acquisition via the next execute() call. Default
-        PluginInterface.on_enable() is a no-op.
+        ToolCapability.on_enable() is a no-op.
         """
         if hasattr(capability_instance, 'on_enable'):
             try:
@@ -349,7 +349,7 @@ def _register_lifecycle_endpoints(
 
     @app.post("/cleanup")
     def cleanup() -> Dict[str, str]:
-        """Clean up plugin resources."""
+        """Clean up capability resources."""
         if hasattr(capability_instance, 'cleanup'):
             capability_instance.cleanup()
         return {"status": "cleaned"}
@@ -359,19 +359,19 @@ def _register_lifecycle_endpoints(
 # %% ../../nbs/core/worker.ipynb #e93abae4
 def _register_config_endpoints(
     app,             # FastAPI app under construction
-    capability_instance, # The loaded plugin object
+    capability_instance, # The loaded capability object
 ) -> None:
     """/config_schema /config /config_options: the config surface."""
     @app.get("/config_schema")
     def get_config_schema() -> Dict[str, Any]:
-        """Return JSON Schema for plugin configuration."""
+        """Return JSON Schema for capability configuration."""
         if hasattr(capability_instance, 'get_config_schema'):
             return capability_instance.get_config_schema()
         return {}
 
     @app.get("/config")
     def get_config() -> Dict[str, Any]:
-        """Return current plugin configuration."""
+        """Return current capability configuration."""
         if hasattr(capability_instance, 'get_current_config'):
             cfg = capability_instance.get_current_config()
             # Ensure dataclasses are serialized
@@ -465,7 +465,7 @@ def _accounts_headers() -> Dict[str, str]:
 
 def _register_task_endpoints(
     app,             # FastAPI app under construction
-    capability_instance, # The loaded plugin object
+    capability_instance, # The loaded capability object
     adapters=None,   # task_name -> bound adapter instance (CR-17 pt 2; stage 4)
 ) -> None:
     """/execute /execute_stream /cancel /progress /task: the task channel.
@@ -478,7 +478,7 @@ def _register_task_endpoints(
     CR-14 (stage 7): each call decodes the per-call envelope into the
     contextvar and carries it into the executor thread via
     `contextvars.copy_context()` (run_in_executor does NOT copy context by
-    itself) — the diagnostics handler stamps every plugin log record with
+    itself) — the diagnostics handler stamps every capability log record with
     exact job identity, replacing the timestamp-window heuristic.
 
     CR-14 follow-up: the unary paths (/execute, /task) return recorded
@@ -488,12 +488,12 @@ def _register_task_endpoints(
     """
     @app.post("/execute")
     async def execute(request: Request) -> Any:
-        """Execute plugin's main functionality.
+        """Execute capability's main functionality.
         
         Runs in a thread pool so the event loop stays free to serve
         concurrent requests (e.g., /progress polling during long operations).
         
-        CR-4: resets the plugin's `_cancel_requested` flag before invoking
+        CR-4: resets the capability's `_cancel_requested` flag before invoking
         execute() so cancellation doesn't leak from a previous job. After
         execute() returns or raises, leaves the flag in its post-call state
         (cancel() may have been called during cleanup; substrate decides what
@@ -520,7 +520,7 @@ def _register_task_endpoints(
         try:
             loop = asyncio.get_event_loop()
             # CR-14: copy_context AFTER the envelope set, so the executor
-            # thread's plugin code (and its logger calls) sees the identity.
+            # thread's capability code (and its logger calls) sees the identity.
             ctx = contextvars.copy_context()
             result = await loop.run_in_executor(
                 None, lambda: ctx.run(capability_instance.execute, *args, **kwargs)
@@ -533,8 +533,8 @@ def _register_task_endpoints(
                                 headers=_accounts_headers())
         except CapabilityCancelledError as e:
             # CR-4: cooperative cancellation surfaces as 409 Conflict so the
-            # proxy can distinguish "operator cancelled" from "real plugin
-            # failure" (500). The detail body carries the plugin name for
+            # proxy can distinguish "operator cancelled" from "real capability
+            # failure" (500). The detail body carries the capability name for
             # debugging context.
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
@@ -571,7 +571,7 @@ def _register_task_endpoints(
         channel) so CR-7 retry sees typed categories from day one.
 
         CR-14 follow-up: the worker itself records a TASK_ACCOUNT for every
-        adapter dispatch (zero plugin cooperation — derived at the substrate
+        adapter dispatch (zero capability cooperation — derived at the substrate
         boundary): task, method, ok, duration. On failure the account carries
         ok=False + the JobError category, riding the same 500's header.
         """
@@ -633,7 +633,7 @@ def _register_task_endpoints(
 
     @app.post("/execute_stream")
     async def execute_stream(request: Request) -> StreamingResponse:
-        """Execute plugin with streaming response (NDJSON).
+        """Execute capability with streaming response (NDJSON).
         
         SG-51: resets `_cancel_requested` at the start of iter_response (parity
         with /execute) so a leftover cancel flag from a previous job doesn't
@@ -644,7 +644,7 @@ def _register_task_endpoints(
         contract: ANY exception raised during streaming is converted via
         `map_bare_exception_to_job_error` (CR-5 default classification) and
         emitted as the final NDJSON line with the `_job_error` sentinel key.
-        Plugin output chunks never carry that key, so consumers (proxy +
+        Capability output chunks never carry that key, so consumers (proxy +
         downstream) can detect terminal errors with a single dict membership
         check. The proxy's execute_stream then raises a typed exception
         client-side, mirroring /execute's HTTP 409 → CapabilityCancelledError flow.
@@ -652,7 +652,7 @@ def _register_task_endpoints(
         CR-14: `_apply_call_envelope`'s no-reset semantics matter HERE — the
         response iteration runs in this request task after the endpoint
         returns, and each chunk's threadpool hop copies the task context,
-        so the plugin's in-stream logger calls stay job-stamped.
+        so the capability's in-stream logger calls stay job-stamped.
 
         CR-14 follow-up honest limit: accounts do NOT ride this path —
         response headers are sent before execution ends. A terminal sentinel
@@ -666,7 +666,7 @@ def _register_task_endpoints(
 
         def iter_response() -> Generator[str, None, None]:
             # SG-51: reset cancel flag so stale state from a previous job doesn't
-            # immediately raise inside the plugin's execute_stream iterator.
+            # immediately raise inside the capability's execute_stream iterator.
             if hasattr(capability_instance, "_cancel_requested"):
                 capability_instance._cancel_requested = False
             try:
@@ -714,8 +714,8 @@ def _register_task_endpoints(
 # %% ../../nbs/core/worker.ipynb #580f8d04
 def _register_monitor_endpoints(
     app,             # FastAPI app under construction
-    capability_instance, # The loaded plugin object
-    class_name: str, # Plugin class name (for 404 detail messages)
+    capability_instance, # The loaded capability object
+    class_name: str, # Capability class name (for 404 detail messages)
 ) -> None:
     """/get_system_status /list_processes: CR-3 typed MonitorToolProtocol accessors."""
     @app.post("/get_system_status")
@@ -724,11 +724,11 @@ def _register_monitor_endpoints(
         
         Status code taxonomy (intentional, per CR-3 review):
         - 404: capability is not a monitor (configuration error — don't mask).
-              Substrate's `system_monitor` was wired to the wrong plugin.
+              Substrate's `system_monitor` was wired to the wrong capability.
         - 501: capability is a monitor but raised NotImplementedError from its
               get_system_status() default body (legacy monitor predating CR-3 that
               opted out). Proxy falls back to /execute("get_system_status").
-        - 500: plugin's get_system_status() raised some other exception. Real
+        - 500: capability's get_system_status() raised some other exception. Real
               failure; do not silently fall back.
         - 200: typed call succeeded; body is SystemStats.to_dict().
         """
@@ -736,7 +736,7 @@ def _register_monitor_endpoints(
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
+                    f"Capability {getattr(capability_instance, 'name', class_name)!r} "
                     f"is not a monitor capability (no get_system_status method)."
                 ),
             )
@@ -762,7 +762,7 @@ def _register_monitor_endpoints(
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
+                    f"Capability {getattr(capability_instance, 'name', class_name)!r} "
                     f"is not a monitor capability (no list_processes method)."
                 ),
             )
@@ -778,19 +778,19 @@ def _register_monitor_endpoints(
 
 # %% ../../nbs/core/worker.ipynb #82f0d516
 def create_app(
-    module_name: str, # Python module path (e.g., "my_plugin.plugin")
+    module_name: str, # Python module path (e.g., "my_capability.capability")
     class_name: str,  # Capability class name (e.g., "WhisperCapability")
     adapter_specs=None # CR-17 pt 2: "module:ClassName" adapter impl specs to bind in-worker
 ) -> FastAPI: # Configured FastAPI application
-    """Create FastAPI app that hosts the specified plugin.
+    """Create FastAPI app that hosts the specified capability.
 
-    NB-2 reshape (stage 2): a thin assembler — load the plugin, build the
+    NB-2 reshape (stage 2): a thin assembler — load the capability, build the
     lifespan, register the endpoint groups. Endpoint behavior lives in the
     module-level `_register_*` helpers above.
     """
     capability_instance = _load_capability_instance(module_name, class_name)
     adapters = _load_adapters(capability_instance, adapter_specs)
-    app = FastAPI(title="Plugin Worker", lifespan=_make_lifespan(capability_instance))
+    app = FastAPI(title="Capability Worker", lifespan=_make_lifespan(capability_instance))
     _register_identity_endpoints(app, capability_instance)
     _register_lifecycle_endpoints(app, capability_instance)
     _register_config_endpoints(app, capability_instance)
@@ -801,9 +801,9 @@ def create_app(
 # %% ../../nbs/core/worker.ipynb #main-block
 def run_worker() -> None:
     """CLI entry point for running the worker."""
-    parser = argparse.ArgumentParser(description="Universal Plugin Worker")
-    parser.add_argument("--module", required=True, help="Plugin module path")
-    parser.add_argument("--class", dest="class_name", required=True, help="Plugin class name")
+    parser = argparse.ArgumentParser(description="Universal Capability Worker")
+    parser.add_argument("--module", required=True, help="Capability module path")
+    parser.add_argument("--class", dest="class_name", required=True, help="Capability class name")
     parser.add_argument("--adapters", required=False, default="",
                         help="Comma-separated adapter impl specs 'module:ClassName' (CR-17 pt 2)")
     # SG-4: parent-bound listening-socket FD inheritance closes the

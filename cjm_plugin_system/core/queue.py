@@ -1,4 +1,4 @@
-"""Resource-aware job queue for sequential plugin execution with cancellation support
+"""Resource-aware job queue for sequential capability execution with cancellation support
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/queue.html.md"""
 
@@ -99,7 +99,7 @@ class CancelPhase(str, Enum):
     transitions; Stage 1 reserves the enum so `Job.cancel_phase` can be
     typed correctly without dangling forward references.
     """
-    COOPERATIVE = "cooperative"  # Cancel signal sent; awaiting plugin acknowledgement
+    COOPERATIVE = "cooperative"  # Cancel signal sent; awaiting capability acknowledgement
     FORCE = "force"              # Cooperative timeout; force-terminating worker
     RELOADING = "reloading"      # Worker reload in progress post-force-kill
     COMPLETED = "completed"      # Cancellation fully complete
@@ -139,7 +139,7 @@ class JobQueueDependencies(Protocol):
 # %% ../../nbs/core/queue.ipynb #job-dataclass
 @dataclass
 class Job:
-    """A queued plugin execution request (CR-6 reshape; stage-3 composition
+    """A queued capability execution request (CR-6 reshape; stage-3 composition
     rework renamed the sequence tags to composition tags).
 
     `composition_id` / `node_id` are set when the job is a lazily-created
@@ -152,7 +152,7 @@ class Job:
     journal linkage) and carries who/what initiated it.
     """
     id: str  # Unique job identifier (UUID)
-    capability_instance_id: str  # Target plugin instance (per CR-10)
+    capability_instance_id: str  # Target capability instance (per CR-10)
     args: Tuple[Any, ...]  # Positional arguments for execute()
     kwargs: Dict[str, Any]  # Keyword arguments for execute()
     status: JobStatus = JobStatus.pending  # Current job status
@@ -247,8 +247,8 @@ class _Subscription:
 class ResourceSnapshot:
     """Point-in-time resource usage for one job (CR-6 Stage 3).
 
-    Worker stats (cpu_percent, memory_rss_mb) come from the plugin proxy's
-    `get_stats()`. GPU fields come from the configured system-monitor plugin
+    Worker stats (cpu_percent, memory_rss_mb) come from the capability proxy's
+    `get_stats()`. GPU fields come from the configured system-monitor capability
     (when set on JobQueue) via CR-3's typed `list_processes()` (per-PID
     matching) and `get_system_status()` (global GPU stats). All GPU fields
     are Optional — None if no sysmon configured or the worker isn't running
@@ -258,7 +258,7 @@ class ResourceSnapshot:
     across runs); this is "what's happening right now" for one job.
     """
     timestamp: datetime  # When the sample was taken
-    worker_pid: int = 0  # OS PID of the plugin worker subprocess
+    worker_pid: int = 0  # OS PID of the capability worker subprocess
     cpu_percent: float = 0.0  # Worker process CPU%
     memory_rss_mb: float = 0.0  # Worker process resident memory (MB)
     gpu_index: Optional[int] = None  # GPU index the worker is on (None if not GPU-bound)
@@ -403,7 +403,7 @@ async def _enqueue_job(
 ) -> str:  # job_id
     """Internal: enqueue a pre-constructed Job.
 
-    Caller is responsible for validation (disabled-plugin check, etc.).
+    Caller is responsible for validation (disabled-capability check, etc.).
     Used by `submit` and by the composition advancement path (stage 3) —
     the latter populates `composition_id` + `node_id` on the Job before
     enqueueing so the member job appears in composition-tagged event streams
@@ -441,21 +441,21 @@ def _check_journal_wedge(self) -> None:
 
 async def submit(
     self,
-    capability_instance_id: str,  # Target plugin instance (per CR-10)
+    capability_instance_id: str,  # Target capability instance (per CR-10)
     *args,
     priority: int = 0,  # Higher = more urgent
     task: Optional[str] = None,  # Task-channel address: adapter task name (stage 4)
     method: Optional[str] = None,  # Task-channel address: adapter method (set with task)
-    run_id: Optional[str] = None,  # Host-tier run correlation (CR-14 follow-up; reserved name, never a plugin kwarg)
+    run_id: Optional[str] = None,  # Host-tier run correlation (CR-14 follow-up; reserved name, never a capability kwarg)
     actor: Optional[str] = None,  # Who/what initiated (CR-14 follow-up; reserved name)
-    control: Optional[Dict[str, Any]] = None,  # Per-call control flags (force/cache-bypass); reserved name, never a plugin kwarg
+    control: Optional[Dict[str, Any]] = None,  # Per-call control flags (force/cache-bypass); reserved name, never a capability kwarg
     **kwargs
 ) -> str:  # Returns job_id
     """Submit a job to the queue.
 
     CR-2: rejects jobs for disabled capabilities at submit time (typed
     CapabilityDisabledError) so the failure surface matches CapabilityManager.
-    execute_capability's disabled gate. Submitting to a disabled plugin would
+    execute_capability's disabled gate. Submitting to a disabled capability would
     otherwise sit in the queue until execution, then raise — moving the
     check earlier gives operators an actionable signal immediately.
 
@@ -466,7 +466,7 @@ async def submit(
 
     CR-14: refuses loudly when the journal is wedged (see
     `_check_journal_wedge`). `run_id`/`actor` join `priority`/`task`/
-    `method` as reserved keyword names (they never reach plugin kwargs):
+    `method` as reserved keyword names (they never reach capability kwargs):
     cores pass their run-manifest id + initiating actor so every journal
     row for this job carries the host-tier correlation.
     """
@@ -906,7 +906,7 @@ async def submit_composition(
 
     Validates upfront: structural validation via `new_composition_run`
     (duplicate ids / unknown refs / cycles → `CompositionValidationError`)
-    and the disabled-plugin gate across all nodes (`CapabilityDisabledError`),
+    and the disabled-capability gate across all nodes (`CapabilityDisabledError`),
     matching the sequence-era precedent. Member Jobs are created LAZILY —
     only dependency-free nodes have Jobs at submit; downstream nodes get
     their kwargs materialized from upstream results at advancement time.
@@ -926,7 +926,7 @@ async def submit_composition(
         if meta is not None and not meta.enabled:
             self.logger.error(
                 f"Composition submission rejected: node {n.id!r} targets "
-                f"disabled plugin {n.capability_instance_id}")
+                f"disabled capability {n.capability_instance_id}")
             raise CapabilityDisabledError(n.capability_instance_id)
 
     run = new_composition_run(comp, str(uuid.uuid4()))
@@ -1186,7 +1186,7 @@ def _sample_resource_snapshot(
 
     Returns None if the worker proxy doesn't support `get_stats` or the call
     fails — substrate can't fabricate a snapshot. Sysmon enrichment is
-    best-effort: if the named plugin isn't loaded / errors / lacks the CR-3
+    best-effort: if the named capability isn't loaded / errors / lacks the CR-3
     typed methods, GPU fields stay None and the worker-only snapshot is
     returned.
 
@@ -1195,7 +1195,7 @@ def _sample_resource_snapshot(
     GPU attribution delegates to `attribute_gpu_to_worker_subtree`, which
     intersects the worker-reported `subtree_pids` set with sysmon's per-PID
     GPU enumeration. The pre-fix path matched only `worker_pid` and reported
-    `gpu_memory_mb=None` for any subprocess-spawning plugin.
+    `gpu_memory_mb=None` for any subprocess-spawning capability.
     """
     proxy = self._deps.get_capability(job.capability_instance_id)
     if not proxy or not hasattr(proxy, 'get_stats'):
@@ -1353,7 +1353,7 @@ JobQueue.stop = stop
 # %% ../../nbs/core/queue.ipynb #fn-on-manager-retry
 def _on_manager_retry(
     self,
-    instance_id: str,  # Plugin instance whose execute is retrying
+    instance_id: str,  # Capability instance whose execute is retrying
     attempt: int,      # 1-based retry number (CapabilityManager's loop var; first retry is 1)
     exception: BaseException,  # The CapabilityResourceError that triggered the retry
 ) -> None:
@@ -1801,19 +1801,19 @@ async def _execute_job(self, job: Job) -> None:
     self._emit_state_transition(job, prev_status)
 
     try:
-        # Get the plugin proxy
-        plugin = self._deps.get_capability(job.capability_instance_id)
-        if not plugin:
-            raise ValueError(f"Plugin not loaded: {job.capability_instance_id}")
+        # Get the capability proxy
+        capability = self._deps.get_capability(job.capability_instance_id)
+        if not capability:
+            raise ValueError(f"Capability not loaded: {job.capability_instance_id}")
 
         # Start progress polling task
         progress_task = asyncio.create_task(
-            self._poll_progress(job, plugin)
+            self._poll_progress(job, capability)
         )
 
         # Execute with cancellation support
         try:
-            result = await self._execute_with_cancellation(job, plugin)
+            result = await self._execute_with_cancellation(job, capability)
 
             if job.id in self._cancel_requested:
                 prev = job.status
@@ -1890,14 +1890,14 @@ JobQueue._execute_job = _execute_job
 async def _execute_with_cancellation(
     self,
     job: Job,
-    plugin: Any
+    capability: Any
 ) -> Any:
     """Execute job with cancellation monitoring.
 
     CR-6 Stage 4 wires CANCEL_PHASE_CHANGED events for the substrate's
     cooperative → force → reloading → completed state machine.
 
-    Cooperative-success path (plugin acknowledges cancel within timeout):
+    Cooperative-success path (capability acknowledges cancel within timeout):
         COOPERATIVE → COMPLETED
     Force-kill path (cooperative timeout):
         COOPERATIVE → FORCE → RELOADING → COMPLETED
@@ -1938,21 +1938,21 @@ async def _execute_with_cancellation(
             self._emit_cancel_phase(job, CancelPhase.COOPERATIVE)
             self.logger.info(f"Attempting cooperative cancel for {job.id[:8]}")
 
-            if hasattr(plugin, 'cancel_async'):
-                await plugin.cancel_async()
-            elif hasattr(plugin, 'cancel'):
-                plugin.cancel()
+            if hasattr(capability, 'cancel_async'):
+                await capability.cancel_async()
+            elif hasattr(capability, 'cancel'):
+                capability.cancel()
 
             # Wait briefly for cooperative cancellation
             try:
                 result = await asyncio.wait_for(exec_task, timeout=self.cancel_timeout)
-                # Plugin acknowledged + completed within timeout.
+                # Capability acknowledged + completed within timeout.
                 self._emit_cancel_phase(job, CancelPhase.COMPLETED)
                 return result
             except asyncio.TimeoutError:
                 # PHASE: FORCE — cooperative timeout; force-terminating worker
                 self._emit_cancel_phase(job, CancelPhase.FORCE)
-                self.logger.warning(f"Force terminating plugin for job {job.id[:8]}")
+                self.logger.warning(f"Force terminating capability for job {job.id[:8]}")
                 exec_task.cancel()
 
                 # PHASE: RELOADING — worker reload in progress post-force-kill
@@ -1973,9 +1973,9 @@ JobQueue._execute_with_cancellation = _execute_with_cancellation
 async def _poll_progress(
     self,
     job: Job,
-    plugin: Any
+    capability: Any
 ) -> None:
-    """Poll progress + sample resources from the plugin during execution.
+    """Poll progress + sample resources from the capability during execution.
 
     Emits PROGRESS_CHANGED events when progress or status_message changes
     from the previous poll (avoids spamming the bus between meaningful
@@ -1991,10 +1991,10 @@ async def _poll_progress(
     poll_count = 0
     while True:
         try:
-            if hasattr(plugin, 'get_progress_async'):
-                progress_info = await plugin.get_progress_async()
-            elif hasattr(plugin, 'get_progress'):
-                progress_info = plugin.get_progress()
+            if hasattr(capability, 'get_progress_async'):
+                progress_info = await capability.get_progress_async()
+            elif hasattr(capability, 'get_progress'):
+                progress_info = capability.get_progress()
             else:
                 progress_info = None
 
@@ -2040,7 +2040,7 @@ async def _poll_progress(
                 # cadence — we'd spin forever without yielding. Defensive
                 # break matches pre-Stage-3 behavior when no progress hook
                 # exists.
-                if not hasattr(plugin, 'get_stats'):
+                if not hasattr(capability, 'get_stats'):
                     break
 
         except Exception:

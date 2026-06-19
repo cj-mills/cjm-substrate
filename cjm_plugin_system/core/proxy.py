@@ -60,11 +60,11 @@ from fastcore.basics import patch
 
 # %% ../../nbs/core/proxy.ipynb #proxy-class
 class RemoteCapabilityProxy(ToolCapability):
-    """Proxy that forwards plugin calls to an isolated Worker subprocess."""
+    """Proxy that forwards capability calls to an isolated Worker subprocess."""
     
     def __init__(
         self,
-        manifest:Dict[str, Any], # Plugin manifest with python_path, module, class, etc.
+        manifest:Dict[str, Any], # Capability manifest with python_path, module, class, etc.
         extra_env:Optional[Dict[str, str]]=None, # CR-12: resolved worker-env overlay (secrets + visible overrides) injected at spawn
         adapter_specs:Optional[List[str]]=None, # CR-17 pt 2: host-matched adapter impl specs ("module:ClassName") bound in-worker at spawn
         journal:Optional[JournalStore]=None, # CR-14: journal sink for worker-lifecycle events; lazy LocalJournalStore at cfg.journal_db_path when None
@@ -83,7 +83,7 @@ class RemoteCapabilityProxy(ToolCapability):
         self.process: Optional[subprocess.Popen] = None
         # CR-14: observability sinks. The journal is the host-written
         # account-of-action (worker spawn/ready/death derive from THIS
-        # boundary — no plugin cooperation involved); diagnostics receives
+        # boundary — no capability cooperation involved); diagnostics receives
         # the raw-stream pump's chunks and its path rides the worker env.
         # Lazy defaults share the manager's DB files via get_config().
         cfg = get_config()
@@ -100,13 +100,13 @@ class RemoteCapabilityProxy(ToolCapability):
         self._start_process()
 
     @property
-    def name(self) -> str: # Plugin name from manifest
-        """Plugin name."""
+    def name(self) -> str: # Capability name from manifest
+        """Capability name."""
         return self.manifest.get('name', 'unknown')
     
     @property
-    def version(self) -> str: # Plugin version from manifest
-        """Plugin version."""
+    def version(self) -> str: # Capability version from manifest
+        """Capability version."""
         return self.manifest.get('version', '0.0.0')
 
     def _journal_event(
@@ -126,7 +126,7 @@ class RemoteCapabilityProxy(ToolCapability):
         self,
         config:Optional[Dict[str, Any]]=None # Configuration dictionary
     ) -> None:
-        """Initialize or reconfigure the plugin."""
+        """Initialize or reconfigure the capability."""
         with httpx.Client() as client:
             resp = client.post(f"{self.base_url}/initialize", json=config or {})
         if resp.status_code != 200:
@@ -136,13 +136,13 @@ class RemoteCapabilityProxy(ToolCapability):
         self,
         *args,
         **kwargs
-    ) -> Any: # Plugin result
-        """Execute the plugin synchronously.
+    ) -> Any: # Capability result
+        """Execute the capability synchronously.
         
         CR-4: HTTP 409 from the worker is mapped to a typed
         `CapabilityCancelledError` raised in the host process, so substrate /
         JobQueue / consumer callers can distinguish cooperative cancellation
-        from a real plugin failure (500 → RuntimeError as before).
+        from a real capability failure (500 → RuntimeError as before).
         """
         payload = self._prepare_payload(args, kwargs)
         # timeout=None for long-running AI tasks
@@ -160,12 +160,12 @@ class RemoteCapabilityProxy(ToolCapability):
         return wire_decode(resp.json())  # stage 2: registered DTOs arrive typed; others stay dicts
     
     def get_config_schema(self) -> Dict[str, Any]: # JSON Schema
-        """Get the plugin's configuration schema."""
+        """Get the capability's configuration schema."""
         with httpx.Client() as client:
             return client.get(f"{self.base_url}/config_schema").json()
     
     def get_current_config(self) -> Dict[str, Any]: # Current config values
-        """Get the plugin's current configuration."""
+        """Get the capability's current configuration."""
         with httpx.Client() as client:
             return client.get(f"{self.base_url}/config").json()
 
@@ -269,10 +269,10 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
     # secrets + visible overrides) on top of the manifest defaults.
     env.update(self.extra_env)
 
-    # Inject CJM paths for plugin runtime
+    # Inject CJM paths for capability runtime
     env["CJM_CAPABILITY_DATA_DIR"] = str(cfg.capability_data_dir)
     # Stage 8 (PILLAR 1c): the substrate OWNS the per-capability data-dir
-    # convention (formerly duplicated in every plugin's meta.py). Inject the
+    # convention (formerly duplicated in every capability's meta.py). Inject the
     # resolved per-capability dir + ensure it exists, so adapters/tools read
     # CAPABILITY_DATA_DIR instead of recomputing CJM_CAPABILITY_DATA_DIR/<name>.
     _pdd = Path(cfg.capability_data_dir) / self.name
@@ -315,7 +315,7 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
     self._pump_thread.start()
 
     # CR-14: the spawn is a journal event — derived at the host boundary,
-    # zero plugin cooperation. Secrets stay out: overlay KEY NAMES only.
+    # zero capability cooperation. Secrets stay out: overlay KEY NAMES only.
     self._journal_event(SubstrateEventType.WORKER_SPAWNED.value, {
         "pid": self.process.pid,
         "port": self.port,
@@ -373,7 +373,7 @@ def _wait_for_ready(
     except Exception:
         pass
     raise TimeoutError(
-        f"Plugin '{self.name}' failed to start within {timeout}s "
+        f"Capability '{self.name}' failed to start within {timeout}s "
         f"(worker_session_id={self.worker_session_id}). "
         f"Last output: {rattle or '<no output captured>'}"
     )
@@ -381,10 +381,10 @@ def _wait_for_ready(
 # %% ../../nbs/core/proxy.ipynb #m-config-options
 @patch
 def config_options(self:RemoteCapabilityProxy) -> Dict[str, Any]: # CR-11: live config option domains
-    """Get the plugin's runtime config option providers (CR-11).
+    """Get the capability's runtime config option providers (CR-11).
 
     Returns the worker's get_config_options() output (FieldOptions per
-    dynamic field, JSON-serialized to dicts). Empty dict when the plugin
+    dynamic field, JSON-serialized to dicts). Empty dict when the capability
     exposes no dynamic options.
     """
     with httpx.Client() as client:
@@ -393,7 +393,7 @@ def config_options(self:RemoteCapabilityProxy) -> Dict[str, Any]: # CR-11: live 
 # %% ../../nbs/core/proxy.ipynb #m-cleanup
 @patch
 def cleanup(self:RemoteCapabilityProxy) -> None:
-    """Clean up plugin resources and terminate worker process."""
+    """Clean up capability resources and terminate worker process."""
     # Send cleanup request to worker
     try:
         with httpx.Client(timeout=2) as client:
@@ -451,7 +451,7 @@ def _prepare_payload(
 
     CR-14: attaches the current call envelope (set by the JobQueue around
     each job's execution via the `wire` contextvar) as a TOP-LEVEL body key.
-    Never inside kwargs — plugin signatures never see it; old workers ignore
+    Never inside kwargs — capability signatures never see it; old workers ignore
     unknown top-level keys. Envelope-less calls (direct proxy use) simply
     produce unattributed worker records.
     """
@@ -516,8 +516,8 @@ async def execute_async(
     self,
     *args,
     **kwargs
-) -> Any: # Plugin result
-    """Execute the plugin asynchronously.
+) -> Any: # Capability result
+    """Execute the capability asynchronously.
     
     CR-4: HTTP 409 from the worker is mapped to a typed `CapabilityCancelledError`.
     Same 409/200/other semantics as the sync `execute()` variant.
@@ -538,7 +538,7 @@ RemoteCapabilityProxy.execute_async = execute_async
 # %% ../../nbs/core/proxy.ipynb #fn-raise-from-job-error-chunk
 def _raise_from_job_error_chunk(
     job_error: Dict[str, Any],  # _job_error payload from /execute_stream terminal chunk
-    capability_name: str,  # Caller's plugin name (for CapabilityCancelledError reconstruction)
+    capability_name: str,  # Caller's capability name (for CapabilityCancelledError reconstruction)
 ) -> None:
     """SG-52: convert a `_job_error` JobError-shaped dict into the right typed exception.
     
@@ -557,7 +557,7 @@ def _raise_from_job_error_chunk(
     parsing string messages.
     """
     category = job_error.get("category", "fatal")
-    message = job_error.get("message", "Plugin error in stream")
+    message = job_error.get("message", "Capability error in stream")
     repr_str = job_error.get("original_exc_repr", "") or ""
     
     # Cancellation special-case (transient category, non-retriable semantic)
@@ -575,12 +575,12 @@ def _raise_from_job_error_chunk(
     if category == "fatal":
         raise CapabilityFatalError(message)
     # Unknown category — surface as RuntimeError with the structured payload
-    raise RuntimeError(f"Plugin stream error (unknown category {category!r}): {job_error}")
+    raise RuntimeError(f"Capability stream error (unknown category {category!r}): {job_error}")
 
 # %% ../../nbs/core/proxy.ipynb #fn-raise-typed-execute-error
 def _raise_typed_execute_error(
     resp,              # The worker's non-200 httpx response
-    capability_name: str,  # Plugin name for exception context
+    capability_name: str,  # Capability name for exception context
 ) -> None:             # Never returns — always raises
     """SG-52 parity for the unary execute path (stage-3 ledger G7).
 
@@ -621,7 +621,7 @@ async def execute_stream(
     SG-52: detects the terminal `{"_job_error": <JobError dict>}` chunk and
     raises the corresponding typed exception client-side instead of yielding
     it to downstream consumers. Mirrors /execute's HTTP 409 → typed-exception
-    behavior at the streaming wire boundary. Normal plugin output chunks
+    behavior at the streaming wire boundary. Normal capability output chunks
     pass through unchanged (they never carry the `_job_error` key).
     """
     payload = self._prepare_payload(args, kwargs)
@@ -662,7 +662,7 @@ def _check_worker_death(self) -> None:
     if rc == sigkill_rc:
         raise WorkerOOMError(self.name, process_returncode=rc)
     raise CapabilityTransientError(
-        f"Worker for plugin {self.name!r} died unexpectedly (returncode={rc})"
+        f"Worker for capability {self.name!r} died unexpectedly (returncode={rc})"
     )
 
 
@@ -884,7 +884,7 @@ RemoteCapabilityProxy.get_progress_async = get_progress_async
 def on_disable(self) -> bool:  # True if hook signal accepted by worker
     """CR-2: forward the substrate's on_disable signal to the worker process.
     
-    Plugin can opt in via ToolCapability.on_disable(); default implementation
+    Capability can opt in via ToolCapability.on_disable(); default implementation
     is a no-op so silent-pass-through is the norm. Failures to reach the
     worker (already terminated, network blip) are logged-and-swallowed —
     the substrate-side enable/disable bookkeeping doesn't depend on the
@@ -902,7 +902,7 @@ def on_enable(self) -> bool:  # True if hook signal accepted by worker
     """CR-2: forward the substrate's on_enable signal to the worker process.
     
     Same delivery semantics as on_disable: best-effort, errors logged-and-
-    swallowed. The plugin's hook (default no-op) decides whether to eagerly
+    swallowed. The capability's hook (default no-op) decides whether to eagerly
     re-acquire resources or rely on lazy re-load at next execute().
     """
     try:
@@ -925,7 +925,7 @@ def get_system_status(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or
     - 404: capability is not a monitor — logged at ERROR (configuration error;
           no amount of retry fixes it) and returns None. Loudly distinguished
           from the substrate's WARN-level transient-failure degradation.
-    - 500: real plugin failure; propagates as HTTPStatusError
+    - 500: real capability failure; propagates as HTTPStatusError
     - ConnectError: worker may have died; returns None silently (substrate
           degrades to empty stats)
     """
@@ -1044,13 +1044,13 @@ def prefetch(
       4. If no change in stall_threshold_seconds AND POST still pending →
          SIGTERM the worker subprocess + raise CapabilityTimeoutError.
 
-    Plugins opt in to fine-grained stall defeat by calling
+    Capabilities opt in to fine-grained stall defeat by calling
     self.report_progress(...) periodically during long lifecycle operations
-    (model download, server startup, etc.). Plugins that don't report progress
+    (model download, server startup, etc.). Capabilities that don't report progress
     are fine as long as the threshold accommodates their slowest plausible
     silent stretch.
 
-    Errors raised by the plugin (worker 500) propagate as RuntimeError; worker
+    Errors raised by the capability (worker 500) propagate as RuntimeError; worker
     unreachable propagates as `False`; stall fires CapabilityTimeoutError.
     """
     threshold = stall_threshold_seconds if stall_threshold_seconds is not None else _resolve_prefetch_stall_threshold()
@@ -1091,7 +1091,7 @@ def _run_prefetch_with_stall_detection(
     Runs POST /prefetch in a daemon thread; main thread polls /progress for
     a (progress, message) advance every poll_interval_seconds. If no advance
     in stall_threshold_seconds AND the POST is still in-flight, SIGTERMs the
-    worker subprocess (so its plugin.cleanup() can run via the worker's
+    worker subprocess (so its capability.cleanup() can run via the worker's
     shutdown handler — closes the orphan-subprocess-on-stall bug) and raises
     CapabilityTimeoutError client-side.
     """
@@ -1107,7 +1107,7 @@ def _run_prefetch_with_stall_detection(
             with httpx.Client(timeout=None) as client:
                 resp = client.post(f"{proxy.base_url}/prefetch")
             if resp.status_code == 500:
-                state['error'] = RuntimeError(f"Plugin prefetch failed: {resp.text}")
+                state['error'] = RuntimeError(f"Capability prefetch failed: {resp.text}")
             elif resp.status_code == 200:
                 state['status'] = 'done'
             else:
@@ -1144,7 +1144,7 @@ def _run_prefetch_with_stall_detection(
             # Stall: terminate the worker + its full process subtree via
             # platform.terminate_process (process-group SIGTERM + psutil safety
             # sweep). The worker's @on_event("shutdown") gets a best-effort
-            # chance to fire plugin.cleanup() during graceful shutdown; the
+            # chance to fire capability.cleanup() during graceful shutdown; the
             # subtree-kill catches any subprocess (vLLM api_server, EngineCore,
             # etc.) that the shutdown path missed. Re-raise client-side.
             try:
@@ -1223,7 +1223,7 @@ async def _run_prefetch_with_stall_detection_async(
 
     result = await post_task
     if result['status'] == 'capability_error':
-        raise RuntimeError(f"Plugin prefetch failed: {result['detail']}")
+        raise RuntimeError(f"Capability prefetch failed: {result['detail']}")
     if result['status'] == 'connect_error':
         return False
     return result['status'] == 'done'
@@ -1236,10 +1236,10 @@ def reconfigure(
 ) -> bool:  # True if worker accepted the reconfigure call
     """CR-4: forward a reconfigure(old, new) call to the worker process.
     
-    The plugin's default reconfigure() body delegates to
+    The capability's default reconfigure() body delegates to
     reconfigure_with_triggers, which walks RELOAD_TRIGGER metadata on the
-    plugin's config_class to fire `_release_<trigger>` methods for fields
-    whose values changed. Plugins not opting into the declarative pattern
+    capability's config_class to fire `_release_<trigger>` methods for fields
+    whose values changed. Capabilities not opting into the declarative pattern
     land in a silent no-op; the substrate's CapabilityManager.update_capability_config
     then falls back to initialize(new_config) for the actual state change.
     """
@@ -1248,7 +1248,7 @@ def reconfigure(
         with httpx.Client(timeout=None) as client:
             resp = client.post(f"{self.base_url}/reconfigure", json=payload)
         if resp.status_code == 500:
-            raise RuntimeError(f"Plugin reconfigure failed: {resp.text}")
+            raise RuntimeError(f"Capability reconfigure failed: {resp.text}")
         return resp.status_code == 200
     except httpx.ConnectError:
         return False
@@ -1267,7 +1267,7 @@ async def reconfigure_async(
         async with httpx.AsyncClient(timeout=None) as client:
             resp = await client.post(f"{self.base_url}/reconfigure", json=payload)
         if resp.status_code == 500:
-            raise RuntimeError(f"Plugin reconfigure failed: {resp.text}")
+            raise RuntimeError(f"Capability reconfigure failed: {resp.text}")
         return resp.status_code == 200
     except httpx.ConnectError:
         return False

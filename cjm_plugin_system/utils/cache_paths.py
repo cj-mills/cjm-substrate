@@ -1,4 +1,4 @@
-"""Per-(input-content, config) deterministic cache directories for plugin outputs
+"""Per-(input-content, config) deterministic cache directories for capability outputs
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemutils/cache_paths.html.md"""
 
@@ -108,7 +108,7 @@ def _hash_input_with_stat_cache(
     streams the file content, then writes the result to the cache.
 
     `skip_cache=True` bypasses the cache entirely — useful for callers that
-    KNOW the file content changed (e.g., a plugin just wrote it and wants
+    KNOW the file content changed (e.g., a capability just wrote it and wants
     to record the canonical hash without polluting the cache with intermediate
     states).
 
@@ -174,10 +174,10 @@ def _hash_input_with_stat_cache(
 
 # %% ../../nbs/utils/cache_paths.ipynb #cell-cache-dir-for-config
 def cache_dir_for_config(
-    capability_data_dir: Union[str, Path],     # The plugin's own data subdirectory (typically <cfg.capability_data_dir>/<capability_name>)
-    input_path: Union[str, Path],           # The input file the plugin operates on
-    action: str,                            # The plugin action name (e.g., "segment_audio", "convert", "execute")
-    config_dict: Dict[str, Any],            # The plugin's effective config for this action
+    capability_data_dir: Union[str, Path],     # The capability's own data subdirectory (typically <cfg.capability_data_dir>/<capability_name>)
+    input_path: Union[str, Path],           # The input file the capability operates on
+    action: str,                            # The capability action name (e.g., "segment_audio", "convert", "execute")
+    config_dict: Dict[str, Any],            # The capability's effective config for this action
     *,
     input_hash_length: int = 6,             # Truncation length for the input content hash in the directory name
     config_hash_length: int = 12,           # Truncation length for the config hash in the directory name
@@ -198,9 +198,9 @@ def cache_dir_for_config(
     1. Different configs go to different directories — no silent overwrite.
     2. Stale-artifact accumulation is impossible — each unique
        `(input_content, config)` tuple has its OWN directory.
-    3. For chained plugin sequences, upstream config changes propagate through
-       content changes: if plugin A's output content depends on A's config and
-       plugin B reads that output, B's cache key automatically reflects A's
+    3. For chained capability sequences, upstream config changes propagate through
+       content changes: if capability A's output content depends on A's config and
+       capability B reads that output, B's cache key automatically reflects A's
        config indirectly.
 
     `hash_input_content=False` switches to hashing the string form of
@@ -240,9 +240,9 @@ def cache_dir_for_config(
 
 # %% ../../nbs/utils/cache_paths.ipynb #cell-companions
 def list_cache_entries(
-    capability_data_dir: Union[str, Path],  # The plugin's own data subdirectory
+    capability_data_dir: Union[str, Path],  # The capability's own data subdirectory
     input_path: Union[str, Path],        # The input file whose cache entries to list
-    action: str,                          # The plugin action name
+    action: str,                          # The capability action name
 ) -> List[Path]:                          # All config-hash directories for this (input, action)
     """Enumerate all per-config cache directories for a given (input, action).
 
@@ -252,7 +252,7 @@ def list_cache_entries(
     contents, diff them, or pass selected ones to `prune_cache_for_input` to
     keep them through a sweep.
 
-    Returns an empty list if the parent directory doesn't exist (plugin never
+    Returns an empty list if the parent directory doesn't exist (capability never
     ran this action for this input).
     """
     base = Path(capability_data_dir)
@@ -264,9 +264,9 @@ def list_cache_entries(
 
 
 def prune_cache_for_input(
-    capability_data_dir: Union[str, Path],  # The plugin's own data subdirectory
+    capability_data_dir: Union[str, Path],  # The capability's own data subdirectory
     input_path: Union[str, Path],        # The input file whose cache entries to prune
-    action: str,                          # The plugin action name
+    action: str,                          # The capability action name
     *,
     keep: Optional[Set[Path]] = None,    # Paths to preserve through the sweep (returns by list_cache_entries)
     dry_run: bool = False,                # If True, return what WOULD be deleted without touching filesystem

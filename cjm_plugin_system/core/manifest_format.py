@@ -31,10 +31,10 @@ class InstallSection:
     the install section across regeneration so paths survive code-side
     refreshes.
     """
-    python_path: str = ""        # Absolute path to the plugin env's python interpreter
+    python_path: str = ""        # Absolute path to the capability env's python interpreter
     conda_env: str = ""          # Conda environment name
-    db_path: str = ""            # Plugin's per-data SQLite path (if any)
-    env_vars: Dict[str, str] = field(default_factory=dict)  # Per-plugin env vars
+    db_path: str = ""            # Capability's per-data SQLite path (if any)
+    env_vars: Dict[str, str] = field(default_factory=dict)  # Per-capability env vars
     installed_at: str = ""       # ISO-8601 UTC timestamp of install/regen
     installer_version: str = ""  # "cjm-ctl <version>" that wrote this manifest
     package_source: str = ""     # Original install input (git URL or pip spec)
@@ -45,20 +45,20 @@ class CodeSection:
     """Code-derived facts refreshed by `cjm-ctl regenerate-manifest`.
     
     Everything in this section comes from running the introspection script
-    inside the plugin's conda env: metadata + config_schema + binary
+    inside the capability's conda env: metadata + config_schema + binary
     platform/hardware hard-facts. Drift detection hashes this section's
     `config_schema` field as its witness shape.
     
     `class_name` serializes as the JSON key `"class"` (Python reserved-word
     workaround).
     """
-    name: str = ""               # Plugin's unique identifier
-    version: str = ""            # Plugin's version string
+    name: str = ""               # Capability's unique identifier
+    version: str = ""            # Capability's version string
     description: str = ""        # Brief description (SG-6 required)
-    module: str = ""             # Importable module path for the plugin class
-    class_name: str = ""         # Plugin class name (JSON key: "class")
+    module: str = ""             # Importable module path for the capability class
+    class_name: str = ""         # Capability class name (JSON key: "class")
     resources: Optional[ResourceRequirements] = None  # Phase 5a hard-facts
-    config_schema: Optional[Dict[str, Any]] = None    # JSON Schema for plugin config
+    config_schema: Optional[Dict[str, Any]] = None    # JSON Schema for capability config
     regenerated_at: Optional[str] = None              # ISO-8601 UTC of last regen
     worker_env: Optional[List[Dict[str, Any]]] = None # CR-12 spawn-env contract: asdict(EnvVarSpec) list
     structural_surface: Optional[Dict[str, Any]] = None  # Pass-2 Thread 3: public surface recorded in-env (methods/properties/attributes)
@@ -102,7 +102,7 @@ def compute_config_schema_hash(
     """Hash a JSON Schema with stable canonicalization.
     
     None is treated as `{}` — the hash records "no schema declared" rather
-    than refusing. This way a plugin that lost its config_schema between
+    than refusing. This way a capability that lost its config_schema between
     install and load still gets a drift warning rather than a crash.
     """
     canonical = json.dumps(schema or {}, sort_keys=True, separators=(",", ":"))

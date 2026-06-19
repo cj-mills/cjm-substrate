@@ -19,18 +19,18 @@ from typing import Any, ClassVar, List, Literal, Optional
 
 # %% ../../nbs/core/errors.ipynb #base-classes
 class CapabilityError(Exception):
-    """Base for substrate-recognized plugin exceptions.
+    """Base for substrate-recognized capability exceptions.
     
     Subclasses declare a `category` and `default_retriable` ClassVar so the
     JobQueue + scheduler can route the failure without sniffing exception
-    text. Bare Python exceptions raised by plugin code go through
+    text. Bare Python exceptions raised by capability code go through
     `map_bare_exception_to_job_error` to acquire a default category.
     """
     category: ClassVar[Literal['user_input', 'transient', 'resource', 'fatal']]
     default_retriable: ClassVar[bool]
 
 
-# REMOVE-AFTER-OVERHAUL: drop the ValueError base after SG-47 plugin cascade
+# REMOVE-AFTER-OVERHAUL: drop the ValueError base after SG-47 capability cascade
 # completes; nothing internal will need `except ValueError:` to catch input
 # errors at that point. Tagged per feedback_backward_compat_cleanup_pairing.
 class CapabilityInputError(CapabilityError, ValueError):
@@ -59,7 +59,7 @@ class CapabilityInputError(CapabilityError, ValueError):
 class CapabilityTransientError(CapabilityError):
     """Temporary failure: timeout, network blip, brief resource contention.
     
-    Substrate / JobQueue may retry on its own initiative. Plugin authors raise
+    Substrate / JobQueue may retry on its own initiative. Capability authors raise
     this when they know the failure is recoverable.
     """
     category: ClassVar[Literal['transient']] = 'transient'
@@ -79,7 +79,7 @@ class CapabilityResourceError(CapabilityError):
     """Resource exhaustion: GPU VRAM, system RAM, disk full.
     
     JobQueue's reactive-eviction flow (CR-7) routes resource errors to retry
-    after attempting to free the named resource. Plugin authors set
+    after attempting to free the named resource. Capability authors set
     `resource_shortfall` so the substrate knows what to evict.
     """
     category: ClassVar[Literal['resource']] = 'resource'
@@ -96,9 +96,9 @@ class CapabilityResourceError(CapabilityError):
 
 
 class CapabilityFatalError(CapabilityError):
-    """Bug / irrecoverable state. The plugin cannot complete this job; retrying won't help.
+    """Bug / irrecoverable state. The capability cannot complete this job; retrying won't help.
     
-    Plugin authors raise this when they know the failure is permanent for the
+    Capability authors raise this when they know the failure is permanent for the
     given inputs. The substrate does NOT retry fatal errors.
     """
     category: ClassVar[Literal['fatal']] = 'fatal'
@@ -106,20 +106,20 @@ class CapabilityFatalError(CapabilityError):
 
 # %% ../../nbs/core/errors.ipynb #substrate-errors
 class CapabilityDisabledError(CapabilityInputError):
-    """JobQueue / execute_capability rejected: the plugin is currently disabled.
+    """JobQueue / execute_capability rejected: the capability is currently disabled.
     
-    User-fixable (re-enable the plugin). Inherits `CapabilityInputError`'s ValueError
+    User-fixable (re-enable the capability). Inherits `CapabilityInputError`'s ValueError
     MRO so existing `except ValueError:` callers see it as an input error.
     Raised by CR-2's enable/disable wiring once that lands.
     """
     
     def __init__(self, capability_name: str):
-        super().__init__(f"Plugin {capability_name!r} is disabled")
+        super().__init__(f"Capability {capability_name!r} is disabled")
         self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityNotLoadedError
 class CapabilityNotLoadedError(CapabilityFatalError):
-    """Caller submitted to a plugin that was never loaded.
+    """Caller submitted to a capability that was never loaded.
     
     Fatal category because this is a programmer / orchestration bug, not a
     user-fixable condition. NOT a ValueError — the right reader intent is
@@ -128,12 +128,12 @@ class CapabilityNotLoadedError(CapabilityFatalError):
     """
     
     def __init__(self, capability_name: str):
-        super().__init__(f"Plugin {capability_name!r} is not loaded")
+        super().__init__(f"Capability {capability_name!r} is not loaded")
         self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityTimeoutError
 class CapabilityTimeoutError(CapabilityTransientError):
-    """A per-job timeout fired before the plugin finished.
+    """A per-job timeout fired before the capability finished.
     
     Transient category — retry may succeed if the slow operation completes faster
     next time. Carries `retry_after_seconds` from `CapabilityTransientError`.
@@ -148,7 +148,7 @@ class CapabilityTimeoutError(CapabilityTransientError):
         retry_after_seconds: Optional[float] = None,
     ):
         super().__init__(
-            f"Plugin {capability_name!r} timed out after {timeout_seconds:.1f}s",
+            f"Capability {capability_name!r} timed out after {timeout_seconds:.1f}s",
             retry_after_seconds=retry_after_seconds,
         )
         self.capability_name = capability_name
@@ -156,7 +156,7 @@ class CapabilityTimeoutError(CapabilityTransientError):
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityCancelledError
 class CapabilityCancelledError(CapabilityTransientError):
-    """Cooperative cancellation signal raised from `PluginInterface.check_cancel()`.
+    """Cooperative cancellation signal raised from `ToolCapability.check_cancel()`.
     
     Anchors under `CapabilityTransientError` because cancellation is in-principle
     re-runnable — a future attempt with the same inputs won't auto-fail if the
@@ -166,7 +166,7 @@ class CapabilityCancelledError(CapabilityTransientError):
     (separate from "failed"); the JobError category remains `transient` so
     consumers reading the typed taxonomy can group recoverable signals.
     
-    Plugin authors raise this implicitly via `self.check_cancel()` inside
+    Capability authors raise this implicitly via `self.check_cancel()` inside
     `execute()`; substrate sets the underlying `_cancel_requested` flag via
     `cancel()`. See CR-4's cancellation primitives for the cooperative-cancel
     protocol.
@@ -174,7 +174,7 @@ class CapabilityCancelledError(CapabilityTransientError):
     default_retriable: ClassVar[bool] = False
     
     def __init__(self, capability_name: str):
-        super().__init__(f"Plugin {capability_name!r} cancelled by operator")
+        super().__init__(f"Capability {capability_name!r} cancelled by operator")
         self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-WorkerOOMError
@@ -190,9 +190,9 @@ class WorkerOOMError(CapabilityResourceError):
     
     `resource_shortfall` is `None` for Track A — the substrate only saw "worker
     died from kill-signal" and has no per-resource needed/available numbers.
-    Track B (per SG-47's sub-task: plugin-side wrapping of `torch.cuda.OutOfMemoryError`
+    Track B (per SG-47's sub-task: capability-side wrapping of `torch.cuda.OutOfMemoryError`
     et al.) raises `CapabilityResourceError` directly with a populated
-    `ResourceShortfall` because the plugin had the context. Both land at the
+    `ResourceShortfall` because the capability had the context. Both land at the
     same `except CapabilityResourceError` site in CR-7's reactive retry loop.
     
     `process_returncode` carries the observed exit code for debugging /
@@ -210,7 +210,7 @@ class WorkerOOMError(CapabilityResourceError):
     ):
         rc_part = f" (returncode={process_returncode})" if process_returncode is not None else ""
         super().__init__(
-            message or f"Worker for plugin {capability_name!r} died from kill-signal{rc_part}; assuming OOM",
+            message or f"Worker for capability {capability_name!r} died from kill-signal{rc_part}; assuming OOM",
             resource_shortfall=None,  # Track A: substrate has no needed/available
         )
         self.capability_name = capability_name
@@ -218,11 +218,11 @@ class WorkerOOMError(CapabilityResourceError):
 
 # %% ../../nbs/core/errors.ipynb #config-error
 class CapabilityConfigError(CapabilityInputError):
-    """Unknown / invalid keys in a config dict against a plugin's config schema.
+    """Unknown / invalid keys in a config dict against a capability's config schema.
     
     Reparented from `cjm_plugin_system.utils.validation` (Wave 2 / SG-8) under
     CR-5. Inherits `CapabilityInputError`'s ValueError MRO automatically.
-    `config_class_name` is the dataclass / plugin name whose schema was violated.
+    `config_class_name` is the dataclass / capability name whose schema was violated.
     """
     
     def __init__(
@@ -230,7 +230,7 @@ class CapabilityConfigError(CapabilityInputError):
         message: str,  # Human-readable description
         *,
         fields_invalid: Optional[List[str]] = None,  # Canonical: list of bad config keys
-        config_class_name: str = "",  # Dataclass / plugin name for the schema
+        config_class_name: str = "",  # Dataclass / capability name for the schema
     ):
         super().__init__(message, fields_invalid=fields_invalid)
         self.config_class_name = config_class_name
@@ -238,9 +238,9 @@ class CapabilityConfigError(CapabilityInputError):
 # %% ../../nbs/core/errors.ipynb #joberror
 @dataclass
 class ResourceShortfall:
-    """Quantitative gap between what a plugin needed and what was available."""
+    """Quantitative gap between what a capability needed and what was available."""
     resource: Literal['gpu_vram_mb', 'system_ram_mb', 'disk_mb']  # Which resource
-    needed: float  # Amount the plugin reported it needed
+    needed: float  # Amount the capability reported it needed
     available: float  # Amount actually available when the failure occurred
 
 
@@ -255,9 +255,9 @@ class TracebackPolicy(str, Enum):
 class JobError:
     """Structured failure summary recorded on a completed Job.
     
-    Populated by the JobQueue when a plugin execution fails (CR-6 owns the
+    Populated by the JobQueue when a capability execution fails (CR-6 owns the
     population logic; CR-5 owns the shape). Sufficient for UI to render a
-    failure card + retry affordance without re-running the plugin.
+    failure card + retry affordance without re-running the capability.
     """
     category: Literal['user_input', 'transient', 'resource', 'fatal']
     message: str  # Human-readable error message
@@ -267,7 +267,7 @@ class JobError:
     retry_after_seconds: Optional[float] = None  # Backoff hint from CapabilityTransientError
     fields_invalid: Optional[List[str]] = None  # From CapabilityInputError subclasses
     resource_shortfall: Optional[ResourceShortfall] = None  # From CapabilityResourceError
-    capability_name: Optional[str] = None  # Name of the plugin that raised
+    capability_name: Optional[str] = None  # Name of the capability that raised
     capability_instance_id: Optional[str] = None  # Per CR-10 multi-instance support
     occurred_at: Optional[datetime] = None  # When the failure was recorded
 
@@ -319,7 +319,7 @@ def classify_exception(
 def map_bare_exception_to_job_error(
     exc: BaseException,  # The raised exception
     *,
-    capability_name: Optional[str] = None,  # Name of the plugin that raised
+    capability_name: Optional[str] = None,  # Name of the capability that raised
     capability_instance_id: Optional[str] = None,  # Per CR-10
     traceback_policy: TracebackPolicy = TracebackPolicy.FULL,  # How much detail to record
     occurred_at: Optional[datetime] = None,  # Override; defaults to datetime.now(timezone.utc)

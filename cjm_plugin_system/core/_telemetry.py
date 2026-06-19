@@ -49,7 +49,7 @@ def attribute_gpu_to_worker_subtree(
     is reachable, or `None` when sysmon isn't configured / doesn't expose
     `list_processes()` / errors out. Callers treat `None` as "sysmon
     unavailable" and leave GPU snapshot fields as their defaults; a 0.0 sum
-    means sysmon worked but no subtree PID holds GPU memory (CPU-only plugin
+    means sysmon worked but no subtree PID holds GPU memory (CPU-only capability
     on a GPU box).
     """
     if sysmon is None or not hasattr(sysmon, 'list_processes'):

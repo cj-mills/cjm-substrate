@@ -177,14 +177,14 @@ class CompositionBindingError(RuntimeError):
 
 # %% ../../nbs/core/ports.ipynb #ports-extract-field
 def extract_output_field(
-    result: Any,  # The producer node's recorded result (typed DTO or plugin-side dict)
+    result: Any,  # The producer node's recorded result (typed DTO or capability-side dict)
     field: Optional[str],  # Field to extract; None returns the whole result
     producer: str = "?",  # Producer node id (error messages only)
 ) -> Any:  # The bound value
     """Extract a field from an upstream result for binding into a kwarg.
 
     The single substrate-owned successor of the retired `field_of` helpers:
-    dicts resolve by KEY (intent for plugin-side dict results), everything
+    dicts resolve by KEY (intent for capability-side dict results), everything
     else by ATTRIBUTE (typed wire DTOs). Missing fields raise
     `CompositionBindingError` loudly — silent shape-shifting is what stage 2
     retired (F12 fail-loudly posture).

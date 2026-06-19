@@ -20,7 +20,7 @@ import yaml
 
 # %% ../../nbs/core/config.ipynb #enums
 class RuntimeMode(str, Enum):
-    """Runtime mode for the plugin system."""
+    """Runtime mode for the capability system."""
     LOCAL = "local"    # Project-local runtime and data
     SYSTEM = "system"  # System-wide conda and ~/.cjm data
 
@@ -57,8 +57,8 @@ class SubstrateConfig:
       False; the store's lazy-init also short-circuits.
     - `prefetch_stall_threshold_seconds` (CR-4 / Session A 2026-05-27): how long
       proxy.prefetch waits with no observed progress (via `/progress` polling)
-      before declaring a stall. Replaces per-plugin wall-clock timeouts —
-      operators no longer race network speed against an arbitrary value. Plugins
+      before declaring a stall. Replaces per-capability wall-clock timeouts —
+      operators no longer race network speed against an arbitrary value. Capabilities
       defeat the stall counter by calling `self.report_progress(...)` periodically
       during long lifecycle operations (model download / vLLM server startup).
       Default 60 s; bump higher for capabilities that don't report progress, or lower
@@ -81,13 +81,13 @@ class CJMConfig:
     substrate:SubstrateConfig=field(default_factory=SubstrateConfig) # CR-8 substrate behavior toggles
 
     @property
-    def manifests_dir(self) -> Path: # Directory containing plugin manifests
-        """Directory containing plugin manifests."""
+    def manifests_dir(self) -> Path: # Directory containing capability manifests
+        """Directory containing capability manifests."""
         return self.data_dir / "manifests"
 
     @property
-    def capability_data_dir(self) -> Path: # Directory for plugin runtime data
-        """Directory for plugin runtime data (databases, caches)."""
+    def capability_data_dir(self) -> Path: # Directory for capability runtime data
+        """Directory for capability runtime data (databases, caches)."""
         return self.data_dir / "data"
 
     @property

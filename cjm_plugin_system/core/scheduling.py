@@ -1,4 +1,4 @@
-"""Resource scheduling policies for plugin execution
+"""Resource scheduling policies for capability execution
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/scheduling.html.md"""
 
@@ -26,15 +26,15 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def allocate(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function that returns fresh stats
     ) -> bool:  # True if execution is allowed
-        """Decide if a plugin can start based on its requirements and system state."""
+        """Decide if a capability can start based on its requirements and system state."""
         ...
 
     async def allocate_async(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async function returning stats
     ) -> bool:  # True if execution is allowed
         """Async allocation decision. Default delegates to sync allocate after fetching stats once."""
@@ -44,7 +44,7 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def on_execution_start(
         self,
-        capability_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the capability starting execution
     ) -> None:
         """Notify scheduler that a task started (to reserve resources)."""
         ...
@@ -52,7 +52,7 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def on_execution_finish(
         self,
-        capability_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the capability finishing execution
     ) -> None:
         """Notify scheduler that a task finished (to release resources)."""
         ...
@@ -63,22 +63,22 @@ class PermissiveScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Stats provider (ignored)
     ) -> bool:  # Always returns True
-        """Allow all plugin executions without checking resources."""
+        """Allow all capability executions without checking resources."""
         return True
 
     def on_execution_start(
         self,
-        capability_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the capability starting execution
     ) -> None:
         """No-op for permissive scheduler."""
         pass
 
     def on_execution_finish(
         self,
-        capability_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the capability finishing execution
     ) -> None:
         """No-op for permissive scheduler."""
         pass
@@ -89,10 +89,10 @@ class SafetyScheduler(ResourceScheduler):
     
     def _check_resources(
         self,
-        capability_meta: CapabilityMeta,  # Plugin metadata with manifest
+        capability_meta: CapabilityMeta,  # Capability metadata with manifest
         stats: Dict[str, Any]  # Current system stats
     ) -> bool:  # True if resources available
-        """Check if system has sufficient resources for the plugin."""
+        """Check if system has sufficient resources for the capability."""
         reqs = {}
         if hasattr(capability_meta, 'manifest'):
             reqs = capability_meta.manifest.get('resources', {})
@@ -125,7 +125,7 @@ class SafetyScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources are available
         """Check resource requirements against system state."""
@@ -133,14 +133,14 @@ class SafetyScheduler(ResourceScheduler):
 
     def on_execution_start(
         self,
-        capability_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the capability starting execution
     ) -> None:
         """Called when execution starts (for future resource reservation)."""
         pass
 
     def on_execution_finish(
         self,
-        capability_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the capability finishing execution
     ) -> None:
         """Called when execution finishes (for future resource release)."""
         pass
@@ -167,7 +167,7 @@ class QueueScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using blocking sleep."""
@@ -187,7 +187,7 @@ class QueueScheduler(ResourceScheduler):
 
     async def allocate_async(
         self,
-        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async stats function
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using non-blocking async sleep."""
@@ -207,26 +207,26 @@ class QueueScheduler(ResourceScheduler):
 
     def on_execution_start(
         self,
-        capability_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the capability starting execution
     ) -> None:
-        """Track that a plugin has started executing."""
+        """Track that a capability has started executing."""
         self._active_capabilities.add(capability_name)
 
     def on_execution_finish(
         self,
-        capability_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the capability finishing execution
     ) -> None:
-        """Track that a plugin has finished executing."""
+        """Track that a capability has finished executing."""
         self._active_capabilities.discard(capability_name)
 
 # %% ../../nbs/core/scheduling.ipynb #m-check-resources
 @patch
 def _check_resources(
     self:QueueScheduler,
-    capability_meta: CapabilityMeta,  # Plugin metadata with manifest
+    capability_meta: CapabilityMeta,  # Capability metadata with manifest
     stats: Dict[str, Any]  # Current system stats
 ) -> bool:  # True if resources available
-    """Check if system has sufficient resources for the plugin."""
+    """Check if system has sufficient resources for the capability."""
     reqs = {}
     if hasattr(capability_meta, 'manifest'):
         reqs = capability_meta.manifest.get('resources', {})
@@ -251,6 +251,6 @@ def _check_resources(
 
 # %% ../../nbs/core/scheduling.ipynb #m-get-active-capabilities
 @patch
-def get_active_capabilities(self:QueueScheduler) -> Set[str]:  # Set of currently executing plugin names
+def get_active_capabilities(self:QueueScheduler) -> Set[str]:  # Set of currently executing capability names
     """Get the set of capabilities with active executions."""
     return self._active_capabilities.copy()

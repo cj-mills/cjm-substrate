@@ -202,7 +202,7 @@ ACCOUNTS_HEADER = "X-CJM-Accounts"  # Response header carrying recorded accounts
 
 # The per-call account accumulator. The worker endpoint begins a fresh
 # capture beside the envelope decode; the executor thread shares the SAME
-# list object via copy_context, so appends from plugin-thread code are
+# list object via copy_context, so appends from capability-thread code are
 # visible to the request task that drains them. Default None = no capture
 # span (record_account no-ops).
 _CALL_ACCOUNTS: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(

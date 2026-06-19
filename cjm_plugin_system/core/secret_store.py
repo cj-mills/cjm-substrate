@@ -22,22 +22,22 @@ _DEFAULT_SCOPE = "__default__"
 # %% ../../nbs/core/secret_store.ipynb #protocol
 @runtime_checkable
 class SecretStore(Protocol):
-    """Protocol for resolving per-plugin secrets (API keys, tokens)."""
+    """Protocol for resolving per-capability secrets (API keys, tokens)."""
 
     def get_secret(self, capability_name: str, key: str, *, scope: Optional[str] = None) -> Optional[str]:
-        """Return the secret value for (plugin, key) under `scope`, or None."""
+        """Return the secret value for (capability, key) under `scope`, or None."""
         ...
 
     def set_secret(self, capability_name: str, key: str, value: str, *, scope: Optional[str] = None) -> None:
-        """Persist a secret value for (plugin, key) under `scope`."""
+        """Persist a secret value for (capability, key) under `scope`."""
         ...
 
     def delete_secret(self, capability_name: str, key: str, *, scope: Optional[str] = None) -> bool:
-        """Remove (plugin, key) under `scope`. Returns True if a secret was deleted."""
+        """Remove (capability, key) under `scope`. Returns True if a secret was deleted."""
         ...
 
     def list_keys(self, capability_name: str, *, scope: Optional[str] = None) -> List[str]:
-        """Return the NAMES of secrets stored for a plugin under `scope` — never values."""
+        """Return the NAMES of secrets stored for a capability under `scope` — never values."""
         ...
 
 # %% ../../nbs/core/secret_store.ipynb #imports-fastcore-patch-888fbb
@@ -109,7 +109,7 @@ def _save(self:LocalSecretStore, data: Dict[str, Dict[str, Dict[str, str]]]) -> 
 @patch
 def get_secret(
     self:LocalSecretStore,
-    capability_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Capability the secret belongs to
     key: str,          # Secret key (typically the env-var name, e.g. GEMINI_API_KEY)
     *,
     scope: Optional[str] = None  # Reserved multi-user seam; ignored by the local store
@@ -122,7 +122,7 @@ def get_secret(
 @patch
 def set_secret(
     self:LocalSecretStore,
-    capability_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Capability the secret belongs to
     key: str,          # Secret key
     value: str,        # Secret value (stored plaintext at 0600)
     *,
@@ -137,12 +137,12 @@ def set_secret(
 @patch
 def delete_secret(
     self:LocalSecretStore,
-    capability_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Capability the secret belongs to
     key: str,          # Secret key
     *,
     scope: Optional[str] = None  # Reserved multi-user seam
 ) -> bool:  # True if a secret was removed
-    """Remove a secret, pruning now-empty plugin/scope containers."""
+    """Remove a secret, pruning now-empty capability/scope containers."""
     data = self._load()
     sk = self._scope_key(scope)
     keys = data.get(sk, {}).get(capability_name, {})
@@ -160,10 +160,10 @@ def delete_secret(
 @patch
 def list_keys(
     self:LocalSecretStore,
-    capability_name: str,  # Plugin to list secrets for
+    capability_name: str,  # Capability to list secrets for
     *,
     scope: Optional[str] = None  # Reserved multi-user seam
 ) -> List[str]:  # Secret key NAMES (never values)
-    """Return the names of secrets stored for a plugin (never the values)."""
+    """Return the names of secrets stored for a capability (never the values)."""
     data = self._load()
     return sorted(data.get(self._scope_key(scope), {}).get(capability_name, {}).keys())

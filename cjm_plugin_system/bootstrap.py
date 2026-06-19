@@ -1,4 +1,4 @@
-"""One-call factory that assembles a CapabilityManager + JobQueue + plugin bindings — closes the demo-app boilerplate duplication audited across 5 substrate consumers.
+"""One-call factory that assembles a CapabilityManager + JobQueue + capability bindings — closes the demo-app boilerplate duplication audited across 5 substrate consumers.
 
 Docs: https://cj-mills.github.io/cjm-plugin-systembootstrap.html.md"""
 
@@ -25,10 +25,10 @@ CapabilitySpec = Union[str, Tuple[str, Optional[Dict[str, Any]]], Mapping[str, A
 # %% ../nbs/bootstrap.ipynb #pipeline-class
 @dataclass
 class Pipeline:
-    """Assembled substrate stack: manager + queue + plugin bindings."""
+    """Assembled substrate stack: manager + queue + capability bindings."""
     manager: CapabilityManager  # Discovery + lifecycle
     queue: JobQueue  # Job submission + scheduling
-    bindings: Dict[str, CapabilityBinding] = field(default_factory=dict)  # Plugin name -> bound view
+    bindings: Dict[str, CapabilityBinding] = field(default_factory=dict)  # Capability name -> bound view
     
     async def start(self) -> None:
         """Start the job queue's background processor."""
@@ -50,7 +50,7 @@ class Pipeline:
 def _normalize_spec(
     spec: CapabilitySpec  # Raw spec from caller
 ) -> Tuple[str, Optional[Dict[str, Any]]]:  # (capability_name, optional config)
-    """Normalize a plugin spec into a `(name, config)` pair.
+    """Normalize a capability spec into a `(name, config)` pair.
     
     Accepts a bare string, a `(name, config)` tuple, or a mapping with a 'name'
     key (config under 'config' or the mapping itself minus 'name').
@@ -62,35 +62,35 @@ def _normalize_spec(
             return spec[0], None
         if len(spec) == 2:
             return spec[0], spec[1]
-        raise ValueError(f"plugin spec tuple must be (name,) or (name, config); got {spec!r}")
+        raise ValueError(f"capability spec tuple must be (name,) or (name, config); got {spec!r}")
     if isinstance(spec, Mapping):
         if "name" not in spec:
-            raise ValueError(f"plugin spec mapping missing 'name' key: {spec!r}")
+            raise ValueError(f"capability spec mapping missing 'name' key: {spec!r}")
         name = spec["name"]
         if "config" in spec:
             return name, spec["config"]
         return name, None
-    raise TypeError(f"unsupported plugin spec type: {type(spec).__name__}")
+    raise TypeError(f"unsupported capability spec type: {type(spec).__name__}")
 
 # %% ../nbs/bootstrap.ipynb #factory
 def create_pipeline(
-    capabilities: Optional[Iterable[CapabilitySpec]] = None,  # Plugins to discover + load
+    capabilities: Optional[Iterable[CapabilitySpec]] = None,  # Capabilities to discover + load
     scheduler: Optional[ResourceScheduler] = None,  # Resource policy (default: permissive)
-    system_monitor: Optional[str] = None,  # Plugin name to register as system monitor
+    system_monitor: Optional[str] = None,  # Capability name to register as system monitor
     search_paths: Optional[List[Path]] = None,  # Custom manifest search paths
     queue_kwargs: Optional[Dict[str, Any]] = None,  # Extra kwargs forwarded to JobQueue
     strict: bool = True,  # SG-5 strict config validation on each load
 ) -> Pipeline:  # Assembled stack ready to start
-    """Assemble a CapabilityManager + JobQueue + plugin bindings in one call.
+    """Assemble a CapabilityManager + JobQueue + capability bindings in one call.
     
     Steps performed:
       1. Construct CapabilityManager with the given scheduler + search paths
       2. discover_manifests()
-      3. For each spec in `capabilities`: load the plugin and create a CapabilityBinding
-      4. If `system_monitor` is set, register that plugin as the sys-mon
+      3. For each spec in `capabilities`: load the capability and create a CapabilityBinding
+      4. If `system_monitor` is set, register that capability as the sys-mon
       5. Construct JobQueue (NOT started — caller starts via context manager)
     
-    Plugins that fail to load are logged but do not raise; their entries are
+    Capabilities that fail to load are logged but do not raise; their entries are
     omitted from `Pipeline.bindings`. Use the returned `Pipeline.manager` to
     inspect which loads succeeded.
     """
@@ -104,12 +104,12 @@ def create_pipeline(
         try:
             loaded = binding.load(config=config, strict=strict)
         except Exception as e:
-            _logger.error("Failed to load plugin %s: %s", name, e)
+            _logger.error("Failed to load capability %s: %s", name, e)
             continue
         if loaded:
             bindings[name] = binding
         else:
-            _logger.warning("Plugin %s did not load; omitted from pipeline.bindings", name)
+            _logger.warning("Capability %s did not load; omitted from pipeline.bindings", name)
     
     if system_monitor:
         manager.register_system_monitor(system_monitor)

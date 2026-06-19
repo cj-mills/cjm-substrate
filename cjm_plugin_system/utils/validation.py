@@ -1,4 +1,4 @@
-"""Validation helpers for plugin configuration dataclasses
+"""Validation helpers for capability configuration dataclasses
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemutils/validation.html.md"""
 
@@ -23,7 +23,7 @@ _logger = logging.getLogger(__name__)
 # the typed error hierarchy (reparented under CapabilityInputError). The re-export
 # below preserves SG-8-era import paths
 # (`from cjm_plugin_system.utils.validation import CapabilityConfigError`) so
-# existing call sites continue to work without churn during the SG-47 plugin
+# existing call sites continue to work without churn during the SG-47 capability
 # cascade.
 # REMOVE-AFTER-OVERHAUL: drop the re-export after SG-47 cascade migrates
 # capabilities to import directly from core.errors.

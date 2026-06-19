@@ -337,7 +337,7 @@ def apply_retention(
 class DiagnosticsLogHandler(logging.Handler):
     """Worker-side logging handler writing `DiagnosticRecord`s (CR-14).
 
-    Thread-safe via per-call connections (the worker runs plugin execute
+    Thread-safe via per-call connections (the worker runs capability execute
     in an executor thread; contextvars propagate via copy_context at the
     endpoint). Never raises into application code.
     """

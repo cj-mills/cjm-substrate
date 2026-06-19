@@ -1,4 +1,4 @@
-"""Data structures for plugin metadata
+"""Data structures for capability metadata
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/metadata.html.md"""
 
@@ -15,16 +15,16 @@ from typing import Any, Dict, List, Optional
 # %% ../../nbs/core/metadata.ipynb #a67634c3
 @dataclass
 class ResourceRequirements:
-    """Binary hard-facts about what a plugin needs to run (Phase 5a).
+    """Binary hard-facts about what a capability needs to run (Phase 5a).
     
     Quantitative resource amounts (min_vram_mb, etc.) deliberately omitted
-    per CR-7's reactive resource management reframing — plugin authors can't
+    per CR-7's reactive resource management reframing — capability authors can't
     reliably estimate model × dtype × quantization combinatorics, and Blender-
     style variable-render capabilities can't estimate at all. The substrate uses
     these binary hard-facts purely for discovery filtering; actual resource
     contention is handled reactively by CR-7's eviction + retry flow.
     
-    - `requires_gpu`: True if the plugin needs any GPU; the substrate gates
+    - `requires_gpu`: True if the capability needs any GPU; the substrate gates
       execution on a system monitor reporting one is present.
     - `platforms`: e.g., ["linux-x64", "darwin-arm64"]. Empty list means no
       platform constraint declared (assume universal compatibility).
@@ -38,10 +38,10 @@ class ResourceRequirements:
 # %% ../../nbs/core/metadata.ipynb #cf0ae1a9
 @dataclass
 class CapabilityMeta:
-    """Metadata about a plugin."""
-    name:str # Plugin's unique identifier
-    version:str # Plugin's version string
-    description:str="" # Brief description of the plugin's functionality
+    """Metadata about a capability."""
+    name:str # Capability's unique identifier
+    version:str # Capability's version string
+    description:str="" # Brief description of the capability's functionality
     # SG-35: `author` and `package_name` removed — author lives in pyproject.toml
     # + importlib.metadata; package_name is derivable from the import system.
     # `description` is retained and validated by SG-6's manifest checker.
@@ -49,15 +49,15 @@ class CapabilityMeta:
     # per CR-7 reactive reframing). Optional during the cascade window; None for
     # capabilities/legacy manifests that declare no resource constraints.
     resources:Optional["ResourceRequirements"]=None
-    config_schema:Optional[Dict[str, Any]]=None # JSON Schema for plugin configuration
-    instance:Optional[Any]=None # Plugin instance (PluginInterface subclass)
-    enabled:bool=True # Whether the plugin is enabled
+    config_schema:Optional[Dict[str, Any]]=None # JSON Schema for capability configuration
+    instance:Optional[Any]=None # Capability instance (ToolCapability subclass)
+    enabled:bool=True # Whether the capability is enabled
     last_executed:float=0.0 # Unix timestamp
     # SG-9: drift detection — set by CapabilityManager.load_capability when the live
     # worker's /config_schema disagrees with the manifest's stored config_schema.
     # `live_config_schema` holds the worker-reported shape so callers can pick
     # which to honor (substrate keeps using `config_schema` for defaults +
-    # validation; tooling and the future plugin-config UI library can inspect
+    # validation; tooling and the future capability-config UI library can inspect
     # `live_config_schema` for the post-regenerate-manifest preview).
     config_schema_drift:bool=False
     live_config_schema:Optional[Dict[str, Any]]=None
@@ -70,19 +70,19 @@ class CapabilityMeta:
 # %% ../../nbs/core/metadata.ipynb #f192f9bf
 @dataclass
 class CapabilityInstance:
-    """Per-instance runtime state for a loaded plugin (CR-10 multi-instance).
+    """Per-instance runtime state for a loaded capability (CR-10 multi-instance).
     
     Differs from CapabilityMeta in scope:
-    - CapabilityMeta is per-plugin-name discovery + canonical-instance state.
+    - CapabilityMeta is per-capability-name discovery + canonical-instance state.
     - CapabilityInstance is per-load-call runtime state.
     
-    A plugin loaded with no instance_id (default) gets `instance_id == capability_name`
+    A capability loaded with no instance_id (default) gets `instance_id == capability_name`
     and is the canonical instance referenced by CapabilityMeta.instance. Multi-instance
     loads (instance_id != capability_name) add entries to CapabilityManager.instances
     without changing the canonical reference.
     """
     instance_id: str  # Unique key in CapabilityManager.instances; default = capability_name
-    capability_name: str  # The underlying discovered plugin's name (CapabilityMeta.name)
+    capability_name: str  # The underlying discovered capability's name (CapabilityMeta.name)
     config: Dict[str, Any] = field(default_factory=dict)  # Effective config used at initialize()
     # The actual proxy (RemoteCapabilityProxy) bound to this instance. Typed as Any
     # to avoid importing proxy.py here (proxy depends on interface; interface +
@@ -98,7 +98,7 @@ class CapabilityInstance:
     # `compute_config_hash(config)` so per-execute sample recording can index
     # the EmpiricalResourceStore by (instance_id, config_hash). Two distinct
     # configs for the same instance get two distinct empirical records.
-    # Defaults to empty string for back-compat with hand-constructed PluginInstances
+    # Defaults to empty string for back-compat with hand-constructed CapabilityInstances
     # in tests that don't go through load_capability.
     config_hash: str = ""
     # CR-7 / SG-33: per-instance concurrency cap for async execute. None means

@@ -24,9 +24,9 @@ from ..utils.hashing import hash_dict_canonical
 
 # %% ../../nbs/core/empirical_store.ipynb #compute-config-hash
 def compute_config_hash(
-    config: Optional[Dict[str, Any]],  # Plugin's effective config dict (or None / empty)
+    config: Optional[Dict[str, Any]],  # Capability's effective config dict (or None / empty)
 ) -> str:  # Hash string in "algo:hexdigest" format
-    """CR-7: hash a plugin instance's effective config for empirical-record keying.
+    """CR-7: hash a capability instance's effective config for empirical-record keying.
     
     Same canonicalization as CR-8's `compute_config_schema_hash` — sorted keys,
     no whitespace, `"sha256:hex"` shape. None / empty configs hash deterministically
@@ -319,7 +319,7 @@ def list_records(
     self:LocalEmpiricalResourceStore,
     capability_name: Optional[str] = None,
 ) -> List[EmpiricalResourceRecord]:
-    """List all records, optionally filtered to a plugin."""
+    """List all records, optionally filtered to a capability."""
     if not self.db_path.exists():
         return []
     with self._conn() as conn:
