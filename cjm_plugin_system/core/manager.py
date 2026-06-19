@@ -2015,7 +2015,7 @@ def disable_capability(
 
 CapabilityManager.disable_capability = disable_capability
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_logs
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_diagnostics
 def get_capability_diagnostics(
     self,
     name_or_id:str, # Plugin name or instance_id
@@ -2023,7 +2023,7 @@ def get_capability_diagnostics(
     include_stream:bool=True # Include raw stream chunks for the plugin's worker sessions
 ) -> str: # Rendered diagnostic text (most recent last)
     """Render a plugin's recent diagnostics as text (CR-14; replaces
-    `get_plugin_logs` — the flat `.cjm/logs/*.log` files no longer exist).
+    the retired flat-log accessor — the flat `.cjm/logs/*.log` files no longer exist).
 
     A convenience TEXT projection over the diagnostics store for operator /
     UI display: structured records (level + logger name + exact job id when

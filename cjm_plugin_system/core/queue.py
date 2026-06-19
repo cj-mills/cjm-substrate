@@ -113,8 +113,8 @@ class JobQueueDependencies(Protocol):
     can be tested in isolation (with a lightweight test double) and so a future
     extraction into a separate library has no API constraint locked in.
 
-    The first 4 methods are the CR-6 execute-path surface (CR-14 retired
-    `get_plugin_logs` — log retrieval is a diagnostics-store query now). The
+    The first 4 methods are the CR-6 execute-path surface (CR-14 retired the
+    original flat-log accessor — log retrieval is a diagnostics-store query now). The
     stage-3 additions (CR-16 multi-lane admission) are consumed DEFENSIVELY
     via getattr — a deps implementation without them yields no admission
     evidence, so every job runs exclusive = exact pre-stage-3 single-lane

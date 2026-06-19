@@ -231,60 +231,43 @@ def _generate_manifest(
     print(f"[{env_name}] Introspecting module: {module_name}")
     
     # Enhanced introspection script. The script:
-    # 1. Gets metadata from get_plugin_metadata() (old-style) or the installed
-    #    distribution + capability class (new-style).
-    # 2. Instantiates the plugin class to get config_schema
+    # 1. Derives identity from the installed distribution + capability class.
+    # 2. Instantiates the capability class to get config_schema
     # 3. Merges config_schema into metadata (if not already present)
     introspection_script = f'''
 import json
 import importlib
-# DUAL-MODE (stage 8 / PILLAR 1c): OLD-STYLE capabilities expose
-# get_plugin_metadata(); re-based NEW-STYLE capabilities (no meta module) are
-# introspected entirely from the installed distribution + the capability class.
-try:
-    from {module_name}.meta import get_plugin_metadata
-    meta = get_plugin_metadata()
-    _new_style = False
-except (ImportError, AttributeError):
-    meta = {{}}
-    _new_style = True
-
-if not _new_style:
-    # ===== OLD-STYLE: get_plugin_metadata() supplies the full meta dict. =====
-    # (The dual-mode fallback itself collapses in sub-pass 7c — at which point
-    # this branch and the try/except above go away entirely.)
-    pass
-else:
-    # ===== NEW-STYLE (Option C / PILLAR 1c): derive identity from the installed
-    # distribution + discover the capability class. type / resources / db_path
-    # are intentionally OMITTED — task comes from bound adapters, admission
-    # measures resources empirically, and db_path is an adapter-derived
-    # persistence concern. =====
-    import sys as _sys
-    import importlib.metadata as _md
-    import inspect as _inspect
-    from cjm_plugin_system.core.capability import ToolCapability
-    _pmod = importlib.import_module("{module_name}.capability")
-    _cands = [obj for _n, obj in _inspect.getmembers(_pmod, _inspect.isclass)
-              if issubclass(obj, ToolCapability) and obj is not ToolCapability
-              and not _inspect.isabstract(obj)
-              and obj.__module__ == _pmod.__name__]
-    if len(_cands) != 1:
-        raise SystemExit(
-            "[introspection] new-style capability discovery expected exactly 1 "
-            "concrete ToolCapability subclass in " + _pmod.__name__ + ", found "
-            + str(len(_cands)) + ": " + str([c.__name__ for c in _cands])
-            + ". Declare a pyproject [project.entry-points] entry to disambiguate.")
-    _cap = _cands[0]
-    _dist_list = _md.packages_distributions().get("{module_name}")
-    _dist = _dist_list[0] if _dist_list else "{module_name}".replace("_", "-")
-    _dm = _md.metadata(_dist)
-    meta["name"] = _dm.get("Name", _dist)
-    meta["version"] = _dm.get("Version", "") or ""
-    meta["description"] = _dm.get("Summary", "") or ""
-    meta["module"] = _pmod.__name__
-    meta["class"] = _cap.__name__
-    meta["python_path"] = _sys.executable  # the worker-env interpreter (proxy spawns it)
+# NEW-STYLE (Option C / PILLAR 1c): every capability is re-based — identity is
+# derived entirely from the installed distribution + the discovered capability
+# class (no meta module). type / resources / db_path are intentionally OMITTED —
+# task comes from bound adapters, admission measures resources empirically, and
+# db_path is an adapter-derived persistence concern.
+import sys as _sys
+import importlib.metadata as _md
+import inspect as _inspect
+from cjm_plugin_system.core.capability import ToolCapability
+meta = {{}}
+_pmod = importlib.import_module("{module_name}.capability")
+_cands = [obj for _n, obj in _inspect.getmembers(_pmod, _inspect.isclass)
+          if issubclass(obj, ToolCapability) and obj is not ToolCapability
+          and not _inspect.isabstract(obj)
+          and obj.__module__ == _pmod.__name__]
+if len(_cands) != 1:
+    raise SystemExit(
+        "[introspection] new-style capability discovery expected exactly 1 "
+        "concrete ToolCapability subclass in " + _pmod.__name__ + ", found "
+        + str(len(_cands)) + ": " + str([c.__name__ for c in _cands])
+        + ". Declare a pyproject [project.entry-points] entry to disambiguate.")
+_cap = _cands[0]
+_dist_list = _md.packages_distributions().get("{module_name}")
+_dist = _dist_list[0] if _dist_list else "{module_name}".replace("_", "-")
+_dm = _md.metadata(_dist)
+meta["name"] = _dm.get("Name", _dist)
+meta["version"] = _dm.get("Version", "") or ""
+meta["description"] = _dm.get("Summary", "") or ""
+meta["module"] = _pmod.__name__
+meta["class"] = _cap.__name__
+meta["python_path"] = _sys.executable  # the worker-env interpreter (proxy spawns it)
 
 # Try to get config_schema from plugin instance if not in metadata
 if "config_schema" not in meta:
