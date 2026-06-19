@@ -84,7 +84,7 @@ class EnvVarSpec:
 
     Both share one injection seam: the substrate composes the resolved
     {name: value} overlay at load time and injects it into the worker env at
-    spawn (extending the existing CJM_PLUGIN_DATA_DIR / CJM_MODELS_DIR injection).
+    spawn (extending the existing CJM_CAPABILITY_DATA_DIR / CJM_MODELS_DIR injection).
     This is "derive from behaviour, not metadata" applied to the spawn env: the
     plugin declares WHICH vars it consumes + whether each is secret/required;
     the substrate owns resolution + injection.
@@ -124,14 +124,14 @@ class EnvVarSpec:
 #
 # Allowed placeholders (the minimum viable set per the audit):
 #   - ${CJM_MODELS_DIR}   — substrate-injected models directory (may be None)
-#   - ${CJM_PLUGIN_DATA_DIR}     — substrate-injected data directory base
-#   - ${PLUGIN_DATA_DIR}  — plugin's own data subdirectory (CJM_PLUGIN_DATA_DIR/<name>)
-#   - ${PLUGIN_NAME}      — plugin name (for one-off path components like NLTK)
+#   - ${CJM_CAPABILITY_DATA_DIR}     — substrate-injected data directory base
+#   - ${CAPABILITY_DATA_DIR}  — plugin's own data subdirectory (CJM_CAPABILITY_DATA_DIR/<name>)
+#   - ${CAPABILITY_NAME}      — plugin name (for one-off path components like NLTK)
 WORKER_ENV_TEMPLATE_PLACEHOLDERS: Set[str] = {
     "CJM_MODELS_DIR",
-    "CJM_PLUGIN_DATA_DIR",
-    "PLUGIN_DATA_DIR",
-    "PLUGIN_NAME",
+    "CJM_CAPABILITY_DATA_DIR",
+    "CAPABILITY_DATA_DIR",
+    "CAPABILITY_NAME",
 }
 
 

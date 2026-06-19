@@ -1115,16 +1115,16 @@ def _resolve_worker_env(
 
     cfg = get_config()
     # Build the placeholder context once per load. The substrate is the
-    # source of truth for CJM_*_DIR; PLUGIN_DATA_DIR is conventionally
+    # source of truth for CJM_*_DIR; CAPABILITY_DATA_DIR is conventionally
     # `<cfg.capability_data_dir>/<capability_name>` (matches the per-plugin data
     # subdirectory each plugin's meta.py traditionally computed).
     placeholders: Dict[str, Optional[str]] = {
         "CJM_MODELS_DIR": str(cfg.models_dir) if cfg.models_dir else None,
-        "CJM_PLUGIN_DATA_DIR": str(cfg.capability_data_dir) if cfg.capability_data_dir else None,
-        "PLUGIN_DATA_DIR": (
+        "CJM_CAPABILITY_DATA_DIR": str(cfg.capability_data_dir) if cfg.capability_data_dir else None,
+        "CAPABILITY_DATA_DIR": (
             str(cfg.capability_data_dir / capability_meta.name) if cfg.capability_data_dir else None
         ),
-        "PLUGIN_NAME": capability_meta.name,
+        "CAPABILITY_NAME": capability_meta.name,
     }
 
     overlay: Dict[str, str] = {}

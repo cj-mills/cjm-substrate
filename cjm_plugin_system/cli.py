@@ -388,7 +388,7 @@ print(json.dumps(meta, indent=2))
     
     # Build environment with CJM paths for plugin introspection
     env = dict(os.environ)
-    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.capability_data_dir)
+    env["CJM_CAPABILITY_DATA_DIR"] = str(cfg.capability_data_dir)
     if cfg.models_dir:
         env["CJM_MODELS_DIR"] = str(cfg.models_dir)
     

@@ -212,7 +212,7 @@ def load_config(
     # 3. Override with environment variables
     # NOTE (T31): `CJM_DATA_DIR` here is the OPERATOR-facing knob for the
     # substrate ROOT (`cfg.data_dir` — the parent of manifests/ data/ logs/
-    # secrets/). It is DISTINCT from the worker-injected `CJM_PLUGIN_DATA_DIR`
+    # secrets/). It is DISTINCT from the worker-injected `CJM_CAPABILITY_DATA_DIR`
     # (= `cfg.capability_data_dir` = `<data_dir>/data`), which the substrate sets on
     # each worker subprocess. Renaming the injection var (proxy/manager/cli)
     # removed the prior overload where one name meant two different paths; this

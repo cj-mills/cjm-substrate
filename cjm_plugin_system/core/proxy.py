@@ -270,14 +270,14 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
     env.update(self.extra_env)
 
     # Inject CJM paths for plugin runtime
-    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.capability_data_dir)
+    env["CJM_CAPABILITY_DATA_DIR"] = str(cfg.capability_data_dir)
     # Stage 8 (PILLAR 1c): the substrate OWNS the per-capability data-dir
     # convention (formerly duplicated in every plugin's meta.py). Inject the
     # resolved per-capability dir + ensure it exists, so adapters/tools read
-    # PLUGIN_DATA_DIR instead of recomputing CJM_PLUGIN_DATA_DIR/<name>.
+    # CAPABILITY_DATA_DIR instead of recomputing CJM_CAPABILITY_DATA_DIR/<name>.
     _pdd = Path(cfg.capability_data_dir) / self.name
     _pdd.mkdir(parents=True, exist_ok=True)
-    env["PLUGIN_DATA_DIR"] = str(_pdd)
+    env["CAPABILITY_DATA_DIR"] = str(_pdd)
     if cfg.models_dir:
         env["CJM_MODELS_DIR"] = str(cfg.models_dir)
     # CR-14: worker-side diagnostics contract (install_worker_diagnostics):
