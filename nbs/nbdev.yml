@@ -2,8 +2,8 @@ project:
   output-dir: _docs
 
 website:
-  title: "cjm-plugin-system"
-  site-url: "https://cj-mills.github.io/cjm-plugin-system"
-  description: "Process-isolated plugin system with resource-aware scheduling, configuration validation, and lifecycle management for extensible Python applications."
+  title: "cjm-substrate"
+  site-url: "https://cj-mills.github.io/cjm-substrate"
+  description: "A dependency-isolated capability-composition runtime: heterogeneous tools run in their own environments behind a uniform HTTP/JSON boundary; the host composes them into workflows with resource-aware scheduling and threads provenance through a context graph."
   repo-branch: main
-  repo-url: "https://github.com/cj-mills/cjm-plugin-system"
+  repo-url: "https://github.com/cj-mills/cjm-substrate"

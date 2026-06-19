@@ -104,7 +104,7 @@ def discover_single_project(
     cwd_yaml = Path.cwd() / "cjm.yaml"
     if cwd_yaml.exists():
         try:
-            from cjm_plugin_system.core.config import load_config
+            from cjm_substrate.core.config import load_config
             cfg = load_config(config_path=cwd_yaml)
             return [ProjectScope(
                 label=Path.cwd().name,
@@ -116,7 +116,7 @@ def discover_single_project(
 
     # Bootstrap fallback: use the substrate default (~/.cjm/manifests/)
     try:
-        from cjm_plugin_system.core.config import get_config
+        from cjm_substrate.core.config import get_config
         cfg = get_config()
         return [ProjectScope(
             label="bootstrap (~/.cjm/)",
@@ -124,7 +124,7 @@ def discover_single_project(
             manifests_dir=cfg.manifests_dir,
         )]
     except ImportError as e:
-        print(f"ERROR: cjm_plugin_system not importable: {e}", file=sys.stderr)
+        print(f"ERROR: cjm_substrate not importable: {e}", file=sys.stderr)
         return []
 
 
@@ -146,9 +146,9 @@ def discover_ecosystem(
         return []
 
     try:
-        from cjm_plugin_system.core.config import load_config
+        from cjm_substrate.core.config import load_config
     except ImportError as e:
-        print(f"ERROR: cjm_plugin_system not importable: {e}", file=sys.stderr)
+        print(f"ERROR: cjm_substrate not importable: {e}", file=sys.stderr)
         return []
 
     scopes: List[ProjectScope] = []
@@ -214,11 +214,11 @@ def format_only_upgrade(path: Path) -> Optional[str]:
     layout flips from flat to nested.
     """
     try:
-        from cjm_plugin_system.core.manifest_format import (
+        from cjm_substrate.core.manifest_format import (
             load_manifest, write_manifest,
         )
     except ImportError as e:
-        return f"cjm_plugin_system not importable: {e}"
+        return f"cjm_substrate not importable: {e}"
     try:
         manifest = load_manifest(path)
         write_manifest(path, manifest)

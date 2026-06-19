@@ -1,6 +1,6 @@
 # Tombstone — `test_federation.py` (RETIRED 2026-06-18, stage 9)
 
-**Origin:** `cjm-plugin-system/tests_manual/test_federation.py` (2026-01-04, pre-overhaul). Sibling of the also-retired `test_graph_federation.py` (see `test_graph_federation.md`).
+**Origin:** `cjm-substrate/tests_manual/test_federation.py` (2026-01-04, pre-overhaul). Sibling of the also-retired `test_graph_federation.py` (see `test_graph_federation.md`).
 **Retired because:** pre-overhaul "Model Arena" demo on the early JobQueue + raw cross-DB DuckDB joins; predates the CR-18 graph layer + the typed query expression. Per the stage-9 decision the pre-overhaul cohort is retired, not patched.
 
 **What it validated:** (1) JobQueue managing transcription jobs, (2) sequential execution respecting GPU resources, (3) queue-state visibility during execution, (4) **data federation via DuckDB across plugin databases**.

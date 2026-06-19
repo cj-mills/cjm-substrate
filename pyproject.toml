@@ -3,9 +3,9 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cjm-plugin-system"
+name = "cjm-substrate"
 dynamic = ["version"]
-description = "Process-isolated plugin system with resource-aware scheduling, configuration validation, and lifecycle management for extensible Python applications."
+description = "A dependency-isolated capability-composition runtime: heterogeneous tools run in their own environments behind a uniform HTTP/JSON boundary; the host composes them into workflows with resource-aware scheduling and threads provenance through a context graph."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "Apache-2.0"}
@@ -15,20 +15,20 @@ classifiers = ["Natural Language :: English", "Intended Audience :: Developers",
 dependencies = ['fastapi', 'fastcore', 'psutil', 'uvicorn', 'httpx', 'typer', 'pyyaml']
 
 [project.urls]
-Repository = "https://github.com/cj-mills/cjm-plugin-system"
-Documentation = "https://cj-mills.github.io/cjm-plugin-system"
+Repository = "https://github.com/cj-mills/cjm-substrate"
+Documentation = "https://cj-mills.github.io/cjm-substrate"
 
 [project.entry-points.nbdev]
-cjm_plugin_system = "cjm_plugin_system._modidx:d"
+cjm_substrate = "cjm_substrate._modidx:d"
 
 
 [project.scripts]
-cjm-ctl = "cjm_plugin_system.cli:app"
+cjm-ctl = "cjm_substrate.cli:app"
 
 [tool.setuptools.dynamic]
-version = {attr = "cjm_plugin_system.__version__"}
+version = {attr = "cjm_substrate.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["cjm_plugin_system*"]
+include = ["cjm_substrate*"]
 
 [tool.nbdev]

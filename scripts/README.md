@@ -1,4 +1,4 @@
-# cjm-plugin-system scripts
+# cjm-substrate scripts
 
 Operator tooling for the plugin substrate. Each script is standalone — call
 the one you need; nothing chains automatically.
@@ -100,8 +100,8 @@ algorithm change) get propagated across the ecosystem.
 
 ### Implementation notes
 
-- The script imports `cjm_plugin_system.core.manifest_format` (for the
-  `--format-only` path) and `cjm_plugin_system.core.config` (to resolve
+- The script imports `cjm_substrate.core.manifest_format` (for the
+  `--format-only` path) and `cjm_substrate.core.config` (to resolve
   `manifests_dir` via `load_config(config_path=...)`). Run it from an
   environment where the substrate is installed.
 - `load_config(config_path=...)` returns a fresh `CJMConfig` without

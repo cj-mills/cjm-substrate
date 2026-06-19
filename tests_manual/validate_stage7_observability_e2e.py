@@ -17,7 +17,7 @@ lives in `cjm-transcript-decomp-core/tests_manual/validate_stage7_volume_journal
   5. Late-subscriber catch-up exactness ACROSS a host restart (journal
      cursor replay parity with a continuously-connected subscriber).
 
-Run (substrate dev env): conda run -n cjm-plugin-system python tests_manual/validate_stage7_observability_e2e.py
+Run (substrate dev env): conda run -n cjm-substrate python tests_manual/validate_stage7_observability_e2e.py
 
 As-measured baselines (2026-06-12, 9950X): part 1 — 432 jobs journaled in
 11.1s vs 10.9s unjournaled (1.02x; 1,296 rows = 432×(2 transitions +
@@ -45,14 +45,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from cjm_plugin_system.core.diagnostics_store import (
+from cjm_substrate.core.diagnostics_store import (
     DiagnosticRecord, LocalDiagnosticsStore, StreamChunk,
 )
-from cjm_plugin_system.core.journal_store import (
+from cjm_substrate.core.journal_store import (
     JournalEvent, LocalJournalStore, SubstrateEventType,
 )
-from cjm_plugin_system.core.proxy import _pump_stream
-from cjm_plugin_system.core.queue import JobEventType, JobQueue, JobStatus
+from cjm_substrate.core.proxy import _pump_stream
+from cjm_substrate.core.queue import JobEventType, JobQueue, JobStatus
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("stage7-stress")
@@ -226,9 +226,9 @@ def part2_wedge(tmp: Path):
 _WRITER_PROG = r"""
 import sys, time
 from pathlib import Path
-from cjm_plugin_system.core.diagnostics_store import (
+from cjm_substrate.core.diagnostics_store import (
     DiagnosticRecord, LocalDiagnosticsStore)
-from cjm_plugin_system.core.journal_store import JournalEvent, LocalJournalStore
+from cjm_substrate.core.journal_store import JournalEvent, LocalJournalStore
 
 d = LocalDiagnosticsStore(Path(sys.argv[1]))
 j = LocalJournalStore(Path(sys.argv[2]))

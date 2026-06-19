@@ -1,6 +1,6 @@
 # Tombstone — `test_zombie_pact.py` (RETIRED 2026-06-18, stage 9)
 
-**Origin:** `cjm-plugin-system/tests_manual/test_zombie_pact.py` (2025-12-26, pre-overhaul).
+**Origin:** `cjm-substrate/tests_manual/test_zombie_pact.py` (2025-12-26, pre-overhaul).
 **Retired because:** pre-overhaul process-lifecycle test built on the early `PluginManager.load_plugin`/`get_plugin` surface. Per the stage-9 decision the pre-overhaul `tests_manual` cohort is retired, not patched.
 
 **What it validated (worker-subprocess orphan/zombie reaping):** a "victim" process loads a plugin (spawning a worker subprocess), prints `WORKER_PID`, then the test runner kills the victim — verifying the worker subprocess is **reaped, not left a zombie/orphan** when its parent dies.

@@ -14,7 +14,7 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-transcription-plugin-system.git"
 
   # ----------------------------------------------------------------
@@ -33,7 +33,7 @@ capabilities:
     # Interface Libraries
     # Note: Requires cjm-infra-plugin-system for the SystemStats DTO
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-infra-plugin-system.git"
 
 
@@ -52,7 +52,7 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-transcription-plugin-system.git"
 
 
@@ -71,7 +71,7 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-transcription-plugin-system.git"
 
 
@@ -90,7 +90,7 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-graph-plugin-system.git"
     # Adapter impls this worker env carries (stage-6 J10: install-all
     # pip-installs `lib` into the env + generates the adapter manifest --
@@ -115,7 +115,7 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-media-plugin-system.git"
 
   # ----------------------------------------------------------------
@@ -133,5 +133,5 @@ capabilities:
     
     # Interface Libraries
     interface_libs:
-      - "git+https://github.com/cj-mills/cjm-plugin-system.git"
+      - "git+https://github.com/cj-mills/cjm-substrate.git"
       - "git+https://github.com/cj-mills/cjm-text-plugin-system.git"
