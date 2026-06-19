@@ -36,7 +36,7 @@ from cjm_plugin_system.core.empirical_store import (
     ResourceSample, compute_config_hash,
 )
 from cjm_plugin_system.core.errors import (
-    PluginConfigError, PluginDisabledError, PluginResourceError,
+    CapabilityConfigError, CapabilityDisabledError, CapabilityResourceError,
     ResourceShortfall, WorkerOOMError,
 )
 from .capability import ToolCapability
@@ -76,7 +76,7 @@ class PluginManager:
         config_store:Optional[PluginConfigStore]=None, # CR-2: persistence backend; lazy LocalPluginConfigStore default per OQ-4
         empirical_store:Optional[EmpiricalResourceStore]=None, # CR-7: resource-usage tracking backend; lazy LocalEmpiricalResourceStore when cfg.substrate.empirical_tracking
         secret_store:Optional[SecretStore]=None, # CR-12: secret backend; lazy LocalSecretStore default (project-local <data_dir>/secrets)
-        max_retries:int=1, # CR-7: how many reactive retries to attempt on PluginResourceError (default 1 — one retry after eviction)
+        max_retries:int=1, # CR-7: how many reactive retries to attempt on CapabilityResourceError (default 1 — one retry after eviction)
         sysmon_plugin_name:Optional[str]=None, # MonitorPlugin (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)
         journal_store:Optional[JournalStore]=None, # CR-14: durable account-of-action; lazy LocalJournalStore at <data_dir>/journal.db
         diagnostics_store:Optional[DiagnosticsStore]=None # CR-14: disposable diagnostic narrative; lazy LocalDiagnosticsStore at <data_dir>/diagnostics.db
@@ -173,7 +173,7 @@ class PluginManager:
                     (_data_dir / "empirical_resources.db") if _data_dir is not None else None
                 )
         
-        # CR-7: bounded reactive retries on PluginResourceError (Track A + B).
+        # CR-7: bounded reactive retries on CapabilityResourceError (Track A + B).
         self.max_retries: int = max_retries
         
         # MonitorPlugin name for GPU subtree attribution at sample-record time.
@@ -670,7 +670,7 @@ def _resolve_adapter_specs(
     pairing REFUSES LOUDLY with the missing members in the message (the CR-17
     negative check).
     """
-    from cjm_plugin_system.core.errors import PluginInputError
+    from cjm_plugin_system.core.errors import CapabilityInputError
     discovered = getattr(self, 'adapter_manifests', [])
     surface = (getattr(plugin_meta, 'manifest', None) or {}).get('structural_surface')
     if adapters is None:
@@ -687,12 +687,12 @@ def _resolve_adapter_specs(
     for name in adapters:
         am = next((a for a in discovered if a.name == name), None)
         if am is None:
-            raise PluginInputError(
+            raise CapabilityInputError(
                 f"Unknown adapter unit {name!r} (discovered: "
                 f"{[a.name for a in discovered]})", fields_invalid=["adapters"])
         verdict = match_protocol_against_surface(am.protocol_members, surface)
         if not verdict["compatible"]:
-            raise PluginInputError(
+            raise CapabilityInputError(
                 f"Adapter {name!r} (task {am.task_name!r}) is NOT compatible with "
                 f"capability {plugin_meta.name!r}: "
                 f"missing methods {verdict['missing_methods']}, "
@@ -808,7 +808,7 @@ def _validate_config_against_schema(
     
     if unknown_keys:
         if strict:
-            raise PluginConfigError(
+            raise CapabilityConfigError(
                 f"Unknown config keys for plugin {plugin_name!r}: {unknown_keys}. "
                 f"Accepted keys per manifest config_schema: {sorted(valid_keys)}. "
                 f"Pass strict=False to ignore unknown keys (forward-compat).",
@@ -1696,7 +1696,7 @@ def _reactive_evict_for(
     needed_meta:PluginMeta,
     shortfall:Optional[Any]=None,  # Optional ResourceShortfall from Track B; informational only
 ) -> bool:
-    """CR-7: try to free resources after a PluginResourceError during execute.
+    """CR-7: try to free resources after a CapabilityResourceError during execute.
     
     Wraps `_evict_for_resources` with reactive-flow logging. `_evict_for_resources`
     itself extends to multi-axis + cost-aware candidate selection (drops the
@@ -1709,12 +1709,12 @@ def _reactive_evict_for(
     """
     if shortfall is not None:
         self.logger.info(
-            f"CR-7 reactive eviction for {needed_meta.name} after PluginResourceError "
+            f"CR-7 reactive eviction for {needed_meta.name} after CapabilityResourceError "
             f"(shortfall={shortfall})"
         )
     else:
         self.logger.info(
-            f"CR-7 reactive eviction for {needed_meta.name} after PluginResourceError"
+            f"CR-7 reactive eviction for {needed_meta.name} after CapabilityResourceError"
         )
     return self._evict_for_resources(needed_meta)
 
@@ -1802,13 +1802,13 @@ def execute_plugin(
     flag gates execution. `_running_executions` tracks by instance_id so
     concurrent multi-instance executes don't collide.
     
-    CR-2: raises PluginDisabledError (typed) when the instance is disabled.
+    CR-2: raises CapabilityDisabledError (typed) when the instance is disabled.
     
-    CR-7: reactive retry on PluginResourceError — evicts other plugins to
+    CR-7: reactive retry on CapabilityResourceError — evicts other plugins to
     free resources, then ALWAYS reloads the failing plugin's worker before
     the retry attempt. Track A (WorkerOOMError — worker died from SIGKILL)
     needs the reload because there's no live worker to retry on. Track B
-    (plugin-raised PluginResourceError — worker still alive) ALSO reloads
+    (plugin-raised CapabilityResourceError — worker still alive) ALSO reloads
     because PyTorch's CUDA caching allocator can fragment post-OOM in ways
     the plugin can't clean up from within its own process; a fresh worker
     is the only reliable reset. Bounded by `self.max_retries` (default 1).
@@ -1819,7 +1819,7 @@ def execute_plugin(
     if inst is None:
         raise ValueError(f"Plugin/instance {name_or_id!r} not found or not loaded")
     if not inst.enabled:
-        raise PluginDisabledError(inst.instance_id)
+        raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id  # stable across reload (preserved by reload_plugin)
     plugin_meta = self.plugins.get(inst.plugin_name)
@@ -1827,7 +1827,7 @@ def execute_plugin(
     # CR-7 reactive retry loop. Defensive max_retries lookup so test fixtures
     # bypassing __init__ inherit the default behavior (one retry on resource).
     max_retries = getattr(self, 'max_retries', 1)
-    last_resource_error: Optional[PluginResourceError] = None
+    last_resource_error: Optional[CapabilityResourceError] = None
     for attempt in range(max_retries + 1):
         if last_resource_error is not None and plugin_meta is not None:
             # CR-6 Stage 4: notify substrate-side retry observer (best-effort).
@@ -1841,7 +1841,7 @@ def execute_plugin(
                 except Exception:
                     pass  # Observer failure must not break the retry path
             self.logger.warning(
-                f"CR-7 reactive retry on {instance_id}: PluginResourceError "
+                f"CR-7 reactive retry on {instance_id}: CapabilityResourceError "
                 f"(attempt {attempt+1}/{max_retries+1}); "
                 f"shortfall={getattr(last_resource_error, 'resource_shortfall', None)}; "
                 f"evicting + reloading + retrying"
@@ -1857,7 +1857,7 @@ def execute_plugin(
             # See SG-47 sub-task for Track B plugin-side raise contract.
             saved_config = dict(inst.config) if inst is not None else None
             self.logger.info(
-                f"CR-7: reloading worker for {instance_id} after PluginResourceError "
+                f"CR-7: reloading worker for {instance_id} after CapabilityResourceError "
                 f"({type(last_resource_error).__name__})"
             )
             self.reload_plugin(instance_id, config=saved_config)
@@ -1894,7 +1894,7 @@ def execute_plugin(
                 result = inst.proxy.execute(*args, **kwargs)
             success = True
             return result
-        except PluginResourceError as e:
+        except CapabilityResourceError as e:
             # Stash for the next iteration's retry-path; raise on the last attempt.
             if attempt < max_retries:
                 last_resource_error = e
@@ -1922,7 +1922,7 @@ async def execute_plugin_async(
     CR-10 + CR-2: same semantics as execute_plugin, async-flavored. Scheduler
     allocation goes through allocate_async for non-blocking polling.
     
-    CR-7 + SG-33: reactive retry on PluginResourceError — always reloads
+    CR-7 + SG-33: reactive retry on CapabilityResourceError — always reloads
     before retry (Track A + Track B converge on the same reload path; see
     sync variant docstring for the rationale). Per-instance asyncio.Semaphore
     enforces the `max_concurrent_requests` cap (None = unbounded). Empirical
@@ -1932,7 +1932,7 @@ async def execute_plugin_async(
     if inst is None:
         raise ValueError(f"Plugin/instance {name_or_id!r} not found or not loaded")
     if not inst.enabled:
-        raise PluginDisabledError(inst.instance_id)
+        raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id
     plugin_meta = self.plugins.get(inst.plugin_name)
@@ -1941,7 +1941,7 @@ async def execute_plugin_async(
     limiter = self._get_concurrent_limiter(instance_id)
     
     max_retries = getattr(self, 'max_retries', 1)
-    last_resource_error: Optional[PluginResourceError] = None
+    last_resource_error: Optional[CapabilityResourceError] = None
     for attempt in range(max_retries + 1):
         if last_resource_error is not None and plugin_meta is not None:
             # CR-6 Stage 4: notify substrate-side retry observer (best-effort).
@@ -1955,7 +1955,7 @@ async def execute_plugin_async(
                 except Exception:
                     pass  # Observer failure must not break the retry path
             self.logger.warning(
-                f"CR-7 reactive retry on {instance_id}: PluginResourceError "
+                f"CR-7 reactive retry on {instance_id}: CapabilityResourceError "
                 f"(attempt {attempt+1}/{max_retries+1}); "
                 f"shortfall={getattr(last_resource_error, 'resource_shortfall', None)}; "
                 f"evicting + reloading + retrying"
@@ -1968,7 +1968,7 @@ async def execute_plugin_async(
             # allocator-fragmentation both demand a fresh process.
             saved_config = dict(inst.config) if inst is not None else None
             self.logger.info(
-                f"CR-7: reloading worker for {instance_id} after PluginResourceError "
+                f"CR-7: reloading worker for {instance_id} after CapabilityResourceError "
                 f"({type(last_resource_error).__name__})"
             )
             self.reload_plugin(instance_id, config=saved_config)
@@ -2014,7 +2014,7 @@ async def execute_plugin_async(
                 result = await inst.proxy.execute_async(*args, **kwargs)
             success = True
             return result
-        except PluginResourceError as e:
+        except CapabilityResourceError as e:
             if attempt < max_retries:
                 last_resource_error = e
             else:
@@ -2311,7 +2311,7 @@ def update_plugin_config(
         if inst.instance_id == inst.plugin_name:
             self._persist_config(inst.plugin_name)
         return True
-    except PluginConfigError:
+    except CapabilityConfigError:
         raise
     except Exception as e:
         self.logger.error(f"Error updating {name_or_id!r} config: {e}")

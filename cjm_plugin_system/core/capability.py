@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Generator, Iterator, List, Mapping, Optional, Set
 
-from .errors import PluginCancelledError, PluginConfigError, PluginInputError
+from .errors import CapabilityCancelledError, CapabilityConfigError, CapabilityInputError
 
 # CR-4: metadata key for declarative reload triggers on config dataclass fields.
 # Plugin authors annotate fields whose changes require resource release:
@@ -117,7 +117,7 @@ class EnvVarSpec:
 #
 # Constraint: single-pass + non-recursive + strict-raise on unknown placeholder.
 # A `${FOO}` whose name is not in the allowed vocabulary fails LOUDLY at
-# `_resolve_worker_env` time (catchable as PluginConfigError, which multi-inherits
+# `_resolve_worker_env` time (catchable as CapabilityConfigError, which multi-inherits
 # ValueError per CR-5). The same check fires inside `cjm-ctl validate` so
 # misconfigured templates surface at install/release rather than first
 # `load_plugin`.
@@ -145,7 +145,7 @@ def expand_worker_env_template(
     """Substitute `${VAR}` placeholders in `template` using `placeholders`.
     
     Strict mode (no `safe_substitute`): unknown placeholders raise
-    `PluginConfigError` with descriptive context. Single-pass, non-recursive —
+    `CapabilityConfigError` with descriptive context. Single-pass, non-recursive —
     substituted values are taken verbatim, never re-scanned for further
     placeholders. Templates without any `${...}` syntax pass through unchanged
     (so plain static defaults work as before).
@@ -153,7 +153,7 @@ def expand_worker_env_template(
     The allowed placeholder vocabulary is fixed via `WORKER_ENV_TEMPLATE_PLACEHOLDERS`.
     A `${FOO}` whose name is in the vocabulary but whose RESOLVED value is None
     (e.g. `CJM_MODELS_DIR` when the operator hasn't configured one) raises
-    `PluginConfigError` with the same shape — operators get a clear signal that
+    `CapabilityConfigError` with the same shape — operators get a clear signal that
     the plugin needs a value they haven't provided, rather than a silent
     substitution of empty string into a load-bearing path.
     """
@@ -161,7 +161,7 @@ def expand_worker_env_template(
     if "$" not in template:
         return template
     # Identify placeholder names referenced in the template before substituting,
-    # so we can surface a precise PluginConfigError for unknown names without
+    # so we can surface a precise CapabilityConfigError for unknown names without
     # relying on string.Template's stock KeyError message.
     tmpl = string.Template(template)
     referenced: Set[str] = set()
@@ -175,7 +175,7 @@ def expand_worker_env_template(
         ctx = f"on plugin {plugin_name!r}" if plugin_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
-        raise PluginConfigError(
+        raise CapabilityConfigError(
             f"unknown placeholder(s) {sorted(unknown)} in worker-env default {template!r} "
             f"{ctx}; allowed: {sorted(WORKER_ENV_TEMPLATE_PLACEHOLDERS)}",
             fields_invalid=[var_name] if var_name else None,
@@ -188,7 +188,7 @@ def expand_worker_env_template(
         ctx = f"on plugin {plugin_name!r}" if plugin_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
-        raise PluginConfigError(
+        raise CapabilityConfigError(
             f"worker-env default {template!r} {ctx} references placeholder(s) "
             f"{sorted(missing)} but no value is configured for them "
             f"(operator must set e.g. CJM_MODELS_DIR via cjm.yaml or environment)",
@@ -204,7 +204,7 @@ def template_check_placeholders(
 ) -> Set[str]:                            # Placeholder names referenced (allowed-vocabulary-validated)
     """Return the set of placeholder names referenced by a worker-env template.
     
-    Validates the vocabulary (unknown names raise PluginConfigError) without
+    Validates the vocabulary (unknown names raise CapabilityConfigError) without
     requiring a placeholder-value mapping. Useful for `cjm-ctl validate`'s
     dry-run check at install/release time — surface the bug BEFORE the plugin
     tries to spawn a worker with a malformed default.
@@ -221,7 +221,7 @@ def template_check_placeholders(
             referenced.add(named)
     unknown = referenced - WORKER_ENV_TEMPLATE_PLACEHOLDERS
     if unknown:
-        raise PluginConfigError(
+        raise CapabilityConfigError(
             f"unknown placeholder(s) {sorted(unknown)} in worker-env default {template!r}; "
             f"allowed: {sorted(WORKER_ENV_TEMPLATE_PLACEHOLDERS)}",
         )
@@ -464,7 +464,7 @@ class ToolCapability(ABC):
         closing a network connection) override `cancel()` and SHOULD call
         `super().cancel()` to preserve the flag-setting + callback-fire
         behavior. The plugin's `execute()` polls via `check_cancel()` at safe
-        interruption points and unwinds when it raises `PluginCancelledError`.
+        interruption points and unwinds when it raises `CapabilityCancelledError`.
         """
         self._cancel_requested = True
         for cb in list(getattr(self, "_cancel_callbacks", ())):
@@ -479,7 +479,7 @@ class ToolCapability(ABC):
                 )
 
     def check_cancel(self) -> None:
-        """Raise `PluginCancelledError` if cancellation has been requested.
+        """Raise `CapabilityCancelledError` if cancellation has been requested.
         
         CR-4 (SG-16 polling primitive): plugin authors call this at safe
         interruption points inside `execute()`. The substrate sets the flag via
@@ -491,7 +491,7 @@ class ToolCapability(ABC):
         call so cancellation doesn't leak from one job into the next.
         """
         if self._cancel_requested:
-            raise PluginCancelledError(self.name)
+            raise CapabilityCancelledError(self.name)
 
     def register_cancel_callback(
         self,
@@ -801,7 +801,7 @@ def _dispatch_to_action(
     Walks the instance's MRO for a method tagged `_plugin_action == action`
     (the SAME markers `collect_plugin_actions` / `supported_actions` are built
     from) and calls it as `handler(self, **kwargs)`. Unknown actions raise the
-    typed `PluginInputError(fields_invalid=["action"])` (CR-5) — identical
+    typed `CapabilityInputError(fields_invalid=["action"])` (CR-5) — identical
     behaviour to the hand-rolled dispatchers this replaces.
 
     Dispatcher-style plugins (MediaProcessing / Graph / Text) collapse their
@@ -820,7 +820,7 @@ def _dispatch_to_action(
         for attr in vars(klass).values():
             if getattr(attr, "_plugin_action", None) == action:
                 return attr(self, **kwargs)
-    raise PluginInputError(
+    raise CapabilityInputError(
         f"Unknown action: {action}", fields_invalid=["action"],
     )
 

@@ -19,15 +19,15 @@ T = TypeVar('T')
 _logger = logging.getLogger(__name__)
 
 
-# CR-5: PluginConfigError moved to `cjm_plugin_system.core.errors` as part of
-# the typed error hierarchy (reparented under PluginInputError). The re-export
+# CR-5: CapabilityConfigError moved to `cjm_plugin_system.core.errors` as part of
+# the typed error hierarchy (reparented under CapabilityInputError). The re-export
 # below preserves SG-8-era import paths
-# (`from cjm_plugin_system.utils.validation import PluginConfigError`) so
+# (`from cjm_plugin_system.utils.validation import CapabilityConfigError`) so
 # existing call sites continue to work without churn during the SG-47 plugin
 # cascade.
 # REMOVE-AFTER-OVERHAUL: drop the re-export after SG-47 cascade migrates
 # plugins to import directly from core.errors.
-from ..core.errors import PluginConfigError  # noqa: F401
+from ..core.errors import CapabilityConfigError  # noqa: F401
 
 # %% ../../nbs/utils/validation.ipynb #qpdvkb9f5z
 SCHEMA_TITLE = "title"        # Display title for the field
@@ -114,7 +114,7 @@ def dict_to_config(
 ) -> T: # Instance of the configuration dataclass
     """Create a configuration dataclass instance from a dictionary.
     
-    SG-8: by default, unknown keys raise `PluginConfigError`. The previous
+    SG-8: by default, unknown keys raise `CapabilityConfigError`. The previous
     behavior (silently filter unknowns) is available via `strict=False`,
     which logs a warning so the drift is still visible in operator logs.
     """
@@ -130,8 +130,8 @@ def dict_to_config(
     
     if unknown_keys:
         if strict:
-            # CR-5: pass via `fields_invalid=` (canonical PluginInputError kwarg).
-            raise PluginConfigError(
+            # CR-5: pass via `fields_invalid=` (canonical CapabilityInputError kwarg).
+            raise CapabilityConfigError(
                 f"Unknown config keys for {config_class.__name__}: {unknown_keys}. "
                 f"Pass strict=False to ignore unknown keys (forward-compat).",
                 fields_invalid=unknown_keys,

@@ -1721,7 +1721,7 @@ def _validate_manifest_v2_dict(
     # validate/release time rather than first load_plugin.
     if isinstance(code, dict) and code.get("worker_env") is not None:
         from cjm_plugin_system.core.capability import template_check_placeholders
-        from cjm_plugin_system.core.errors import PluginConfigError
+        from cjm_plugin_system.core.errors import CapabilityConfigError
         worker_env = code["worker_env"]
         if not isinstance(worker_env, list):
             errors.append("manifest: 'code.worker_env' must be a list when present")
@@ -1734,7 +1734,7 @@ def _validate_manifest_v2_dict(
                 if isinstance(default, str) and default:
                     try:
                         template_check_placeholders(default)
-                    except PluginConfigError as e:
+                    except CapabilityConfigError as e:
                         errors.append(
                             f"manifest: 'code.worker_env[{j}]' (name={spec.get('name')!r}): {e}"
                         )

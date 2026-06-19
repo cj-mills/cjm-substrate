@@ -28,11 +28,11 @@ import httpx
 
 from .config import get_config
 from cjm_plugin_system.core.errors import (
-    PluginCancelledError,
-    PluginFatalError,
-    PluginInputError,
-    PluginResourceError,
-    PluginTransientError,
+    CapabilityCancelledError,
+    CapabilityFatalError,
+    CapabilityInputError,
+    CapabilityResourceError,
+    CapabilityTransientError,
     ResourceShortfall,
     WorkerOOMError,
 )
@@ -140,7 +140,7 @@ class RemotePluginProxy(ToolCapability):
         """Execute the plugin synchronously.
         
         CR-4: HTTP 409 from the worker is mapped to a typed
-        `PluginCancelledError` raised in the host process, so substrate /
+        `CapabilityCancelledError` raised in the host process, so substrate /
         JobQueue / consumer callers can distinguish cooperative cancellation
         from a real plugin failure (500 → RuntimeError as before).
         """
@@ -154,7 +154,7 @@ class RemotePluginProxy(ToolCapability):
             # typed exception so substrate's category-aware retry logic
             # (default_retriable=False) and the JobQueue's cancellation
             # rendering can both see it.
-            raise PluginCancelledError(self.name)
+            raise CapabilityCancelledError(self.name)
         if resp.status_code != 200:
             _raise_typed_execute_error(resp, self.name)
         return wire_decode(resp.json())  # stage 2: registered DTOs arrive typed; others stay dicts
@@ -519,7 +519,7 @@ async def execute_async(
 ) -> Any: # Plugin result
     """Execute the plugin asynchronously.
     
-    CR-4: HTTP 409 from the worker is mapped to a typed `PluginCancelledError`.
+    CR-4: HTTP 409 from the worker is mapped to a typed `CapabilityCancelledError`.
     Same 409/200/other semantics as the sync `execute()` variant.
     """
     payload = self._prepare_payload(args, kwargs)
@@ -528,7 +528,7 @@ async def execute_async(
     
     if resp.status_code == 409:
         # CR-4: see sync variant
-        raise PluginCancelledError(self.name)
+        raise CapabilityCancelledError(self.name)
     if resp.status_code != 200:
         _raise_typed_execute_error(resp, self.name)
     return wire_decode(resp.json())  # stage 2: registered DTOs arrive typed; others stay dicts
@@ -538,20 +538,20 @@ RemotePluginProxy.execute_async = execute_async
 # %% ../../nbs/core/proxy.ipynb #fn-raise-from-job-error-chunk
 def _raise_from_job_error_chunk(
     job_error: Dict[str, Any],  # _job_error payload from /execute_stream terminal chunk
-    plugin_name: str,  # Caller's plugin name (for PluginCancelledError reconstruction)
+    plugin_name: str,  # Caller's plugin name (for CapabilityCancelledError reconstruction)
 ) -> None:
     """SG-52: convert a `_job_error` JobError-shaped dict into the right typed exception.
     
     Mapping rules:
-    - `original_exc_repr` starts with `"PluginCancelledError"` → raise PluginCancelledError
+    - `original_exc_repr` starts with `"CapabilityCancelledError"` → raise CapabilityCancelledError
       (preserves the non-retriable semantic that category alone doesn't capture).
-    - category == "user_input" → PluginInputError (with fields_invalid).
-    - category == "transient" → PluginTransientError (with retry_after_seconds).
-    - category == "resource" → PluginResourceError (with reconstructed ResourceShortfall).
-    - category == "fatal" → PluginFatalError.
+    - category == "user_input" → CapabilityInputError (with fields_invalid).
+    - category == "transient" → CapabilityTransientError (with retry_after_seconds).
+    - category == "resource" → CapabilityResourceError (with reconstructed ResourceShortfall).
+    - category == "fatal" → CapabilityFatalError.
     - Unknown category → RuntimeError carrying the chunk for forensic inspection.
     
-    This is the streaming-side counterpart to /execute's 409 → PluginCancelledError
+    This is the streaming-side counterpart to /execute's 409 → CapabilityCancelledError
     detection. Same intent: the typed exception survives the HTTP wire boundary
     so substrate / JobQueue / consumer code can branch on category without
     parsing string messages.
@@ -561,19 +561,19 @@ def _raise_from_job_error_chunk(
     repr_str = job_error.get("original_exc_repr", "") or ""
     
     # Cancellation special-case (transient category, non-retriable semantic)
-    if repr_str.startswith("PluginCancelledError"):
-        raise PluginCancelledError(plugin_name)
+    if repr_str.startswith("CapabilityCancelledError"):
+        raise CapabilityCancelledError(plugin_name)
     
     if category == "user_input":
-        raise PluginInputError(message, fields_invalid=job_error.get("fields_invalid"))
+        raise CapabilityInputError(message, fields_invalid=job_error.get("fields_invalid"))
     if category == "transient":
-        raise PluginTransientError(message, retry_after_seconds=job_error.get("retry_after_seconds"))
+        raise CapabilityTransientError(message, retry_after_seconds=job_error.get("retry_after_seconds"))
     if category == "resource":
         shortfall_dict = job_error.get("resource_shortfall")
         shortfall = ResourceShortfall(**shortfall_dict) if shortfall_dict else None
-        raise PluginResourceError(message, resource_shortfall=shortfall)
+        raise CapabilityResourceError(message, resource_shortfall=shortfall)
     if category == "fatal":
-        raise PluginFatalError(message)
+        raise CapabilityFatalError(message)
     # Unknown category — surface as RuntimeError with the structured payload
     raise RuntimeError(f"Plugin stream error (unknown category {category!r}): {job_error}")
 
@@ -587,7 +587,7 @@ def _raise_typed_execute_error(
     If the worker's error body carries the `{"_job_error": <JobError dict>}`
     sentinel (post-fix workers), raise the corresponding TYPED exception via
     `_raise_from_job_error_chunk` — this is what lets the manager's CR-7
-    reactive-retry path see `PluginResourceError` from plain `/execute`
+    reactive-retry path see `CapabilityResourceError` from plain `/execute`
     calls (the OOM-backstop stress test caught the unary channel collapsing
     every failure to RuntimeError, leaving the retry blind). Pre-fix workers
     return a bare-string detail → the legacy RuntimeError fallback (version-
@@ -643,7 +643,7 @@ def _check_worker_death(self) -> None:
     """CR-7 Track A: inspect subprocess state after an httpx fault on /execute.
     
     Raises `WorkerOOMError` if the worker died with SIGKILL (POSIX returncode -9 —
-    kernel OOM-killer is the dominant cause). Raises `PluginTransientError` if
+    kernel OOM-killer is the dominant cause). Raises `CapabilityTransientError` if
     it died with any other returncode. Returns None silently when the worker
     is still alive (caller re-raises the original httpx error).
     
@@ -661,7 +661,7 @@ def _check_worker_death(self) -> None:
     sigkill_rc = -getattr(signal, "SIGKILL", 9)
     if rc == sigkill_rc:
         raise WorkerOOMError(self.name, process_returncode=rc)
-    raise PluginTransientError(
+    raise CapabilityTransientError(
         f"Worker for plugin {self.name!r} died unexpectedly (returncode={rc})"
     )
 
@@ -677,7 +677,7 @@ def execute_with_oom_check(self, *args, **kwargs) -> Any:
     """CR-7 Track A wrapper around the sync execute path.
     
     Catches httpx connection / protocol faults, calls `_check_worker_death`,
-    and either raises a typed `WorkerOOMError` / `PluginTransientError` or
+    and either raises a typed `WorkerOOMError` / `CapabilityTransientError` or
     re-raises the original httpx error (worker still alive — caller treats
     as a generic transient network issue).
     """
@@ -696,7 +696,7 @@ def execute_with_oom_check(self, *args, **kwargs) -> Any:
     self._harvest_worker_accounts(resp)
     if resp.status_code == 409:
         # CR-4: cooperative cancellation surfaced by worker
-        raise PluginCancelledError(self.name)
+        raise CapabilityCancelledError(self.name)
     if resp.status_code != 200:
         _raise_typed_execute_error(resp, self.name)  # G7: typed unary error channel
     return wire_decode(resp.json())  # stage 2: registered DTOs arrive typed; others stay dicts
@@ -715,7 +715,7 @@ async def execute_async_with_oom_check(self, *args, **kwargs) -> Any:
     
     self._harvest_worker_accounts(resp)  # CR-14 follow-up (see sync variant)
     if resp.status_code == 409:
-        raise PluginCancelledError(self.name)
+        raise CapabilityCancelledError(self.name)
     if resp.status_code != 200:
         _raise_typed_execute_error(resp, self.name)  # G7: typed unary error channel
     return wire_decode(resp.json())  # stage 2: registered DTOs arrive typed; others stay dicts
@@ -766,7 +766,7 @@ def execute_task(self, task_name: str, method: str, **kwargs) -> Any:
         raise
     self._harvest_worker_accounts(resp)  # CR-14 follow-up: TASK_ACCOUNT et al
     if resp.status_code == 409:
-        raise PluginCancelledError(self.name)
+        raise CapabilityCancelledError(self.name)
     if resp.status_code != 200:
         _raise_typed_execute_error(resp, self.name)  # G7 typed channel from day one
     return wire_decode(resp.json())
@@ -784,7 +784,7 @@ async def execute_task_async(self, task_name: str, method: str, **kwargs) -> Any
         raise
     self._harvest_worker_accounts(resp)  # CR-14 follow-up: TASK_ACCOUNT et al
     if resp.status_code == 409:
-        raise PluginCancelledError(self.name)
+        raise CapabilityCancelledError(self.name)
     if resp.status_code != 200:
         _raise_typed_execute_error(resp, self.name)
     return wire_decode(resp.json())
@@ -1042,7 +1042,7 @@ def prefetch(
       2. Main thread polls /progress every poll_interval_seconds.
       3. Each (progress, message) change resets the stall counter.
       4. If no change in stall_threshold_seconds AND POST still pending →
-         SIGTERM the worker subprocess + raise PluginTimeoutError.
+         SIGTERM the worker subprocess + raise CapabilityTimeoutError.
 
     Plugins opt in to fine-grained stall defeat by calling
     self.report_progress(...) periodically during long lifecycle operations
@@ -1051,7 +1051,7 @@ def prefetch(
     silent stretch.
 
     Errors raised by the plugin (worker 500) propagate as RuntimeError; worker
-    unreachable propagates as `False`; stall fires PluginTimeoutError.
+    unreachable propagates as `False`; stall fires CapabilityTimeoutError.
     """
     threshold = stall_threshold_seconds if stall_threshold_seconds is not None else _resolve_prefetch_stall_threshold()
     return _run_prefetch_with_stall_detection(self, threshold, poll_interval_seconds)
@@ -1093,12 +1093,12 @@ def _run_prefetch_with_stall_detection(
     in stall_threshold_seconds AND the POST is still in-flight, SIGTERMs the
     worker subprocess (so its plugin.cleanup() can run via the worker's
     shutdown handler — closes the orphan-subprocess-on-stall bug) and raises
-    PluginTimeoutError client-side.
+    CapabilityTimeoutError client-side.
     """
     import threading
     import time
 
-    from cjm_plugin_system.core.errors import PluginTimeoutError
+    from cjm_plugin_system.core.errors import CapabilityTimeoutError
 
     state: Dict[str, Any] = {'status': 'pending', 'error': None}
 
@@ -1153,7 +1153,7 @@ def _run_prefetch_with_stall_detection(
             except Exception:
                 pass
             elapsed = time.time() - last_change
-            raise PluginTimeoutError(proxy.name, elapsed)
+            raise CapabilityTimeoutError(proxy.name, elapsed)
 
     if state['error'] is not None:
         raise state['error']
@@ -1172,7 +1172,7 @@ async def _run_prefetch_with_stall_detection_async(
     import asyncio
     import time
 
-    from cjm_plugin_system.core.errors import PluginTimeoutError
+    from cjm_plugin_system.core.errors import CapabilityTimeoutError
 
     async def _post_prefetch() -> Dict[str, Any]:
         try:
@@ -1219,7 +1219,7 @@ async def _run_prefetch_with_stall_detection_async(
             except Exception:
                 pass
             elapsed = time.time() - last_change
-            raise PluginTimeoutError(proxy.name, elapsed)
+            raise CapabilityTimeoutError(proxy.name, elapsed)
 
     result = await post_task
     if result['status'] == 'plugin_error':

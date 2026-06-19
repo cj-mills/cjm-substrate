@@ -27,7 +27,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .errors import PluginCancelledError, map_bare_exception_to_job_error
+from .errors import CapabilityCancelledError, map_bare_exception_to_job_error
 from .platform import terminate_self
 
 import logging
@@ -499,7 +499,7 @@ def _register_task_endpoints(
         (cancel() may have been called during cleanup; substrate decides what
         to do with that on next /cancel signal).
         
-        CR-4: PluginCancelledError → HTTP 409 (operator-requested cancellation;
+        CR-4: CapabilityCancelledError → HTTP 409 (operator-requested cancellation;
         distinct from 500's "real failure" so the proxy can surface a typed
         "cancelled" state to callers and JobQueue can render the job state
         accordingly per CR-6).
@@ -531,7 +531,7 @@ def _register_task_endpoints(
             json_str = json.dumps(wire_encode(result), cls=EnhancedJSONEncoder)
             return JSONResponse(content=json.loads(json_str),
                                 headers=_accounts_headers())
-        except PluginCancelledError as e:
+        except CapabilityCancelledError as e:
             # CR-4: cooperative cancellation surfaces as 409 Conflict so the
             # proxy can distinguish "operator cancelled" from "real plugin
             # failure" (500). The detail body carries the plugin name for
@@ -544,7 +544,7 @@ def _register_task_endpoints(
             # ledger G7): the 500 body carries the SAME `{"_job_error":
             # <JobError dict>}` sentinel shape as the stream's terminal
             # chunk, so the proxy raises the typed exception client-side
-            # (PluginResourceError et al) and CR-7's reactive retry can
+            # (CapabilityResourceError et al) and CR-7's reactive retry can
             # actually see resource errors from plain /execute calls. The
             # old bare-string detail collapsed every failure to RuntimeError
             # host-side, leaving the retry path blind on this channel.
@@ -611,7 +611,7 @@ def _register_task_endpoints(
             })
             return JSONResponse(content=json.loads(json_str),
                                 headers=_accounts_headers())
-        except PluginCancelledError as e:
+        except CapabilityCancelledError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except HTTPException:
             raise
@@ -647,7 +647,7 @@ def _register_task_endpoints(
         Plugin output chunks never carry that key, so consumers (proxy +
         downstream) can detect terminal errors with a single dict membership
         check. The proxy's execute_stream then raises a typed exception
-        client-side, mirroring /execute's HTTP 409 → PluginCancelledError flow.
+        client-side, mirroring /execute's HTTP 409 → CapabilityCancelledError flow.
 
         CR-14: `_apply_call_envelope`'s no-reset semantics matter HERE — the
         response iteration runs in this request task after the endpoint
@@ -683,7 +683,7 @@ def _register_task_endpoints(
                 # SG-52: emit typed JobError as the terminal chunk. Proxy +
                 # downstream consumers detect the `_job_error` sentinel key
                 # and raise the corresponding typed exception client-side
-                # (PluginCancelledError, PluginTransientError, etc.).
+                # (CapabilityCancelledError, CapabilityTransientError, etc.).
                 job_error = map_bare_exception_to_job_error(
                     e, plugin_name=getattr(plugin_instance, "name", "unknown"),
                 )

@@ -454,7 +454,7 @@ async def submit(
     """Submit a job to the queue.
 
     CR-2: rejects jobs for disabled plugins at submit time (typed
-    PluginDisabledError) so the failure surface matches PluginManager.
+    CapabilityDisabledError) so the failure surface matches PluginManager.
     execute_plugin's disabled gate. Submitting to a disabled plugin would
     otherwise sit in the queue until execution, then raise — moving the
     check earlier gives operators an actionable signal immediately.
@@ -473,13 +473,13 @@ async def submit(
     # CR-2: late import to avoid pulling errors module into queue's import
     # path during library load (keeps the worker.py-via-queue.py import
     # chain minimal).
-    from cjm_plugin_system.core.errors import PluginDisabledError, PluginInputError
+    from cjm_plugin_system.core.errors import CapabilityDisabledError, CapabilityInputError
 
     self._check_journal_wedge()
 
     # Stage 4: the task channel addresses adapter+method as a pair.
     if (task is None) != (method is None):
-        raise PluginInputError(
+        raise CapabilityInputError(
             f"Task-channel submits require BOTH task and method "
             f"(got task={task!r}, method={method!r})",
             fields_invalid=["task", "method"],
@@ -487,7 +487,7 @@ async def submit(
 
     meta = self._deps.get_plugin_meta(plugin_instance_id)
     if meta is not None and not meta.enabled:
-        raise PluginDisabledError(plugin_instance_id)
+        raise CapabilityDisabledError(plugin_instance_id)
 
     job = Job(
         id=str(uuid.uuid4()),
@@ -906,7 +906,7 @@ async def submit_composition(
 
     Validates upfront: structural validation via `new_composition_run`
     (duplicate ids / unknown refs / cycles → `CompositionValidationError`)
-    and the disabled-plugin gate across all nodes (`PluginDisabledError`),
+    and the disabled-plugin gate across all nodes (`CapabilityDisabledError`),
     matching the sequence-era precedent. Member Jobs are created LAZILY —
     only dependency-free nodes have Jobs at submit; downstream nodes get
     their kwargs materialized from upstream results at advancement time.
@@ -917,7 +917,7 @@ async def submit_composition(
     Consumers wait via `wait_for_composition`, observe via
     `events_for_composition`, inspect via `get_composition`.
     """
-    from cjm_plugin_system.core.errors import PluginDisabledError
+    from cjm_plugin_system.core.errors import CapabilityDisabledError
 
     self._check_journal_wedge()
 
@@ -927,7 +927,7 @@ async def submit_composition(
             self.logger.error(
                 f"Composition submission rejected: node {n.id!r} targets "
                 f"disabled plugin {n.plugin_instance_id}")
-            raise PluginDisabledError(n.plugin_instance_id)
+            raise CapabilityDisabledError(n.plugin_instance_id)
 
     run = new_composition_run(comp, str(uuid.uuid4()))
     self._compositions[run.id] = run
@@ -1355,7 +1355,7 @@ def _on_manager_retry(
     self,
     instance_id: str,  # Plugin instance whose execute is retrying
     attempt: int,      # 1-based retry number (PluginManager's loop var; first retry is 1)
-    exception: BaseException,  # The PluginResourceError that triggered the retry
+    exception: BaseException,  # The CapabilityResourceError that triggered the retry
 ) -> None:
     """Substrate-side retry observer (CR-6 Stage 4; stage-3 multi-lane).
 
@@ -1834,7 +1834,7 @@ async def _execute_job(self, job: Job) -> None:
             prev = job.status
             job.status = JobStatus.failed
             # CR-5: typed JobError carries category + retriable + structured
-            # side-channels for PluginError subclasses.
+            # side-channels for CapabilityError subclasses.
             job.error = map_bare_exception_to_job_error(
                 e,
                 plugin_instance_id=job.plugin_instance_id,
