@@ -231,32 +231,9 @@ class PluginConfigError(PluginInputError):
         *,
         fields_invalid: Optional[List[str]] = None,  # Canonical: list of bad config keys
         config_class_name: str = "",  # Dataclass / plugin name for the schema
-        # REMOVE-AFTER-OVERHAUL: drop unknown_keys kwarg after SG-47 cascade completes
-        unknown_keys: Optional[List[str]] = None,
     ):
-        if unknown_keys is not None:
-            warnings.warn(
-                "PluginConfigError(unknown_keys=...) is deprecated; use fields_invalid=... instead. "
-                "This parameter will be removed after the substrate overhaul completes (SG-48).",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if fields_invalid is None:
-                fields_invalid = unknown_keys
         super().__init__(message, fields_invalid=fields_invalid)
         self.config_class_name = config_class_name
-    
-    # REMOVE-AFTER-OVERHAUL: drop after SG-47 plugin migration cascade completes;
-    # first-party code by then uses fields_invalid uniformly.
-    @property
-    def unknown_keys(self) -> List[str]:
-        """Deprecated alias for `fields_invalid` (SG-8-era attribute name).
-        
-        Accessing this property does NOT emit a deprecation warning \u2014 only
-        constructor-time misuse triggers the warning. Read-only by design;
-        nothing in the ecosystem mutates exception attributes after construction.
-        """
-        return self.fields_invalid
 
 # %% ../../nbs/core/errors.ipynb #joberror
 @dataclass

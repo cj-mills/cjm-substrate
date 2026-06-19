@@ -130,8 +130,7 @@ def dict_to_config(
     
     if unknown_keys:
         if strict:
-            # CR-5: pass via `fields_invalid=` (canonical PluginInputError kwarg);
-            # `unknown_keys=` is the SG-8-era deprecated alias.
+            # CR-5: pass via `fields_invalid=` (canonical PluginInputError kwarg).
             raise PluginConfigError(
                 f"Unknown config keys for {config_class.__name__}: {unknown_keys}. "
                 f"Pass strict=False to ignore unknown keys (forward-compat).",

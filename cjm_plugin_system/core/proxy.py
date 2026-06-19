@@ -925,8 +925,6 @@ def get_system_status(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or
     - 404: plugin is not a MonitorPlugin — logged at ERROR (configuration error;
           no amount of retry fixes it) and returns None. Loudly distinguished
           from the substrate's WARN-level transient-failure degradation.
-    - 501: legacy monitor predating CR-3; REMOVE-AFTER-OVERHAUL fallback to
-          `/execute("get_system_status")` returns a dict in the pre-CR-3 wire format
     - 500: real plugin failure; propagates as HTTPStatusError
     - ConnectError: worker may have died; returns None silently (substrate
           degrades to empty stats)
@@ -936,11 +934,6 @@ def get_system_status(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or
             resp = client.post(f"{self.base_url}/get_system_status")
         if resp.status_code == 200:
             return resp.json()
-        if resp.status_code == 501:
-            # REMOVE-AFTER-OVERHAUL: dispatcher fallback for pre-CR-3 monitors.
-            # SG-47 cascade migrates monitor plugins to typed methods; SG-48 sweep
-            # then drops this branch (worker never returns 501 once cascade lands).
-            return self.execute("get_system_status")
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log. The substrate's
             # _get_global_stats catches the None return and degrades to {},
@@ -961,15 +954,12 @@ RemotePluginProxy.get_system_status = get_system_status
 
 # %% ../../nbs/core/proxy.ipynb #fn-get-system-status-async
 async def get_system_status_async(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or None on transport / config failure
-    """Async variant of `get_system_status`. Same 200/404/501/500/ConnectError semantics."""
+    """Async variant of `get_system_status`. Same 200/404/500/ConnectError semantics."""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.post(f"{self.base_url}/get_system_status")
         if resp.status_code == 200:
             return resp.json()
-        if resp.status_code == 501:
-            # REMOVE-AFTER-OVERHAUL: see sync variant
-            return await self.execute_async("get_system_status")
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log (see sync variant)
             _logger.error(
@@ -989,18 +979,15 @@ RemotePluginProxy.get_system_status_async = get_system_status_async
 def list_processes(self) -> Optional[List[Dict[str, Any]]]:  # ProcessStats dict list, or None on transport / config failure
     """CR-3: typed MonitorPlugin accessor. POSTs to worker's `/list_processes`.
     
-    Same 200/404/501/500/ConnectError semantics as `get_system_status`. Note that
+    Same 200/404/500/ConnectError semantics as `get_system_status`. Note that
     `MonitorPlugin.list_processes()` defaults to returning `[]`, so monitors without
-    per-process visibility yield a 200 with an empty list rather than 501.
+    per-process visibility yield a 200 with an empty list.
     """
     try:
         with httpx.Client(timeout=5) as client:
             resp = client.post(f"{self.base_url}/list_processes")
         if resp.status_code == 200:
             return resp.json()
-        if resp.status_code == 501:
-            # REMOVE-AFTER-OVERHAUL: dispatcher fallback for pre-CR-3 monitors
-            return self.execute("list_processes")
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log
             _logger.error(
@@ -1024,9 +1011,6 @@ async def list_processes_async(self) -> Optional[List[Dict[str, Any]]]:  # Proce
             resp = await client.post(f"{self.base_url}/list_processes")
         if resp.status_code == 200:
             return resp.json()
-        if resp.status_code == 501:
-            # REMOVE-AFTER-OVERHAUL: see sync variant
-            return await self.execute_async("list_processes")
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log
             _logger.error(

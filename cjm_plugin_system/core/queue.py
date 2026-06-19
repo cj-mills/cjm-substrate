@@ -9,8 +9,7 @@ __all__ = ['JobStatus', 'JobEventType', 'CancelPhase', 'JobQueueDependencies', '
            'ResourceSnapshot', 'JobQueue', 'submit', 'cancel', 'reorder', 'get_job', 'wait_for_job', 'get_pending',
            'get_running_jobs', 'get_running', 'get_history', 'get_stats', 'get_job_diagnostics',
            'get_history_from_journal', 'events', 'events_for_composition', 'all_events', 'submit_composition',
-           'wait_for_composition', 'cancel_composition', 'get_composition', 'get_resource_snapshot', 'start', 'stop',
-           'get_state']
+           'wait_for_composition', 'cancel_composition', 'get_composition', 'get_resource_snapshot', 'start', 'stop']
 
 # %% ../../nbs/core/queue.ipynb #exports
 import asyncio
@@ -2050,70 +2049,6 @@ async def _poll_progress(
         await asyncio.sleep(self.progress_poll_interval)
 
 JobQueue._poll_progress = _poll_progress
-
-# %% ../../nbs/core/queue.ipynb #0c35a476
-def get_state(self) -> Dict[str, Any]:  # Queue state for UI (legacy shape)
-    """Get the current queue state in the pre-CR-6 dict shape.
-
-    REMOVE-AFTER-OVERHAUL: kept so existing UI consumers (notably
-    `cjm-fasthtml-job-monitor`) continue to work until they migrate to the
-    typed `get_pending` / `get_running` / `get_history` / `get_stats`
-    accessors. Reads from the new accessors and reshapes:
-
-    - Legacy keys (`plugin_name`, `created_at`) read from the renamed fields
-      via the Job dataclass's backward-compat `@property` aliases.
-    - Legacy `error` was a bare string; new is `JobError`. Shim returns
-      `error.message` to preserve the string shape.
-    - Legacy timestamps were unix floats; new are `datetime`. Shim returns
-      `.timestamp()` to preserve float shape.
-    """
-    running = self.get_running()
-    running_dict = None
-    if running:
-        running_dict = {
-            "id": running.id,
-            "plugin_name": running.plugin_instance_id,
-            "status": running.status.value,
-            "started_at": running.started_at.timestamp() if running.started_at else None,
-            "progress": running.progress,
-            "status_message": running.status_message,
-        }
-
-    pending_list = [
-        {
-            "id": j.id,
-            "plugin_name": j.plugin_instance_id,
-            "priority": j.priority,
-            "position": i,
-        }
-        for i, j in enumerate(self.get_pending())
-    ]
-
-    history_list = [
-        {
-            "id": j.id,
-            "plugin_name": j.plugin_instance_id,
-            "status": j.status.value,
-            "completed_at": j.completed_at.timestamp() if j.completed_at else None,
-            "error": j.error.message if j.error else None,
-        }
-        for j in self.get_history(limit=20)
-    ]
-
-    stats = self.get_stats()
-    return {
-        "running": running_dict,
-        "pending": pending_list,
-        "history": history_list,
-        "stats": {
-            "total_pending": stats.total_pending,
-            "total_completed": stats.total_completed,
-            "total_failed": stats.total_failed,
-            "total_cancelled": stats.total_cancelled,
-        },
-    }
-
-JobQueue.get_state = get_state
 
 # %% ../../nbs/core/queue.ipynb #e31875a2
 # SG-15: curate __all__ to expose only the class + value symbols.
