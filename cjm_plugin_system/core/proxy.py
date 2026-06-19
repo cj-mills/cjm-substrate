@@ -50,7 +50,7 @@ from .platform import get_popen_isolation_kwargs, is_windows, terminate_process
 
 # CR-3 follow-up: module-level logger so the proxy can log close-to-wire
 # misconfiguration signals (e.g. 404 on /get_system_status meaning the
-# substrate wired a non-MonitorPlugin as system_monitor) at ERROR level —
+# substrate wired a non-monitor capability as system_monitor) at ERROR level —
 # louder than the substrate's catch-all WARNING degradation path.
 _logger = logging.getLogger(__name__)
 
@@ -918,11 +918,11 @@ RemoteCapabilityProxy.on_enable = on_enable
 
 # %% ../../nbs/core/proxy.ipynb #7adc9ae9
 def get_system_status(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or None on transport / config failure
-    """CR-3: typed MonitorPlugin accessor. POSTs to worker's `/get_system_status`.
+    """CR-3: typed MonitorToolProtocol accessor. POSTs to worker's `/get_system_status`.
     
     Status code semantics (worker side raises HTTPException with these codes):
     - 200: SystemStats dict returned
-    - 404: plugin is not a MonitorPlugin — logged at ERROR (configuration error;
+    - 404: capability is not a monitor — logged at ERROR (configuration error;
           no amount of retry fixes it) and returns None. Loudly distinguished
           from the substrate's WARN-level transient-failure degradation.
     - 500: real plugin failure; propagates as HTTPStatusError
@@ -940,7 +940,7 @@ def get_system_status(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or
             # so a single ERROR here (not WARN at the substrate layer) gives
             # operators an actionable signal without double-logging.
             _logger.error(
-                "Plugin %r registered as system_monitor lacks MonitorPlugin "
+                "Capability %r registered as system_monitor lacks the MonitorToolProtocol "
                 "interface (HTTP 404 from /get_system_status): %s",
                 self.name, resp.text,
             )
@@ -963,7 +963,7 @@ async def get_system_status_async(self) -> Optional[Dict[str, Any]]:  # SystemSt
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log (see sync variant)
             _logger.error(
-                "Plugin %r registered as system_monitor lacks MonitorPlugin "
+                "Capability %r registered as system_monitor lacks the MonitorToolProtocol "
                 "interface (HTTP 404 from /get_system_status): %s",
                 self.name, resp.text,
             )
@@ -977,10 +977,10 @@ RemoteCapabilityProxy.get_system_status_async = get_system_status_async
 
 # %% ../../nbs/core/proxy.ipynb #fn-list-processes
 def list_processes(self) -> Optional[List[Dict[str, Any]]]:  # ProcessStats dict list, or None on transport / config failure
-    """CR-3: typed MonitorPlugin accessor. POSTs to worker's `/list_processes`.
+    """CR-3: typed MonitorToolProtocol accessor. POSTs to worker's `/list_processes`.
     
     Same 200/404/500/ConnectError semantics as `get_system_status`. Note that
-    `MonitorPlugin.list_processes()` defaults to returning `[]`, so monitors without
+    `MonitorToolProtocol.list_processes()` defaults to returning `[]`, so monitors without
     per-process visibility yield a 200 with an empty list.
     """
     try:
@@ -991,7 +991,7 @@ def list_processes(self) -> Optional[List[Dict[str, Any]]]:  # ProcessStats dict
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log
             _logger.error(
-                "Plugin %r registered as system_monitor lacks MonitorPlugin "
+                "Capability %r registered as system_monitor lacks the MonitorToolProtocol "
                 "interface (HTTP 404 from /list_processes): %s",
                 self.name, resp.text,
             )
@@ -1014,7 +1014,7 @@ async def list_processes_async(self) -> Optional[List[Dict[str, Any]]]:  # Proce
         if resp.status_code == 404:
             # CR-3 follow-up: loud misconfiguration log
             _logger.error(
-                "Plugin %r registered as system_monitor lacks MonitorPlugin "
+                "Capability %r registered as system_monitor lacks the MonitorToolProtocol "
                 "interface (HTTP 404 from /list_processes): %s",
                 self.name, resp.text,
             )

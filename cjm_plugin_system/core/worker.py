@@ -89,7 +89,7 @@ def parent_monitor(
 # %% ../../nbs/core/worker.ipynb #19319501
 def _load_capability_instance(
     module_name: str, # Python module path (e.g., "my_plugin.plugin")
-    class_name: str   # Plugin class name (e.g., "WhisperPlugin")
+    class_name: str   # Capability class name (e.g., "WhisperCapability")
 ):                    # Instantiated plugin object
     """Dynamically load + instantiate the plugin class.
 
@@ -717,15 +717,15 @@ def _register_monitor_endpoints(
     capability_instance, # The loaded plugin object
     class_name: str, # Plugin class name (for 404 detail messages)
 ) -> None:
-    """/get_system_status /list_processes: CR-3 typed MonitorPlugin accessors."""
+    """/get_system_status /list_processes: CR-3 typed MonitorToolProtocol accessors."""
     @app.post("/get_system_status")
     def get_system_status_endpoint() -> Dict[str, Any]:
-        """CR-3: typed MonitorPlugin accessor. Returns SystemStats.to_dict().
+        """CR-3: typed MonitorToolProtocol accessor. Returns SystemStats.to_dict().
         
         Status code taxonomy (intentional, per CR-3 review):
-        - 404: plugin is not a MonitorPlugin (configuration error — don't mask).
+        - 404: capability is not a monitor (configuration error — don't mask).
               Substrate's `system_monitor` was wired to the wrong plugin.
-        - 501: plugin is a MonitorPlugin but raised NotImplementedError from its
+        - 501: capability is a monitor but raised NotImplementedError from its
               get_system_status() default body (legacy monitor predating CR-3 that
               opted out). Proxy falls back to /execute("get_system_status").
         - 500: plugin's get_system_status() raised some other exception. Real
@@ -737,7 +737,7 @@ def _register_monitor_endpoints(
                 status_code=404,
                 detail=(
                     f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
-                    f"is not a MonitorPlugin (no get_system_status method)."
+                    f"is not a monitor capability (no get_system_status method)."
                 ),
             )
         try:
@@ -752,9 +752,9 @@ def _register_monitor_endpoints(
 
     @app.post("/list_processes")
     def list_processes_endpoint() -> Any:
-        """CR-3: typed MonitorPlugin accessor. Returns list of ProcessStats.to_dict().
+        """CR-3: typed MonitorToolProtocol accessor. Returns list of ProcessStats.to_dict().
         
-        Same 404/501/500/200 taxonomy as /get_system_status. MonitorPlugin's
+        Same 404/501/500/200 taxonomy as /get_system_status. MonitorToolProtocol's
         default list_processes() returns `[]`, so non-implementing monitors
         return 200 with an empty list rather than 501.
         """
@@ -763,7 +763,7 @@ def _register_monitor_endpoints(
                 status_code=404,
                 detail=(
                     f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
-                    f"is not a MonitorPlugin (no list_processes method)."
+                    f"is not a monitor capability (no list_processes method)."
                 ),
             )
         try:
@@ -779,7 +779,7 @@ def _register_monitor_endpoints(
 # %% ../../nbs/core/worker.ipynb #82f0d516
 def create_app(
     module_name: str, # Python module path (e.g., "my_plugin.plugin")
-    class_name: str,  # Plugin class name (e.g., "WhisperPlugin")
+    class_name: str,  # Capability class name (e.g., "WhisperCapability")
     adapter_specs=None # CR-17 pt 2: "module:ClassName" adapter impl specs to bind in-worker
 ) -> FastAPI: # Configured FastAPI application
     """Create FastAPI app that hosts the specified plugin.

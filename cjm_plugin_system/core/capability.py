@@ -779,7 +779,7 @@ def collect_capability_actions(
     
     Walks the class's MRO so subclasses inherit action handlers from base
     classes automatically. The returned set is suitable for
-    `supported_actions: ClassVar[Set[str]] = collect_capability_actions(MyPlugin)`
+    `supported_actions: ClassVar[Set[str]] = collect_capability_actions(MyCapability)`
     once the plugin class body has been defined.
     """
     actions: Set[str] = set()
@@ -811,7 +811,7 @@ def _dispatch_to_action(
         @capability_action("separate_vocals")
         def _separate_vocals(self, **kwargs): ...
 
-        supported_actions = collect_capability_actions(MyPlugin)
+        supported_actions = collect_capability_actions(MyCapability)
 
         def execute(self, action="separate_vocals", **kwargs):
             return self.dispatch_to_action(action, **kwargs)

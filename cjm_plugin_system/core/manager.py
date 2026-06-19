@@ -78,7 +78,7 @@ class CapabilityManager:
         empirical_store:Optional[EmpiricalResourceStore]=None, # CR-7: resource-usage tracking backend; lazy LocalEmpiricalResourceStore when cfg.substrate.empirical_tracking
         secret_store:Optional[SecretStore]=None, # CR-12: secret backend; lazy LocalSecretStore default (project-local <data_dir>/secrets)
         max_retries:int=1, # CR-7: how many reactive retries to attempt on CapabilityResourceError (default 1 — one retry after eviction)
-        sysmon_capability_name:Optional[str]=None, # MonitorPlugin (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)
+        sysmon_capability_name:Optional[str]=None, # monitor capability (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)
         journal_store:Optional[JournalStore]=None, # CR-14: durable account-of-action; lazy LocalJournalStore at <data_dir>/journal.db
         diagnostics_store:Optional[DiagnosticsStore]=None # CR-14: disposable diagnostic narrative; lazy LocalDiagnosticsStore at <data_dir>/diagnostics.db
     ):
@@ -177,7 +177,7 @@ class CapabilityManager:
         # CR-7: bounded reactive retries on CapabilityResourceError (Track A + B).
         self.max_retries: int = max_retries
         
-        # MonitorPlugin name for GPU subtree attribution at sample-record time.
+        # monitor capability name for GPU subtree attribution at sample-record time.
         # _record_sample_safe intersects the worker-reported subtree_pids with this
         # plugin's list_processes() output. Mirrors JobQueue's sysmon_capability_name;
         # hosts typically configure both with the same value. Lazy-resolved via
@@ -308,7 +308,7 @@ def _get_global_stats(self) -> Dict[str, Any]: # Current system telemetry
             return {}
     # REMOVE-AFTER-OVERHAUL: pre-CR-3 dispatcher fallback. Only fires when
     # the configured system_monitor lacks get_system_status attribute
-    # (e.g., an in-process non-MonitorPlugin object — configuration error).
+    # (e.g., an in-process non-monitor object — configuration error).
     # SG-47 cascade ensures all real monitors expose the typed surface;
     # SG-48 sweep drops this branch entirely.
     try:
@@ -1568,7 +1568,7 @@ CapabilityManager.list_capabilities = list_capabilities
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_get_sysmon_capability
 def _get_sysmon_capability(self) -> Optional[Any]:
-    """Resolve the configured MonitorPlugin (CR-3) for GPU subtree attribution.
+    """Resolve the configured monitor capability (CR-3) for GPU subtree attribution.
 
     Returns the loaded plugin instance keyed by `sysmon_capability_name`, or
     None when no sysmon is configured / hasn't been loaded yet. Lazy

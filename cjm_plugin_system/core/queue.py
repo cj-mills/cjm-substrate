@@ -286,7 +286,7 @@ class JobQueue:
         max_history: int = 100,            # Max completed jobs to retain
         cancel_timeout: float = 3.0,       # Seconds to wait for cooperative cancel
         progress_poll_interval: float = 1.0,  # Seconds between progress polls
-        sysmon_capability_name: Optional[str] = None,  # CR-3 MonitorPlugin instance for GPU stats (None = no GPU info)
+        sysmon_capability_name: Optional[str] = None,  # CR-3 monitor capability instance for GPU stats (None = no GPU info)
         resource_snapshot_cadence_polls: int = 4,  # Sample resources every Nth progress poll
         max_concurrent_lanes: int = 4,     # Stage 3: max in-flight jobs (admission still gates each)
         gpu_headroom_fraction: float = 0.9,  # Stage 3: blunt GPU admission margin (budget = total * fraction)

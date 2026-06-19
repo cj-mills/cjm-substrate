@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, Optional
 def _proc_field(proc: Any, key: str, default: Any = None) -> Any:
     """Read a field from a sysmon process record, accepting dict or dataclass.
 
-    `MonitorPlugin.list_processes()` returns `ProcessStats` dataclasses (CR-3),
+    `MonitorToolProtocol.list_processes()` returns `ProcessStats` dataclasses (CR-3),
     but proxy round-trips frequently coerce to dicts. Accept both so the
     helper works against either form without the caller pre-normalizing.
     """
@@ -41,7 +41,7 @@ def _worker_subtree_pids(stats: Dict[str, Any]) -> set:
 
 def attribute_gpu_to_worker_subtree(
     stats: Dict[str, Any],  # Worker `/stats` payload (must include 'pid'; uses 'subtree_pids' if present)
-    sysmon: Any,            # The configured MonitorPlugin (or None)
+    sysmon: Any,            # The configured monitor capability (or None)
 ) -> Optional[Dict[str, Any]]:
     """Attribute GPU memory across the worker's process subtree.
 
