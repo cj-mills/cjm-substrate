@@ -6,8 +6,8 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcore/capability.html.md"""
 
 # %% auto #0
 __all__ = ['RELOAD_TRIGGER', 'WORKER_ENV_TEMPLATE_PLACEHOLDERS', 'ConfigOption', 'FieldOptions', 'EnvVarSpec',
-           'expand_worker_env_template', 'template_check_placeholders', 'ToolCapability', 'plugin_action',
-           'collect_plugin_actions', 'derive_structural_surface']
+           'expand_worker_env_template', 'template_check_placeholders', 'ToolCapability', 'capability_action',
+           'collect_capability_actions', 'derive_structural_surface']
 
 # %% ../../nbs/core/capability.ipynb #f96db51b
 import dataclasses
@@ -67,7 +67,7 @@ class EnvVarSpec:
     A plugin declares the environment variables its worker subprocess reads at
     startup via `WORKER_ENV: ClassVar[List[EnvVarSpec]]`. Worker env vars are
     FIXED AT SPAWN — changing one requires a worker RESPAWN, so the substrate
-    routes such changes through `reload_plugin`, never `reconfigure` (the env is
+    routes such changes through `reload_capability`, never `reconfigure` (the env is
     baked into the subprocess at `Popen` and can't be mutated in-process). This
     is the lifecycle distinction from a normal config field (reconfigurable in
     place via `reconfigure`/`_release_<trigger>`).
@@ -120,7 +120,7 @@ class EnvVarSpec:
 # `_resolve_worker_env` time (catchable as CapabilityConfigError, which multi-inherits
 # ValueError per CR-5). The same check fires inside `cjm-ctl validate` so
 # misconfigured templates surface at install/release rather than first
-# `load_plugin`.
+# `load_capability`.
 #
 # Allowed placeholders (the minimum viable set per the audit):
 #   - ${CJM_MODELS_DIR}   — substrate-injected models directory (may be None)
@@ -362,14 +362,14 @@ class ToolCapability(ABC):
         """Apply a configuration change without re-running full initialize().
         
         CR-4 completion (2026-05-25): reconfigure is the substrate's canonical
-        delta path - `CapabilityManager.update_plugin_config` routes here, NOT through
+        delta path - `CapabilityManager.update_capability_config` routes here, NOT through
         a bare `initialize(new_config)`. It fires `_release_<trigger>` releases for
         changed RELOAD_TRIGGER fields, then re-applies config (see body below).
         
         Distinction from initialize(): initialize sets up persistent state once
         after construction; reconfigure applies delta updates and is the
         canonical entry point for hot-reload via the substrate's
-        update_plugin_config path.
+        update_capability_config path.
         """
         self.reconfigure_with_triggers(old_config or {}, new_config or {})
         # CR-4 completion: re-apply config + run config-derived setup. Plugins
@@ -544,7 +544,7 @@ class ToolCapability(ABC):
         
         Worker stays alive; plugin can release heavy resources here (e.g., free
         GPU memory, close model files). The substrate fires this hook AFTER any
-        in-flight job for this plugin finishes — see CapabilityManager.disable_plugin
+        in-flight job for this plugin finishes — see CapabilityManager.disable_capability
         deferred-hook semantics. Default: no-op; plugins opt in by overriding.
         """
         pass
@@ -755,37 +755,37 @@ def _heartbeat(
 ToolCapability.heartbeat = _heartbeat
 
 # %% ../../nbs/core/capability.ipynb #540be780
-def plugin_action(
+def capability_action(
     action_name: str  # Public action name the decorated method handles
 ) -> Callable[[Callable], Callable]:  # Decorator
     """Marker decorator tagging a plugin method as the handler for `action_name`.
     
-    Sets `func._plugin_action = action_name`. Plugin authors with dispatcher-style
-    `execute(action, **kwargs)` use `collect_plugin_actions(cls)` to derive their
+    Sets `func._capability_action = action_name`. Plugin authors with dispatcher-style
+    `execute(action, **kwargs)` use `collect_capability_actions(cls)` to derive their
     `supported_actions` set from these markers rather than maintaining a separate
     list. The decorator does not change call semantics — the wrapped function is
     returned unchanged.
     """
     def decorator(func: Callable) -> Callable:
-        func._plugin_action = action_name
+        func._capability_action = action_name
         return func
     return decorator
 
 
-def collect_plugin_actions(
-    cls: type  # Class (or subclass) to scan for @plugin_action-tagged methods
+def collect_capability_actions(
+    cls: type  # Class (or subclass) to scan for @capability_action-tagged methods
 ) -> Set[str]:  # Set of action names handled by `cls` (including inherited)
-    """Collect action names from `@plugin_action`-decorated methods on `cls`.
+    """Collect action names from `@capability_action`-decorated methods on `cls`.
     
     Walks the class's MRO so subclasses inherit action handlers from base
     classes automatically. The returned set is suitable for
-    `supported_actions: ClassVar[Set[str]] = collect_plugin_actions(MyPlugin)`
+    `supported_actions: ClassVar[Set[str]] = collect_capability_actions(MyPlugin)`
     once the plugin class body has been defined.
     """
     actions: Set[str] = set()
     for ancestor in cls.__mro__:
         for attr in vars(ancestor).values():
-            tag = getattr(attr, "_plugin_action", None)
+            tag = getattr(attr, "_capability_action", None)
             if isinstance(tag, str):
                 actions.add(tag)
     return actions
@@ -793,13 +793,13 @@ def collect_plugin_actions(
 # %% ../../nbs/core/capability.ipynb #91b2cd38
 def _dispatch_to_action(
     self,
-    action: str,  # Action name to dispatch (matched against @plugin_action tags)
+    action: str,  # Action name to dispatch (matched against @capability_action tags)
     **kwargs,     # Forwarded verbatim to the resolved handler
 ) -> Any:         # Whatever the handler returns
-    """T28: dispatch `action` to its `@plugin_action`-tagged handler.
+    """T28: dispatch `action` to its `@capability_action`-tagged handler.
 
-    Walks the instance's MRO for a method tagged `_plugin_action == action`
-    (the SAME markers `collect_plugin_actions` / `supported_actions` are built
+    Walks the instance's MRO for a method tagged `_capability_action == action`
+    (the SAME markers `collect_capability_actions` / `supported_actions` are built
     from) and calls it as `handler(self, **kwargs)`. Unknown actions raise the
     typed `CapabilityInputError(fields_invalid=["action"])` (CR-5) — identical
     behaviour to the hand-rolled dispatchers this replaces.
@@ -808,17 +808,17 @@ def _dispatch_to_action(
     `execute` to a one-liner instead of reimplementing the MRO walk in every
     plugin (the 5x copy SG-44 + this helper retire):
 
-        @plugin_action("separate_vocals")
+        @capability_action("separate_vocals")
         def _separate_vocals(self, **kwargs): ...
 
-        supported_actions = collect_plugin_actions(MyPlugin)
+        supported_actions = collect_capability_actions(MyPlugin)
 
         def execute(self, action="separate_vocals", **kwargs):
             return self.dispatch_to_action(action, **kwargs)
     """
     for klass in type(self).__mro__:
         for attr in vars(klass).values():
-            if getattr(attr, "_plugin_action", None) == action:
+            if getattr(attr, "_capability_action", None) == action:
                 return attr(self, **kwargs)
     raise CapabilityInputError(
         f"Unknown action: {action}", fields_invalid=["action"],

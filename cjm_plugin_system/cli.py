@@ -6,7 +6,7 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcli.html.md"""
 
 # %% auto #0
 __all__ = ['app', 'main', 'setup_runtime', 'run_cmd', 'regenerate_manifest', 'generate_adapter_manifest', 'install_all',
-           'setup_host', 'list_plugins', 'logs_command', 'retention_command', 'remove_plugin', 'validate_file',
+           'setup_host', 'list_capabilities', 'logs_command', 'retention_command', 'remove_capability', 'validate_file',
            'set_secret', 'list_secrets']
 
 # %% ../nbs/cli.ipynb #8385ac8c
@@ -1179,7 +1179,7 @@ def _v2_to_legacy_flat_view(
 ) -> Dict[str, Any]:  # Flat-shaped dict (install + code merged at top level)
     """REMOVE-AFTER-OVERHAUL: produce a legacy flat-shaped view of a manifest.
     
-    Consumer code in `list_plugins` + `remove_plugin` still reads manifests as
+    Consumer code in `list_capabilities` + `remove_capability` still reads manifests as
     flat dicts (`manifest.get('python_path')`, etc.). When the on-disk manifest
     is v2.0 nested, we flatten install + code sections to the top level so
     those consumers don't need migration in the same PR. The shim retires when
@@ -1246,7 +1246,7 @@ def _extract_env_from_python_path(
 
 # %% ../nbs/cli.ipynb #fn-list-plugins
 @app.command("list")
-def list_plugins(
+def list_capabilities(
     plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml for cross-reference"),
     show_envs:bool=typer.Option(False, "--envs", "-e", help="Show conda environment status")
 ) -> None:
@@ -1464,7 +1464,7 @@ def retention_command(
 
 # %% ../nbs/cli.ipynb #hl18n81zioc
 @app.command("remove")
-def remove_plugin(
+def remove_capability(
     plugin_name:str=typer.Argument(..., help="Name of the plugin to remove"),
     plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml for env name lookup"),
     keep_env:bool=typer.Option(False, "--keep-env", help="Keep the conda environment, only remove manifest"),
@@ -1718,7 +1718,7 @@ def _validate_manifest_v2_dict(
     # T23: worker-env default templating — every EnvVarSpec.default's ${...}
     # placeholders must be in the allowed vocabulary, else the substrate can't
     # resolve them when it spawns the worker. Surface the plugin-author bug at
-    # validate/release time rather than first load_plugin.
+    # validate/release time rather than first load_capability.
     if isinstance(code, dict) and code.get("worker_env") is not None:
         from cjm_plugin_system.core.capability import template_check_placeholders
         from cjm_plugin_system.core.errors import CapabilityConfigError
@@ -1954,7 +1954,7 @@ def _collect_manifest_warnings(
     return warnings
 
 # %% ../nbs/cli.ipynb #fb28940b
-def _lint_plugin_logging(
+def _lint_capability_logging(
     path: Path  # A plugin .py file or package directory to scan
 ) -> tuple:  # (errors, warnings) — lists of human-readable findings
     """T23 (CR-14): lint plugin source for `logging.basicConfig` calls.
@@ -2059,7 +2059,7 @@ def validate_file(
             errors = _validate_plugins_yaml_dict(data)
             kind = "plugins.yaml"
         elif fmt == "source":
-            errors, warnings = _lint_plugin_logging(path)
+            errors, warnings = _lint_capability_logging(path)
             kind = "plugin source"
         else:
             typer.echo(f"Unknown format: {fmt!r}", err=True)
@@ -2111,7 +2111,7 @@ def set_secret(
     worker env at spawn. Omit --value to be prompted (hidden input) so the
     secret stays out of shell history. After setting, reload the plugin (or
     restart the host) so its worker respawns with the new env — the GUI /
-    CapabilityManager.set_plugin_secret do this automatically.
+    CapabilityManager.set_capability_secret do this automatically.
     """
     store = _open_secret_store()
     if value is None:

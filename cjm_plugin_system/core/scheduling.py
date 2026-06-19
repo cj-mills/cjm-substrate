@@ -251,6 +251,6 @@ def _check_resources(
 
 # %% ../../nbs/core/scheduling.ipynb #m-get-active-plugins
 @patch
-def get_active_plugins(self:QueueScheduler) -> Set[str]:  # Set of currently executing plugin names
+def get_active_capabilities(self:QueueScheduler) -> Set[str]:  # Set of currently executing plugin names
     """Get the set of plugins with active executions."""
     return self._active_plugins.copy()

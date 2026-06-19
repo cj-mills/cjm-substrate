@@ -123,10 +123,10 @@ class JobQueueDependencies(Protocol):
     queue isn't constructed with explicit stores — a deps without them
     (test doubles) simply yields no journaling.
     """
-    def get_plugin_meta(self, name_or_id: str) -> Optional[Any]: ...
-    def get_plugin(self, name_or_id: str) -> Optional[Any]: ...
-    async def execute_plugin_async(self, name_or_id: str, *args: Any, **kwargs: Any) -> Any: ...
-    def reload_plugin(self, name_or_id: str) -> Any: ...
+    def get_capability_meta(self, name_or_id: str) -> Optional[Any]: ...
+    def get_capability(self, name_or_id: str) -> Optional[Any]: ...
+    async def execute_capability_async(self, name_or_id: str, *args: Any, **kwargs: Any) -> Any: ...
+    def reload_capability(self, name_or_id: str) -> Any: ...
     # Stage 3 (CR-16) admission surface:
     def get_admission_profile(self, name_or_id: str) -> Optional[Dict[str, Any]]: ...
     def get_instance_concurrency_cap(self, name_or_id: str) -> Optional[int]: ...
@@ -134,7 +134,7 @@ class JobQueueDependencies(Protocol):
     # Stage 4 (CR-17 pt 2) task channel — invoked only for task-addressed jobs
     # (Job.task_name set); execute-channel jobs never touch it, so older test
     # doubles keep working unchanged.
-    async def execute_plugin_task_async(self, name_or_id: str, task_name: str, method: str, **kwargs: Any) -> Any: ...
+    async def execute_capability_task_async(self, name_or_id: str, task_name: str, method: str, **kwargs: Any) -> Any: ...
 
 # %% ../../nbs/core/queue.ipynb #job-dataclass
 @dataclass
@@ -455,7 +455,7 @@ async def submit(
 
     CR-2: rejects jobs for disabled plugins at submit time (typed
     CapabilityDisabledError) so the failure surface matches CapabilityManager.
-    execute_plugin's disabled gate. Submitting to a disabled plugin would
+    execute_capability's disabled gate. Submitting to a disabled plugin would
     otherwise sit in the queue until execution, then raise — moving the
     check earlier gives operators an actionable signal immediately.
 
@@ -485,7 +485,7 @@ async def submit(
             fields_invalid=["task", "method"],
         )
 
-    meta = self._deps.get_plugin_meta(plugin_instance_id)
+    meta = self._deps.get_capability_meta(plugin_instance_id)
     if meta is not None and not meta.enabled:
         raise CapabilityDisabledError(plugin_instance_id)
 
@@ -922,7 +922,7 @@ async def submit_composition(
     self._check_journal_wedge()
 
     for n in comp.nodes:
-        meta = self._deps.get_plugin_meta(n.plugin_instance_id)
+        meta = self._deps.get_capability_meta(n.plugin_instance_id)
         if meta is not None and not meta.enabled:
             self.logger.error(
                 f"Composition submission rejected: node {n.id!r} targets "
@@ -1197,7 +1197,7 @@ def _sample_resource_snapshot(
     GPU enumeration. The pre-fix path matched only `worker_pid` and reported
     `gpu_memory_mb=None` for any subprocess-spawning plugin.
     """
-    proxy = self._deps.get_plugin(job.plugin_instance_id)
+    proxy = self._deps.get_capability(job.plugin_instance_id)
     if not proxy or not hasattr(proxy, 'get_stats'):
         return None
 
@@ -1215,7 +1215,7 @@ def _sample_resource_snapshot(
 
     # Best-effort sysmon enrichment via CR-3 typed methods.
     if self._sysmon_name:
-        sysmon = self._deps.get_plugin(self._sysmon_name)
+        sysmon = self._deps.get_capability(self._sysmon_name)
         if sysmon is not None:
             # Per-subtree GPU usage via the shared substrate helper. Returns None
             # when sysmon is unreachable; substrate leaves GPU fields at their
@@ -1802,7 +1802,7 @@ async def _execute_job(self, job: Job) -> None:
 
     try:
         # Get the plugin proxy
-        plugin = self._deps.get_plugin(job.plugin_instance_id)
+        plugin = self._deps.get_capability(job.plugin_instance_id)
         if not plugin:
             raise ValueError(f"Plugin not loaded: {job.plugin_instance_id}")
 
@@ -1921,12 +1921,12 @@ async def _execute_with_cancellation(
         # the explicit task channel; execute-channel jobs are unchanged.
         if job.task_name is not None:
             exec_task = asyncio.create_task(
-                self._deps.execute_plugin_task_async(
+                self._deps.execute_capability_task_async(
                     job.plugin_instance_id, job.task_name, job.method, **job.kwargs)
             )
         else:
             exec_task = asyncio.create_task(
-                self._deps.execute_plugin_async(job.plugin_instance_id, *job.args, **job.kwargs)
+                self._deps.execute_capability_async(job.plugin_instance_id, *job.args, **job.kwargs)
             )
     finally:
         reset_call_envelope(token)
@@ -1957,7 +1957,7 @@ async def _execute_with_cancellation(
 
                 # PHASE: RELOADING — worker reload in progress post-force-kill
                 self._emit_cancel_phase(job, CancelPhase.RELOADING)
-                self._deps.reload_plugin(job.plugin_instance_id)
+                self._deps.reload_capability(job.plugin_instance_id)
 
                 # PHASE: COMPLETED — cancellation fully resolved
                 self._emit_cancel_phase(job, CancelPhase.COMPLETED)

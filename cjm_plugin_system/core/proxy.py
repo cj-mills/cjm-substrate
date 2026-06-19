@@ -78,7 +78,7 @@ class RemoteCapabilityProxy(ToolCapability):
         # subprocess env at spawn, AFTER the manifest's static env_vars but
         # BEFORE the CJM paths (so an override/secret beats a manifest default,
         # while substrate-owned CJM paths always win). These are fixed at spawn;
-        # changing any of them requires a worker RESPAWN (reload_plugin).
+        # changing any of them requires a worker RESPAWN (reload_capability).
         self.extra_env = dict(extra_env or {})
         self.process: Optional[subprocess.Popen] = None
         # CR-14: observability sinks. The journal is the host-written
@@ -1240,7 +1240,7 @@ def reconfigure(
     reconfigure_with_triggers, which walks RELOAD_TRIGGER metadata on the
     plugin's config_class to fire `_release_<trigger>` methods for fields
     whose values changed. Plugins not opting into the declarative pattern
-    land in a silent no-op; the substrate's CapabilityManager.update_plugin_config
+    land in a silent no-op; the substrate's CapabilityManager.update_capability_config
     then falls back to initialize(new_config) for the actual state change.
     """
     payload = {"old_config": old_config, "new_config": new_config}

@@ -106,7 +106,7 @@ class CapabilityFatalError(CapabilityError):
 
 # %% ../../nbs/core/errors.ipynb #substrate-errors
 class CapabilityDisabledError(CapabilityInputError):
-    """JobQueue / execute_plugin rejected: the plugin is currently disabled.
+    """JobQueue / execute_capability rejected: the plugin is currently disabled.
     
     User-fixable (re-enable the plugin). Inherits `CapabilityInputError`'s ValueError
     MRO so existing `except ValueError:` callers see it as an input error.

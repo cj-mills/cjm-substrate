@@ -64,8 +64,8 @@ class SubstrateConfig:
       Default 60 s; bump higher for plugins that don't report progress, or lower
       if false-positive stalls are noisy.
     """
-    drift_detection:bool=True # Run /config_schema hash compare on every load_plugin
-    empirical_tracking:bool=True # Record ResourceSample after every execute_plugin*
+    drift_detection:bool=True # Run /config_schema hash compare on every load_capability
+    empirical_tracking:bool=True # Record ResourceSample after every execute_capability*
     prefetch_stall_threshold_seconds:float=60.0 # CR-4 / Session A: stall detection threshold for proxy.prefetch
     diagnostics_retention_days:float=30.0 # CR-14 follow-up: age-based diagnostics retention; <=0 disables the startup sweep
     diagnostics_retention_max_mb:Optional[float]=None # CR-14 follow-up: diagnostics.db size budget (None = no size-based deletion)

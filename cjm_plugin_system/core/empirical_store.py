@@ -1,4 +1,4 @@
-"""Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — `record_sample` is called from `CapabilityManager.execute_plugin*` finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
+"""Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — `record_sample` is called from `CapabilityManager.execute_capability*` finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/empirical_store.html.md"""
 

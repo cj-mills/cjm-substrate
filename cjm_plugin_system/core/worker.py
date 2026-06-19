@@ -87,7 +87,7 @@ def parent_monitor(
         terminate_self()
 
 # %% ../../nbs/core/worker.ipynb #19319501
-def _load_plugin_instance(
+def _load_capability_instance(
     module_name: str, # Python module path (e.g., "my_plugin.plugin")
     class_name: str   # Plugin class name (e.g., "WhisperPlugin")
 ):                    # Instantiated plugin object
@@ -128,7 +128,7 @@ def _make_lifespan(
         substrate's proxy stall-detection killing a wedged prefetch) route
         through uvicorn's graceful-shutdown path, which fires this lifespan
         teardown. Pre-Session-A the plugin's cleanup() hook was only invoked
-        on the manager-driven unload_plugin path — never on watchdog or
+        on the manager-driven unload_capability path — never on watchdog or
         stall-triggered termination — so plugins that spawn grandchild
         subprocesses (Voxtral-vLLM's vLLM server is the driving case) leaked
         them as orphans whenever the worker died abnormally. Cleanup failures
@@ -788,7 +788,7 @@ def create_app(
     lifespan, register the endpoint groups. Endpoint behavior lives in the
     module-level `_register_*` helpers above.
     """
-    plugin_instance = _load_plugin_instance(module_name, class_name)
+    plugin_instance = _load_capability_instance(module_name, class_name)
     adapters = _load_adapters(plugin_instance, adapter_specs)
     app = FastAPI(title="Plugin Worker", lifespan=_make_lifespan(plugin_instance))
     _register_identity_endpoints(app, plugin_instance)

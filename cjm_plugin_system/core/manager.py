@@ -7,16 +7,17 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcore/manager.html.md"""
 # %% auto #0
 __all__ = ['CapabilityManager', 'register_system_monitor', 'get_global_stats', 'get_admission_profile',
            'get_instance_concurrency_cap', 'discover_manifests', 'get_adapters_for_task', 'check_adapter_compatibility',
-           'get_capabilities_compatible_with', 'get_discovered_by_category', 'get_plugins_by_category',
-           'get_discovered_categories', 'get_loaded_categories', 'get_plugin_meta', 'get_discovered_meta',
-           'get_instance', 'list_instances', 'get_worker_env_status', 'missing_required_env', 'set_plugin_secret',
-           'load_plugin', 'load_all', 'unload_plugin', 'unload_all', 'get_plugin', 'list_plugins', 'execute_plugin',
-           'execute_plugin_async', 'execute_plugin_task', 'execute_plugin_task_async', 'enable_plugin',
-           'disable_plugin', 'get_plugin_diagnostics', 'get_plugin_config', 'get_plugin_config_schema',
-           'get_config_options', 'get_all_plugin_configs', 'update_plugin_config', 'reload_plugin', 'get_plugin_stats',
-           'execute_plugin_stream', 'load_plugin_async', 'unload_plugin_async', 'load_plugins_concurrent',
-           'unload_plugins_concurrent', 'CapabilityBinding', 'bind', 'get_by_role', 'get_by_domain', 'get_canonical',
-           'get_compatible_for_current_platform']
+           'get_capabilities_compatible_with', 'get_discovered_by_category', 'get_capabilities_by_category',
+           'get_discovered_categories', 'get_loaded_categories', 'get_capability_meta', 'get_discovered_meta',
+           'get_instance', 'list_instances', 'get_worker_env_status', 'missing_required_env', 'set_capability_secret',
+           'load_capability', 'load_all', 'unload_capability', 'unload_all', 'get_capability', 'list_capabilities',
+           'execute_capability', 'execute_capability_async', 'execute_capability_task', 'execute_capability_task_async',
+           'enable_capability', 'disable_capability', 'get_capability_diagnostics', 'get_capability_config',
+           'get_capability_config_schema', 'get_config_options', 'get_all_capability_configs',
+           'update_capability_config', 'reload_capability', 'get_capability_stats', 'execute_capability_stream',
+           'load_capability_async', 'unload_capability_async', 'load_capabilities_concurrent',
+           'unload_capabilities_concurrent', 'CapabilityBinding', 'bind', 'get_by_role', 'get_by_domain',
+           'get_canonical', 'get_compatible_for_current_platform']
 
 # %% ../../nbs/core/manager.ipynb #31a5a9f1
 import asyncio
@@ -117,7 +118,7 @@ class CapabilityManager:
         self.config_store: CapabilityConfigStore = config_store or LocalCapabilityConfigStore(
             (_data_dir / "plugin_configs.db") if _data_dir is not None else None
         )
-        # Track plugins with in-flight execute calls so disable_plugin can defer
+        # Track plugins with in-flight execute calls so disable_capability can defer
         # the on_disable hook until the job finishes (audit semantics).
         self._running_executions: Set[str] = set()
         self._pending_disable_hooks: Set[str] = set()
@@ -185,9 +186,9 @@ class CapabilityManager:
         self._sysmon_plugin_name: Optional[str] = sysmon_plugin_name
         
         # SG-33 (part-of-CR-7): per-instance asyncio.Semaphore for the async
-        # execute path's concurrency cap. Lazy-created on first execute_plugin_async
+        # execute path's concurrency cap. Lazy-created on first execute_capability_async
         # for instances whose `max_concurrent_requests` was set at load time.
-        # Sync execute_plugin is NOT gated — sync callers can't await a semaphore.
+        # Sync execute_capability is NOT gated — sync callers can't await a semaphore.
         self._concurrent_limiters: Dict[str, asyncio.Semaphore] = {}
 
 # %% ../../nbs/core/manager.ipynb #a57149cd
@@ -238,7 +239,7 @@ def register_system_monitor(
     plugin_name:str # Name of the system monitor plugin
 ) -> None:
     """Bind a loaded plugin to act as the hardware system monitor."""
-    self.system_monitor = self.get_plugin(plugin_name)
+    self.system_monitor = self.get_capability(plugin_name)
     if self.system_monitor:
         self.logger.info(f"Registered system monitor: {plugin_name}")
     else:
@@ -264,7 +265,7 @@ def _resolve_system_monitor(
         return self.system_monitor
     name = getattr(self, "_sysmon_plugin_name", None)
     if name:
-        monitor = self.get_plugin(name)
+        monitor = self.get_capability(name)
         if monitor:
             self.system_monitor = monitor
             self.logger.info(f"System monitor lazily bound from sysmon_plugin_name: {name}")
@@ -323,7 +324,7 @@ async def _get_global_stats_async(self) -> Dict[str, Any]: # Current system tele
     """Fetch real-time stats from the system monitor plugin (async).
     
     Same CR-3 duck-type semantics as the sync variant. Async variant exists
-    because the substrate's `execute_plugin_async` path (CR-2 + CR-10) needs
+    because the substrate's `execute_capability_async` path (CR-2 + CR-10) needs
     a non-blocking stats fetch when scheduling under an asyncio event loop.
     """
     monitor = self._resolve_system_monitor()
@@ -663,7 +664,7 @@ def _resolve_adapter_specs(
 
     AUTO (adapters=None): every discovered adapter whose protocol members match
     the capability's recorded surface binds silently — binding rides
-    `load_plugin` with no separate manual call (the G11 lesson: a manual
+    `load_capability` with no separate manual call (the G11 lesson: a manual
     registration step no CLI makes is silently inert).
 
     EXPLICIT (adapters=[names]): each named unit is verified; an incompatible
@@ -720,15 +721,15 @@ def get_discovered_by_category(
 
 CapabilityManager.get_discovered_by_category = get_discovered_by_category
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugins_by_category
-def get_plugins_by_category(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capabilities_by_category
+def get_capabilities_by_category(
     self,
     category:str # Category to filter by (e.g., "transcription")
 ) -> List[CapabilityMeta]: # List of matching loaded plugins
     """Get loaded plugins filtered by category."""
     return [meta for meta in self.plugins.values() if meta.category == category]
 
-CapabilityManager.get_plugins_by_category = get_plugins_by_category
+CapabilityManager.get_capabilities_by_category = get_capabilities_by_category
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_categories
 def get_discovered_categories(self) -> List[str]: # List of unique categories
@@ -744,15 +745,15 @@ def get_loaded_categories(self) -> List[str]: # List of unique categories
 
 CapabilityManager.get_loaded_categories = get_loaded_categories
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_meta
-def get_plugin_meta(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_meta
+def get_capability_meta(
     self,
     plugin_name:str # Name of the plugin
 ) -> Optional[CapabilityMeta]: # Plugin metadata or None
     """Get metadata for a loaded plugin by name."""
     return self.plugins.get(plugin_name)
 
-CapabilityManager.get_plugin_meta = get_plugin_meta
+CapabilityManager.get_capability_meta = get_capability_meta
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_meta
 def get_discovered_meta(
@@ -1022,7 +1023,7 @@ CapabilityManager._validate_instance_id = _validate_instance_id
 def _generate_instance_id(self, plugin_name: str) -> str:
     """Generate a unique instance_id of form `{plugin_name}-{6-char-hex}`.
     
-    Used when load_plugin is called with new_instance=True and no explicit
+    Used when load_capability is called with new_instance=True and no explicit
     instance_id. Retries up to 16 times if a collision occurs in self.instances.
     """
     import secrets as _secrets
@@ -1108,7 +1109,7 @@ def _resolve_worker_env(
     (operator-side concerns don't break load; the plugin signals at execute).
     Plugin-author-bug-class errors (unknown placeholders) surface at
     install/release time via `cjm-ctl validate` + `template_check_placeholders`,
-    not here. All values are fixed at spawn — a change requires `reload_plugin`.
+    not here. All values are fixed at spawn — a change requires `reload_capability`.
     """
     from cjm_plugin_system.core.capability import expand_worker_env_template
 
@@ -1223,8 +1224,8 @@ def missing_required_env(
 
 CapabilityManager.missing_required_env = missing_required_env
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-set_plugin_secret
-def set_plugin_secret(
+# %% ../../nbs/core/manager.ipynb #pm-fn-set_capability_secret
+def set_capability_secret(
     self,
     name_or_id: str,             # Plugin name or instance_id whose secret to set
     key: str,                    # Secret key (the env-var name, e.g. "GEMINI_API_KEY")
@@ -1252,15 +1253,15 @@ def set_plugin_secret(
     targets = [i.instance_id for i in self.instances.values() if i.plugin_name == plugin_name]
     for iid in targets:
         try:
-            self.reload_plugin(iid)
+            self.reload_capability(iid)
         except Exception as e:
-            self.logger.warning(f"set_plugin_secret: reload of {iid!r} failed: {e}")
+            self.logger.warning(f"set_capability_secret: reload of {iid!r} failed: {e}")
     return True
 
-CapabilityManager.set_plugin_secret = set_plugin_secret
+CapabilityManager.set_capability_secret = set_capability_secret
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-load_plugin
-def load_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-load_capability
+def load_capability(
     self,
     plugin_meta:CapabilityMeta, # Plugin metadata (with manifest attached)
     config:Optional[Dict[str, Any]]=None, # Initial configuration
@@ -1291,10 +1292,10 @@ def load_plugin(
     re-spawning.
     
     CR-7: computes `config_hash` from the effective config (post-defaults +
-    post-validation) and stores it on the CapabilityInstance so execute_plugin*
+    post-validation) and stores it on the CapabilityInstance so execute_capability*
     can key empirical samples by (instance_id, config_hash). SG-33 stores
     `max_concurrent_requests` on the instance — the actual asyncio.Semaphore
-    is lazy-created in execute_plugin_async via `_get_concurrent_limiter`.
+    is lazy-created in execute_capability_async via `_get_concurrent_limiter`.
     """
     if not hasattr(plugin_meta, 'manifest'):
         self.logger.error(f"Plugin {plugin_meta.name} has no manifest data")
@@ -1413,7 +1414,7 @@ def load_plugin(
             self.plugins[plugin_meta.name] = plugin_meta
         elif plugin_meta.name not in self.plugins:
             # First-ever instance for this plugin is multi-instance — record
-            # the CapabilityMeta so list_plugins / get_plugin_meta still work,
+            # the CapabilityMeta so list_capabilities / get_capability_meta still work,
             # but leave meta.instance=None (no canonical instance exists).
             self.plugins[plugin_meta.name] = plugin_meta
         
@@ -1446,7 +1447,7 @@ def load_plugin(
         )
         return False
 
-CapabilityManager.load_plugin = load_plugin
+CapabilityManager.load_capability = load_capability
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-load_all
 def load_all(
@@ -1460,14 +1461,14 @@ def load_all(
     self.discover_manifests()
     for meta in self.discovered:
         config = configs.get(meta.name)
-        results[meta.name] = self.load_plugin(meta, config)
+        results[meta.name] = self.load_capability(meta, config)
     
     return results
 
 CapabilityManager.load_all = load_all
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-unload_plugin
-def unload_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-unload_capability
+def unload_capability(
     self,
     name_or_id:str # Plugin name (default-loaded) or instance_id (multi-instance)
 ) -> bool: # True if successfully unloaded
@@ -1509,7 +1510,7 @@ def unload_plugin(
         elif instance_id == plugin_name:
             # Canonical instance unloaded but multi-instances remain — clear
             # the now-stale canonical reference; CapabilityMeta stays so
-            # list_plugins / get_plugin_meta still surface the plugin.
+            # list_capabilities / get_capability_meta still surface the plugin.
             meta = self.plugins.get(plugin_name)
             if meta is not None:
                 meta.instance = None
@@ -1519,7 +1520,7 @@ def unload_plugin(
         self.logger.error(f"Error unloading {name_or_id!r}: {e}")
         return False
 
-CapabilityManager.unload_plugin = unload_plugin
+CapabilityManager.unload_capability = unload_capability
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-unload_all
 def unload_all(self) -> None:
@@ -1529,16 +1530,16 @@ def unload_all(self) -> None:
     multi-instance entries get torn down, not just the canonical instances.
     """
     for inst_id in list(self.instances.keys()):
-        self.unload_plugin(inst_id)
+        self.unload_capability(inst_id)
     # Catch any legacy plugin entries that didn't have a corresponding instance
     # (shouldn't happen post-CR-10 but defensive cleanup)
     for name in list(self.plugins.keys()):
-        self.unload_plugin(name)
+        self.unload_capability(name)
 
 CapabilityManager.unload_all = unload_all
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin
-def get_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability
+def get_capability(
     self,
     name_or_id:str # Plugin name (default-loaded) or instance_id (multi-instance)
 ) -> Optional[ToolCapability]: # Plugin proxy instance or None
@@ -1547,7 +1548,7 @@ def get_plugin(
     Lookup order: self.instances first (covers both default plugin_name and
     multi-instance IDs), falling back to CapabilityMeta.instance for any
     legacy code path that populated self.plugins without self.instances
-    (defensive — shouldn't happen post-CR-10 since load_plugin always
+    (defensive — shouldn't happen post-CR-10 since load_capability always
     records the instance).
     """
     inst = self.instances.get(name_or_id)
@@ -1556,17 +1557,17 @@ def get_plugin(
     meta = self.plugins.get(name_or_id)
     return meta.instance if meta else None
 
-CapabilityManager.get_plugin = get_plugin
+CapabilityManager.get_capability = get_capability
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-list_plugins
-def list_plugins(self) -> List[CapabilityMeta]: # List of loaded plugin metadata
+# %% ../../nbs/core/manager.ipynb #pm-fn-list_capabilities
+def list_capabilities(self) -> List[CapabilityMeta]: # List of loaded plugin metadata
     """List all loaded plugins."""
     return list(self.plugins.values())
 
-CapabilityManager.list_plugins = list_plugins
+CapabilityManager.list_capabilities = list_capabilities
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-_get_sysmon_plugin
-def _get_sysmon_plugin(self) -> Optional[Any]:
+# %% ../../nbs/core/manager.ipynb #pm-fn-_get_sysmon_capability
+def _get_sysmon_capability(self) -> Optional[Any]:
     """Resolve the configured MonitorPlugin (CR-3) for GPU subtree attribution.
 
     Returns the loaded plugin instance keyed by `sysmon_plugin_name`, or
@@ -1581,7 +1582,7 @@ def _get_sysmon_plugin(self) -> Optional[Any]:
     meta = self.plugins.get(name)
     return getattr(meta, "instance", None) if meta else None
 
-CapabilityManager._get_sysmon_plugin = _get_sysmon_plugin
+CapabilityManager._get_sysmon_capability = _get_sysmon_capability
 
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_record_sample_safe
@@ -1614,7 +1615,7 @@ def _record_sample_safe(self, inst:CapabilityInstance, start_time:float, success
     if store is None:
         return
     if not inst.config_hash:
-        # No config_hash means the instance wasn't loaded through load_plugin
+        # No config_hash means the instance wasn't loaded through load_capability
         # (test fixtures with manual self.instances[...] = CapabilityInstance(...)
         # populate). Skip recording rather than keying records by empty string.
         return
@@ -1632,7 +1633,7 @@ def _record_sample_safe(self, inst:CapabilityInstance, start_time:float, success
         # GPU subtree attribution via the shared helper. Returns None when no
         # sysmon is configured / reachable; returns 0.0 for CPU-only plugins.
         gpu_mb = 0.0
-        sysmon = self._get_sysmon_plugin() if hasattr(self, '_get_sysmon_plugin') else None
+        sysmon = self._get_sysmon_capability() if hasattr(self, '_get_sysmon_capability') else None
         if sysmon is not None and worker_stats:
             attribution = attribute_gpu_to_worker_subtree(worker_stats, sysmon)
             if attribution is not None:
@@ -1669,7 +1670,7 @@ def _get_concurrent_limiter(self, instance_id:str) -> Optional[asyncio.Semaphore
     Returns None when the instance has no `max_concurrent_requests` set (the
     default — unbounded). Otherwise creates the semaphore on first call and
     caches it in `self._concurrent_limiters`. Semaphores are bound to the
-    event loop they were created in; lazy creation inside `execute_plugin_async`
+    event loop they were created in; lazy creation inside `execute_capability_async`
     ensures we're inside the right loop at construction time (Python 3.10+
     semaphore-loop-binding rules).
     
@@ -1778,7 +1779,7 @@ def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
         if hasattr(candidate.instance, 'release'):
             candidate.instance.release()
         else:
-            self.reload_plugin(candidate.name)
+            self.reload_capability(candidate.name)
         time.sleep(0.5) 
         if self.scheduler.allocate(needed_meta, self._get_global_stats):
             return True
@@ -1787,8 +1788,8 @@ def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
 
 CapabilityManager._evict_for_resources = _evict_for_resources
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-execute_plugin
-def execute_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-execute_capability
+def execute_capability(
     self,
     name_or_id:str, # Plugin name (default-loaded) or instance_id (multi-instance)
     *args,
@@ -1821,7 +1822,7 @@ def execute_plugin(
     if not inst.enabled:
         raise CapabilityDisabledError(inst.instance_id)
     
-    instance_id = inst.instance_id  # stable across reload (preserved by reload_plugin)
+    instance_id = inst.instance_id  # stable across reload (preserved by reload_capability)
     plugin_meta = self.plugins.get(inst.plugin_name)
     
     # CR-7 reactive retry loop. Defensive max_retries lookup so test fixtures
@@ -1860,7 +1861,7 @@ def execute_plugin(
                 f"CR-7: reloading worker for {instance_id} after CapabilityResourceError "
                 f"({type(last_resource_error).__name__})"
             )
-            self.reload_plugin(instance_id, config=saved_config)
+            self.reload_capability(instance_id, config=saved_config)
             inst = self.instances.get(instance_id)
             if inst is None:
                 self.logger.error(
@@ -1906,10 +1907,10 @@ def execute_plugin(
             self._maybe_fire_disable_hook(inst.instance_id)
             self._record_sample_safe(inst, start_time, success)
 
-CapabilityManager.execute_plugin = execute_plugin
+CapabilityManager.execute_capability = execute_capability
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-execute_plugin_async
-async def execute_plugin_async(
+# %% ../../nbs/core/manager.ipynb #pm-fn-execute_capability_async
+async def execute_capability_async(
     self,
     name_or_id:str, # Plugin name (default-loaded) or instance_id (multi-instance)
     *args,
@@ -1919,7 +1920,7 @@ async def execute_plugin_async(
 ) -> Any: # Plugin result
     """Execute a plugin instance's main functionality (async).
     
-    CR-10 + CR-2: same semantics as execute_plugin, async-flavored. Scheduler
+    CR-10 + CR-2: same semantics as execute_capability, async-flavored. Scheduler
     allocation goes through allocate_async for non-blocking polling.
     
     CR-7 + SG-33: reactive retry on CapabilityResourceError — always reloads
@@ -1971,7 +1972,7 @@ async def execute_plugin_async(
                 f"CR-7: reloading worker for {instance_id} after CapabilityResourceError "
                 f"({type(last_resource_error).__name__})"
             )
-            self.reload_plugin(instance_id, config=saved_config)
+            self.reload_capability(instance_id, config=saved_config)
             inst = self.instances.get(instance_id)
             if inst is None:
                 self.logger.error(
@@ -1979,7 +1980,7 @@ async def execute_plugin_async(
                 )
                 raise last_resource_error
             # Reload may have swapped the limiter (different max_concurrent_requests
-            # — though load_plugin's reload-via-unload-then-load path passes None
+            # — though load_capability's reload-via-unload-then-load path passes None
             # here today; the lookup is correct in either case).
             limiter = self._get_concurrent_limiter(instance_id)
         
@@ -2025,10 +2026,10 @@ async def execute_plugin_async(
             self._maybe_fire_disable_hook(inst.instance_id)
             self._record_sample_safe(inst, start_time, success)
 
-CapabilityManager.execute_plugin_async = execute_plugin_async
+CapabilityManager.execute_capability_async = execute_capability_async
 
 # %% ../../nbs/core/manager.ipynb #7793a81f
-def execute_plugin_task(
+def execute_capability_task(
     self,
     name_or_id:str, # Plugin name (default-loaded) or instance_id (multi-instance)
     task_name:str, # Adapter task, e.g. "graph-storage"
@@ -2037,13 +2038,13 @@ def execute_plugin_task(
 ) -> Any: # Typed task result
     """CR-17 pt 2: execute a typed task-adapter method (explicit task channel; sync).
 
-    Thin wrapper over `execute_plugin` — the whole CR-7 retry / scheduler /
+    Thin wrapper over `execute_capability` — the whole CR-7 retry / scheduler /
     empirical-sampling machinery applies identically to task-channel calls.
     """
-    return self.execute_plugin(name_or_id, _task_name=task_name, _method=method, **kwargs)
+    return self.execute_capability(name_or_id, _task_name=task_name, _method=method, **kwargs)
 
 
-async def execute_plugin_task_async(
+async def execute_capability_task_async(
     self,
     name_or_id:str, # Plugin name (default-loaded) or instance_id (multi-instance)
     task_name:str, # Adapter task, e.g. "graph-storage"
@@ -2052,20 +2053,20 @@ async def execute_plugin_task_async(
 ) -> Any: # Typed task result
     """CR-17 pt 2: execute a typed task-adapter method (explicit task channel; async).
 
-    Thin wrapper over `execute_plugin_async` — CR-7 retry, SG-33 semaphore,
+    Thin wrapper over `execute_capability_async` — CR-7 retry, SG-33 semaphore,
     admission and empirical sampling apply identically; this is the method
     the JobQueue's task-addressed jobs invoke.
     """
-    return await self.execute_plugin_async(
+    return await self.execute_capability_async(
         name_or_id, _task_name=task_name, _method=method, **kwargs)
 
 
-CapabilityManager.execute_plugin_task = execute_plugin_task
-CapabilityManager.execute_plugin_task_async = execute_plugin_task_async
+CapabilityManager.execute_capability_task = execute_capability_task
+CapabilityManager.execute_capability_task_async = execute_capability_task_async
 
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-enable_plugin
-def enable_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-enable_capability
+def enable_capability(
     self,
     name_or_id:str # Plugin name (default instance) or instance_id (multi-instance)
 ) -> bool: # True if instance was enabled
@@ -2094,10 +2095,10 @@ def enable_plugin(
             self.logger.warning(f"on_enable() raised for {name_or_id}: {e}")
     return True
 
-CapabilityManager.enable_plugin = enable_plugin
+CapabilityManager.enable_capability = enable_capability
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-disable_plugin
-def disable_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-disable_capability
+def disable_capability(
     self,
     name_or_id:str # Plugin name (default instance) or instance_id (multi-instance)
 ) -> bool: # True if instance was disabled
@@ -2133,10 +2134,10 @@ def disable_plugin(
                 self.logger.warning(f"on_disable() raised for {name_or_id}: {e}")
     return True
 
-CapabilityManager.disable_plugin = disable_plugin
+CapabilityManager.disable_capability = disable_capability
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_logs
-def get_plugin_diagnostics(
+def get_capability_diagnostics(
     self,
     name_or_id:str, # Plugin name or instance_id
     limit:int=50, # Max records to return (most recent)
@@ -2163,7 +2164,7 @@ def get_plugin_diagnostics(
             if ev.plugin_name == plugin_name and ev.worker_session_id:
                 sessions.append(ev.worker_session_id)
     except Exception as e:
-        self.logger.warning(f"get_plugin_diagnostics journal read failed: {e}")
+        self.logger.warning(f"get_capability_diagnostics journal read failed: {e}")
 
     entries = []  # (ts, rendered line)
     try:
@@ -2185,33 +2186,33 @@ def get_plugin_diagnostics(
     entries.sort(key=lambda t: t[0])
     return "\n".join(line for _, line in entries[-limit:])
 
-CapabilityManager.get_plugin_diagnostics = get_plugin_diagnostics
+CapabilityManager.get_capability_diagnostics = get_capability_diagnostics
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_config
-def get_plugin_config(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_config
+def get_capability_config(
     self,
     plugin_name: str # Name of the plugin
 ) -> Optional[Dict[str, Any]]: # Current configuration or None
     """Get the current configuration of a plugin."""
-    plugin = self.get_plugin(plugin_name)
+    plugin = self.get_capability(plugin_name)
     if plugin:
         return plugin.get_current_config()
     return None
 
-CapabilityManager.get_plugin_config = get_plugin_config
+CapabilityManager.get_capability_config = get_capability_config
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_config_schema
-def get_plugin_config_schema(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_config_schema
+def get_capability_config_schema(
     self,
     plugin_name: str # Name of the plugin
 ) -> Optional[Dict[str, Any]]: # JSON Schema or None
     """Get the configuration JSON Schema for a plugin."""
-    plugin = self.get_plugin(plugin_name)
+    plugin = self.get_capability(plugin_name)
     if plugin:
         return plugin.get_config_schema()
     return None
 
-CapabilityManager.get_plugin_config_schema = get_plugin_config_schema
+CapabilityManager.get_capability_config_schema = get_capability_config_schema
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_config_options
 def get_config_options(
@@ -2222,14 +2223,14 @@ def get_config_options(
     
     Forwards to the worker's get_config_options() - live enum domains +
     per-option metadata for dynamic config fields (e.g. an API model list).
-    Kept separate from get_plugin_config_schema (static, hashed for CR-8 drift);
+    Kept separate from get_capability_config_schema (static, hashed for CR-8 drift);
     these options are the live companion the plugin-config UI merges on top.
     
     Degrades to {} if the instance is missing or the worker call fails - the UI
     then falls back to the static schema. Typed-error surfacing for the UI
     consumer is deferred to the plugin-config UI library (Path C Step 4).
     """
-    plugin = self.get_plugin(name_or_id)
+    plugin = self.get_capability(name_or_id)
     if plugin is None:
         return {}
     try:
@@ -2240,8 +2241,8 @@ def get_config_options(
 
 CapabilityManager.get_config_options = get_config_options
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_all_plugin_configs
-def get_all_plugin_configs(self) -> Dict[str, Dict[str, Any]]: # Plugin name -> config mapping
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_all_capability_configs
+def get_all_capability_configs(self) -> Dict[str, Dict[str, Any]]: # Plugin name -> config mapping
     """Get current configuration for all loaded plugins."""
     return {
         name: plugin.get_current_config()
@@ -2250,10 +2251,10 @@ def get_all_plugin_configs(self) -> Dict[str, Dict[str, Any]]: # Plugin name -> 
         for plugin in [meta.instance]
     }
 
-CapabilityManager.get_all_plugin_configs = get_all_plugin_configs
+CapabilityManager.get_all_capability_configs = get_all_capability_configs
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-update_plugin_config
-def update_plugin_config(
+# %% ../../nbs/core/manager.ipynb #pm-fn-update_capability_config
+def update_capability_config(
     self,
     name_or_id: str, # Plugin name (default instance) or instance_id (multi-instance)
     config: Dict[str, Any], # New configuration values
@@ -2317,10 +2318,10 @@ def update_plugin_config(
         self.logger.error(f"Error updating {name_or_id!r} config: {e}")
         return False
 
-CapabilityManager.update_plugin_config = update_plugin_config
+CapabilityManager.update_capability_config = update_capability_config
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-reload_plugin
-def reload_plugin(
+# %% ../../nbs/core/manager.ipynb #pm-fn-reload_capability
+def reload_capability(
     self,
     name_or_id: str, # Plugin name (default instance) or instance_id (multi-instance)
     config: Optional[Dict[str, Any]] = None # Optional new configuration
@@ -2342,12 +2343,12 @@ def reload_plugin(
         if effective_config is None and inst.proxy is not None:
             effective_config = inst.proxy.get_current_config()
         
-        # Capture instance_id BEFORE unload (unload_plugin removes the entry)
+        # Capture instance_id BEFORE unload (unload_capability removes the entry)
         target_instance_id = inst.instance_id
         
-        self.unload_plugin(target_instance_id)
+        self.unload_capability(target_instance_id)
         # Re-load using the same instance_id to preserve the addressing for callers
-        return self.load_plugin(
+        return self.load_capability(
             plugin_meta,
             effective_config,
             instance_id=target_instance_id,
@@ -2356,10 +2357,10 @@ def reload_plugin(
         self.logger.error(f"Error reloading {name_or_id!r}: {e}")
         return False
 
-CapabilityManager.reload_plugin = reload_plugin
+CapabilityManager.reload_capability = reload_capability
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_plugin_stats
-def get_plugin_stats(
+# %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_stats
+def get_capability_stats(
     self,
     name_or_id: str # Plugin name (default instance) or instance_id (multi-instance)
 ) -> Optional[Dict[str, Any]]: # Resource telemetry or None
@@ -2369,12 +2370,12 @@ def get_plugin_stats(
         return inst.proxy.get_stats()
     return None
 
-CapabilityManager.get_plugin_stats = get_plugin_stats
+CapabilityManager.get_capability_stats = get_capability_stats
 
 # %% ../../nbs/core/manager.ipynb #5ef5a64c
 from typing import AsyncGenerator
 
-async def execute_plugin_stream(
+async def execute_capability_stream(
     self,
     name_or_id: str,  # Plugin name (default instance) or instance_id (multi-instance)
     *args,
@@ -2382,7 +2383,7 @@ async def execute_plugin_stream(
 ) -> AsyncGenerator[Any, None]:  # Async generator yielding results
     """Execute a plugin instance with streaming response (CR-10 multi-instance aware).
     
-    Same per-instance resolution as execute_plugin_async; scheduler allocation
+    Same per-instance resolution as execute_capability_async; scheduler allocation
     keys off the CapabilityMeta (plugin-level), execution + bookkeeping key off
     the CapabilityInstance (per-instance).
     """
@@ -2404,11 +2405,11 @@ async def execute_plugin_stream(
         self.scheduler.on_execution_finish(inst.instance_id)
 
 # Add to CapabilityManager
-CapabilityManager.execute_plugin_stream = execute_plugin_stream
+CapabilityManager.execute_capability_stream = execute_capability_stream
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-load_plugin_async
+# %% ../../nbs/core/manager.ipynb #pm-fn-load_capability_async
 import asyncio
-async def load_plugin_async(
+async def load_capability_async(
     self,
     plugin_meta: CapabilityMeta,
     config: Optional[Dict[str, Any]] = None,
@@ -2416,31 +2417,31 @@ async def load_plugin_async(
     instance_id: Optional[str] = None,
     new_instance: bool = False,
 ) -> bool:
-    """Async variant of `load_plugin` (CR-10b).
+    """Async variant of `load_capability` (CR-10b).
     
-    Runs the existing sync `load_plugin` via `asyncio.to_thread` so the
+    Runs the existing sync `load_capability` via `asyncio.to_thread` so the
     blocking proxy spawn + `_wait_for_ready` doesn't stall the event loop.
     Backward compat: identical behavior to the sync method, just non-blocking.
     """
     return await asyncio.to_thread(
-        self.load_plugin, plugin_meta, config, strict, instance_id, new_instance,
+        self.load_capability, plugin_meta, config, strict, instance_id, new_instance,
     )
 
-CapabilityManager.load_plugin_async = load_plugin_async
+CapabilityManager.load_capability_async = load_capability_async
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-unload_plugin_async
-async def unload_plugin_async(
+# %% ../../nbs/core/manager.ipynb #pm-fn-unload_capability_async
+async def unload_capability_async(
     self,
     name_or_id: str,
 ) -> bool:
-    """Async variant of `unload_plugin` (CR-10b)."""
-    return await asyncio.to_thread(self.unload_plugin, name_or_id)
+    """Async variant of `unload_capability` (CR-10b)."""
+    return await asyncio.to_thread(self.unload_capability, name_or_id)
 
-CapabilityManager.unload_plugin_async = unload_plugin_async
+CapabilityManager.unload_capability_async = unload_capability_async
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_spec_requested_key
 def _spec_requested_key(spec: CapabilityLoadSpec, index: int) -> str:
-    """Derive the dict key the load_plugins_concurrent result uses for `spec`.
+    """Derive the dict key the load_capabilities_concurrent result uses for `spec`.
     
     Resolution: explicit `instance_id` > `meta.name` + `#new[{index}]` suffix
     for ambiguous new_instance=True specs > `meta.name`. The suffix prevents
@@ -2453,8 +2454,8 @@ def _spec_requested_key(spec: CapabilityLoadSpec, index: int) -> str:
         return f"{spec.meta.name}#new[{index}]"
     return spec.meta.name
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-load_plugins_concurrent
-async def load_plugins_concurrent(
+# %% ../../nbs/core/manager.ipynb #pm-fn-load_capabilities_concurrent
+async def load_capabilities_concurrent(
     self,
     specs: List[CapabilityLoadSpec],  # Per-plugin load specifications
     max_concurrency: Optional[int] = None,  # Cap simultaneous loads; None = unbounded
@@ -2462,7 +2463,7 @@ async def load_plugins_concurrent(
 ) -> Dict[str, Union[str, Exception]]:  # requested_key → instance_id or Exception
     """CR-10b: fan out plugin loads concurrently via asyncio.gather.
     
-    Each spec is loaded via `load_plugin_async` (`asyncio.to_thread` under the
+    Each spec is loaded via `load_capability_async` (`asyncio.to_thread` under the
     hood). The total wall-clock drops from sum-of-spawns to max-of-spawns when
     `max_concurrency=None`. Capped concurrency uses an asyncio.Semaphore.
     
@@ -2477,16 +2478,16 @@ async def load_plugins_concurrent(
     async def _load_one(spec: CapabilityLoadSpec) -> str:
         if sem:
             async with sem:
-                ok = await self.load_plugin_async(
+                ok = await self.load_capability_async(
                     spec.meta, spec.config, True, spec.instance_id, spec.new_instance,
                 )
         else:
-            ok = await self.load_plugin_async(
+            ok = await self.load_capability_async(
                 spec.meta, spec.config, True, spec.instance_id, spec.new_instance,
             )
         if not ok:
             raise RuntimeError(
-                f"load_plugin returned False for {spec.meta.name!r} "
+                f"load_capability returned False for {spec.meta.name!r} "
                 f"(instance_id={spec.instance_id!r}, new_instance={spec.new_instance})"
             )
         # Resolve the actual instance_id from self.instances. For default/explicit
@@ -2496,7 +2497,7 @@ async def load_plugins_concurrent(
         if not spec.new_instance:
             return spec.meta.name
         # Auto-gen case: find the newest instance for this plugin_name. Since
-        # load_plugin_async ran exclusively under the semaphore (or fully
+        # load_capability_async ran exclusively under the semaphore (or fully
         # concurrently if unbounded — but each spawn's generated ID is unique
         # by construction), we identify "the one just loaded" by created_at.
         candidates = [i for i in self.instances.values() if i.plugin_name == spec.meta.name]
@@ -2515,10 +2516,10 @@ async def load_plugins_concurrent(
     
     return dict(zip(keys, results))
 
-CapabilityManager.load_plugins_concurrent = load_plugins_concurrent
+CapabilityManager.load_capabilities_concurrent = load_capabilities_concurrent
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-unload_plugins_concurrent
-async def unload_plugins_concurrent(
+# %% ../../nbs/core/manager.ipynb #pm-fn-unload_capabilities_concurrent
+async def unload_capabilities_concurrent(
     self,
     name_or_ids: List[str],  # Plugin names or instance_ids to unload
     max_concurrency: Optional[int] = None,
@@ -2526,7 +2527,7 @@ async def unload_plugins_concurrent(
 ) -> Dict[str, Union[bool, Exception]]:  # name_or_id → True or Exception
     """CR-10b: fan out plugin unloads concurrently via asyncio.gather.
     
-    Same concurrency + fail_fast semantics as load_plugins_concurrent. Result
+    Same concurrency + fail_fast semantics as load_capabilities_concurrent. Result
     keys are the input `name_or_ids` (deduplication is the caller's
     responsibility; duplicate inputs produce one dict entry per unique key).
     """
@@ -2535,8 +2536,8 @@ async def unload_plugins_concurrent(
     async def _unload_one(name_or_id: str) -> bool:
         if sem:
             async with sem:
-                return await self.unload_plugin_async(name_or_id)
-        return await self.unload_plugin_async(name_or_id)
+                return await self.unload_capability_async(name_or_id)
+        return await self.unload_capability_async(name_or_id)
     
     tasks = [_unload_one(nid) for nid in name_or_ids]
     
@@ -2547,7 +2548,7 @@ async def unload_plugins_concurrent(
     
     return dict(zip(name_or_ids, results))
 
-CapabilityManager.unload_plugins_concurrent = unload_plugins_concurrent
+CapabilityManager.unload_capabilities_concurrent = unload_capabilities_concurrent
 
 # %% ../../nbs/core/manager.ipynb #pm-cls-CapabilityBinding
 from dataclasses import dataclass, field as _field
@@ -2558,7 +2559,7 @@ class CapabilityBinding:
     Eliminates the wrapper-class duplication audited across 8 consumer services
     (SG-17). Methods forward to the manager with `plugin_name` pre-supplied;
     `default_config` is the fallback used when `load()` is called without an
-    explicit config (matches the manifest-default behavior in `load_plugin`).
+    explicit config (matches the manifest-default behavior in `load_capability`).
     """
     manager: "CapabilityManager"  # The shared CapabilityManager
     plugin_name: str  # Name of the plugin this binding targets
@@ -2569,12 +2570,12 @@ class CapabilityBinding:
     @property
     def meta(self) -> Optional[CapabilityMeta]:
         """The CapabilityMeta if the plugin is loaded, else None."""
-        return self.manager.get_plugin_meta(self.plugin_name)
+        return self.manager.get_capability_meta(self.plugin_name)
     
     @property
     def is_loaded(self) -> bool:
         """True if the plugin is loaded in the bound manager."""
-        return self.manager.get_plugin(self.plugin_name) is not None
+        return self.manager.get_capability(self.plugin_name) is not None
     
     @property
     def is_enabled(self) -> bool:
@@ -2595,36 +2596,36 @@ class CapabilityBinding:
             self.manager.logger.error(f"Plugin {self.plugin_name!r} not discovered")
             return False
         effective = config if config is not None else dict(self.default_config)
-        return self.manager.load_plugin(meta, effective, strict=strict)
+        return self.manager.load_capability(meta, effective, strict=strict)
     
     def unload(self) -> bool:  # True if unloaded
         """Unload the bound plugin."""
-        return self.manager.unload_plugin(self.plugin_name)
+        return self.manager.unload_capability(self.plugin_name)
     
     def reload(
         self,
         config: Optional[Dict[str, Any]] = None  # Optional new config; current config used if None
     ) -> bool:
         """Reload the bound plugin (terminate + restart worker)."""
-        return self.manager.reload_plugin(self.plugin_name, config)
+        return self.manager.reload_capability(self.plugin_name, config)
     
     def enable(self) -> bool:
         """Enable the bound plugin."""
-        return self.manager.enable_plugin(self.plugin_name)
+        return self.manager.enable_capability(self.plugin_name)
     
     def disable(self) -> bool:
         """Disable the bound plugin (worker stays alive; jobs rejected)."""
-        return self.manager.disable_plugin(self.plugin_name)
+        return self.manager.disable_capability(self.plugin_name)
     
     # --- Execution ---
     
     def execute(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (sync)."""
-        return self.manager.execute_plugin(self.plugin_name, *args, **kwargs)
+        return self.manager.execute_capability(self.plugin_name, *args, **kwargs)
     
     async def execute_async(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (async)."""
-        return await self.manager.execute_plugin_async(self.plugin_name, *args, **kwargs)
+        return await self.manager.execute_capability_async(self.plugin_name, *args, **kwargs)
     
     # --- Configuration ---
     
@@ -2634,19 +2635,19 @@ class CapabilityBinding:
         strict: bool = True  # SG-5 strict validation
     ) -> bool:
         """Hot-reload the bound plugin's configuration."""
-        return self.manager.update_plugin_config(self.plugin_name, config, strict=strict)
+        return self.manager.update_capability_config(self.plugin_name, config, strict=strict)
     
     def get_config(self) -> Optional[Dict[str, Any]]:
         """Current configuration values (None if not loaded)."""
-        return self.manager.get_plugin_config(self.plugin_name)
+        return self.manager.get_capability_config(self.plugin_name)
     
     def get_config_schema(self) -> Optional[Dict[str, Any]]:
         """JSON Schema describing this plugin's configuration."""
-        return self.manager.get_plugin_config_schema(self.plugin_name)
+        return self.manager.get_capability_config_schema(self.plugin_name)
     
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Resource telemetry for the bound plugin's worker process."""
-        return self.manager.get_plugin_stats(self.plugin_name)
+        return self.manager.get_capability_stats(self.plugin_name)
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-bind
 def bind(
@@ -2765,7 +2766,7 @@ class _CR10StubProxy:
 
 # %% ../../nbs/core/manager.ipynb #5c1b890e
 # SG-15: curate __all__ to expose only the class symbols.
-# The patched CapabilityManager methods (get_plugin_config, reload_plugin, etc.)
+# The patched CapabilityManager methods (get_capability_config, reload_capability, etc.)
 # remain accessible as CapabilityManager.method() — they're removed from the
 # module's `from ... import *` surface because invoking them standalone
 # fails (they expect `self`). nbdev's auto-`__all__` lists them as free

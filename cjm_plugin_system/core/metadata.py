@@ -84,7 +84,7 @@ class CapabilityMeta:
     instance:Optional[Any]=None # Plugin instance (PluginInterface subclass)
     enabled:bool=True # Whether the plugin is enabled
     last_executed:float=0.0 # Unix timestamp
-    # SG-9: drift detection — set by CapabilityManager.load_plugin when the live
+    # SG-9: drift detection — set by CapabilityManager.load_capability when the live
     # worker's /config_schema disagrees with the manifest's stored config_schema.
     # `live_config_schema` holds the worker-reported shape so callers can pick
     # which to honor (substrate keeps using `config_schema` for defaults +
@@ -119,32 +119,32 @@ class CapabilityInstance:
     # to avoid importing proxy.py here (proxy depends on interface; interface +
     # metadata stay decoupled per the dependency hierarchy).
     proxy: Optional[Any] = None
-    enabled: bool = True  # Per-instance enable flag; substrate's execute_plugin checks this
+    enabled: bool = True  # Per-instance enable flag; substrate's execute_capability checks this
     last_executed: float = 0.0  # Unix timestamp of the most recent execute on this instance
     # Timezone-aware datetime — datetime.utcnow() is deprecated in Python 3.12+
     # per the CR-5 follow-up. The factory uses datetime.now(timezone.utc) at
     # instance-creation time.
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    # CR-7: empirical resource tracking key. Populated by load_plugin via
+    # CR-7: empirical resource tracking key. Populated by load_capability via
     # `compute_config_hash(config)` so per-execute sample recording can index
     # the EmpiricalResourceStore by (instance_id, config_hash). Two distinct
     # configs for the same instance get two distinct empirical records.
     # Defaults to empty string for back-compat with hand-constructed PluginInstances
-    # in tests that don't go through load_plugin.
+    # in tests that don't go through load_capability.
     config_hash: str = ""
     # CR-7 / SG-33: per-instance concurrency cap for async execute. None means
     # unbounded (preserves pre-SG-33 behavior). When set, CapabilityManager creates
     # a lazy asyncio.Semaphore(max_concurrent_requests) keyed by instance_id and
-    # gates execute_plugin_async behind it. Sync execute_plugin is NOT gated —
+    # gates execute_capability_async behind it. Sync execute_capability is NOT gated —
     # the cap is async-path only since sync callers can't await a semaphore.
     max_concurrent_requests: Optional[int] = None
 
 # %% ../../nbs/core/metadata.ipynb #b65ea953
 @dataclass
 class CapabilityLoadSpec:
-    """One entry in `CapabilityManager.load_plugins_concurrent`'s batch input (CR-10).
+    """One entry in `CapabilityManager.load_capabilities_concurrent`'s batch input (CR-10).
     
-    Mirrors the positional arguments of `load_plugin` so the concurrent helper
+    Mirrors the positional arguments of `load_capability` so the concurrent helper
     can fan out load calls without repeating the per-spec instance_id /
     new_instance plumbing.
     

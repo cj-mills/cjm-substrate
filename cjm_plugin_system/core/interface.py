@@ -7,8 +7,8 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcore/interface.html.md"""
 
 # %% auto #0
 __all__ = ['PluginInterface', 'RELOAD_TRIGGER', 'WORKER_ENV_TEMPLATE_PLACEHOLDERS', 'FileBackedDTO', 'ConfigOption',
-           'FieldOptions', 'EnvVarSpec', 'expand_worker_env_template', 'template_check_placeholders', 'plugin_action',
-           'collect_plugin_actions']
+           'FieldOptions', 'EnvVarSpec', 'expand_worker_env_template', 'template_check_placeholders',
+           'capability_action', 'collect_capability_actions']
 
 # %% ../../nbs/core/interface.ipynb #15253925c3c2
 # REMOVE-AFTER-OVERHAUL(option-c-cascade): legacy import surface; every name
@@ -23,8 +23,8 @@ from cjm_plugin_system.core.capability import (
     expand_worker_env_template,
     template_check_placeholders,
     ToolCapability,
-    plugin_action,
-    collect_plugin_actions,
+    capability_action,
+    collect_capability_actions,
     _CR4MinimalCapability,
 )
 from .wire import FileBackedDTO
@@ -36,5 +36,5 @@ PluginInterface = ToolCapability
 # %% ../../nbs/core/interface.ipynb #ccd9c7fd7223
 _all_ = ['RELOAD_TRIGGER', 'WORKER_ENV_TEMPLATE_PLACEHOLDERS', 'FileBackedDTO',
          'ConfigOption', 'FieldOptions', 'EnvVarSpec', 'expand_worker_env_template',
-         'template_check_placeholders', 'PluginInterface', 'plugin_action',
-         'collect_plugin_actions']
+         'template_check_placeholders', 'PluginInterface', 'capability_action',
+         'collect_capability_actions']
