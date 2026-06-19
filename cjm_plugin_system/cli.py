@@ -30,7 +30,7 @@ from cjm_plugin_system.core.platform import (
     ensure_runtime_available, download_micromamba, get_micromamba_binary_path,
     get_current_platform
 )
-from .core.metadata import CapabilityTaxonomy, ResourceRequirements
+from .core.metadata import ResourceRequirements
 from cjm_plugin_system.core.manifest_format import (
     ManifestV2, InstallSection, CodeSection, DriftTracking,
     CURRENT_FORMAT_VERSION,
@@ -231,15 +231,10 @@ def _generate_manifest(
     print(f"[{env_name}] Introspecting module: {module_name}")
     
     # Enhanced introspection script. The script:
-    # 1. Gets metadata from get_plugin_metadata()
-    # 2. SG-7: imports the interface class declared in meta["interface"]; fails
-    #    manifest generation if the FQN doesn't resolve (catches typos +
-    #    stale interface library references at install time, not runtime).
-    # 3. CR-1: derives the taxonomy block {domain, role, interface_fqcn} from
-    #    the verified interface FQN. Domain follows the cjm-<domain>-plugin-system
-    #    naming convention; role is the interface class name.
-    # 4. Instantiates the plugin class to get config_schema
-    # 5. Merges config_schema into metadata (if not already present)
+    # 1. Gets metadata from get_plugin_metadata() (old-style) or the installed
+    #    distribution + capability class (new-style).
+    # 2. Instantiates the plugin class to get config_schema
+    # 3. Merges config_schema into metadata (if not already present)
     introspection_script = f'''
 import json
 import importlib
@@ -255,46 +250,16 @@ except (ImportError, AttributeError):
     _new_style = True
 
 if not _new_style:
-    # ===== OLD-STYLE: get_plugin_metadata() + SG-7 interface check + CR-1 taxonomy =====
-    # SG-7: verify the declared interface FQN actually resolves. The previous
-    # substrate shipped a sqlite-graph manifest whose interface field pointed to
-    # a non-existent module; nothing caught it until runtime discovery.
-    iface_fqn = meta.get("interface") or ""
-    if not iface_fqn:
-        raise SystemExit("[introspection] interface FQN is missing in get_plugin_metadata()")
-    if "." not in iface_fqn:
-        raise SystemExit(f"[introspection] interface FQN must be a dotted path, got: {{iface_fqn!r}}")
-    _iface_mod_path, _iface_cls_name = iface_fqn.rsplit(".", 1)
-    try:
-        _iface_mod = importlib.import_module(_iface_mod_path)
-    except ImportError as e:
-        raise SystemExit(f"[introspection] interface module not importable: {{_iface_mod_path}} ({{e}})")
-    if not hasattr(_iface_mod, _iface_cls_name):
-        raise SystemExit(
-            f"[introspection] interface class {{_iface_cls_name!r}} not found in module "
-            f"{{_iface_mod_path}}"
-        )
-    # CR-1: derive the taxonomy block. Substrate stores strings only.
-    # domain: extracted from cjm_<domain>_plugin_system package root.
-    # role: the interface class name (last segment of the FQCN).
-    _iface_root = _iface_mod_path.split(".")[0]
-    if _iface_root.startswith("cjm_") and _iface_root.endswith("_plugin_system"):
-        _domain = _iface_root[len("cjm_"):-len("_plugin_system")]
-    else:
-        # Non-conventional interface library; substrate falls back to the package
-        # root so the manifest still has a usable domain string.
-        _domain = _iface_root
-    meta["taxonomy"] = {{
-        "domain": _domain,
-        "role": _iface_cls_name,
-        "interface_fqcn": iface_fqn,
-    }}
+    # ===== OLD-STYLE: get_plugin_metadata() supplies the full meta dict. =====
+    # (The dual-mode fallback itself collapses in sub-pass 7c — at which point
+    # this branch and the try/except above go away entirely.)
+    pass
 else:
     # ===== NEW-STYLE (Option C / PILLAR 1c): derive identity from the installed
-    # distribution + discover the capability class. interface / taxonomy / type /
-    # resources / db_path are intentionally OMITTED — task comes from bound
-    # adapters, admission measures resources empirically, and db_path is an
-    # adapter-derived persistence concern. =====
+    # distribution + discover the capability class. type / resources / db_path
+    # are intentionally OMITTED — task comes from bound adapters, admission
+    # measures resources empirically, and db_path is an adapter-derived
+    # persistence concern. =====
     import sys as _sys
     import importlib.metadata as _md
     import inspect as _inspect
@@ -442,8 +407,7 @@ print(json.dumps(meta, indent=2))
                 print(f"Raw Output:\n{result_str}")
                 return None
 
-            # SG-34: drop the dead `type` field from new manifests; CR-1's
-            # taxonomy block supersedes it.
+            # SG-34: drop the dead `type` field from new manifests.
             meta_json.pop("type", None)
 
             capability_name = meta_json.get('name', 'unknown')
@@ -452,24 +416,15 @@ print(json.dumps(meta, indent=2))
 
             # CR-8: convert flat introspection output into a nested ManifestV2.
             # The introspection script emits a flat dict with both code-section
-            # fields (name/version/description/module/class/interface/taxonomy/
-            # resources/config_schema) AND install-section fields the plugin
-            # owns (python_path/db_path/env_vars). Substrate adds the
-            # installer-side install fields (installed_at/installer_version/
-            # package_source/conda_env) here.
+            # fields (name/version/description/module/class/resources/
+            # config_schema) AND install-section fields the plugin owns
+            # (python_path/db_path/env_vars). Substrate adds the installer-side
+            # install fields (installed_at/installer_version/package_source/
+            # conda_env) here.
 
-            # Parse taxonomy + resources sub-dicts into typed objects (or None
-            # when the plugin predates those CRs). Substrate stores strings
-            # only — no host-side imports of interface libraries needed.
-            intro_tax = meta_json.get("taxonomy")
-            tax_obj: Optional[CapabilityTaxonomy] = None
-            if isinstance(intro_tax, dict):
-                tax_obj = CapabilityTaxonomy(
-                    domain=str(intro_tax.get("domain", "") or ""),
-                    role=str(intro_tax.get("role", "") or ""),
-                    interface_fqcn=str(intro_tax.get("interface_fqcn", "") or ""),
-                )
-
+            # Parse the resources sub-dict into a typed object (or None when the
+            # plugin predates Phase 5a). Substrate stores strings only — no
+            # host-side imports of interface libraries needed.
             intro_res = meta_json.get("resources")
             res_obj: Optional[ResourceRequirements] = None
             if isinstance(intro_res, dict):
@@ -506,8 +461,6 @@ print(json.dumps(meta, indent=2))
                     description=str(meta_json.get("description", "") or ""),
                     module=str(meta_json.get("module", "") or ""),
                     class_name=str(meta_json.get("class", "") or ""),
-                    interface=str(meta_json.get("interface", "") or ""),
-                    taxonomy=tax_obj,
                     resources=res_obj,
                     config_schema=config_schema,
                     regenerated_at=now_iso,
@@ -523,10 +476,6 @@ print(json.dumps(meta, indent=2))
             )
             
             # Log detected metadata
-            if tax_obj is not None:
-                print(f"[{env_name}] Taxonomy: {tax_obj.domain}/{tax_obj.role}")
-            if manifest.code.interface:
-                print(f"[{env_name}] Interface: {manifest.code.interface}")
             if config_schema is not None:
                 print(f"[{env_name}] Config schema: captured")
             if intro_surface is not None:
@@ -1274,7 +1223,6 @@ def list_capabilities(
     for manifest in sorted(manifests, key=lambda m: m.get('name', '')):
         name = manifest.get('name', 'unknown')
         version = manifest.get('version', '?')
-        category = manifest.get('category', '')
         
         # Get env name from manifest or extract from python_path
         env_name = manifest.get('conda_env', '')
@@ -1282,8 +1230,7 @@ def list_capabilities(
             env_name = _extract_env_from_python_path(manifest.get('python_path', ''))
         
         # Basic info line
-        cat_str = f" [{category}]" if category else ""
-        typer.echo(f"{name} v{version}{cat_str}")
+        typer.echo(f"{name} v{version}")
         
         # Environment status
         if show_envs and env_name:
@@ -1556,44 +1503,6 @@ def remove_capability(
     
     typer.echo(f"\nPlugin '{capability_name}' removed successfully.")
 
-# %% ../nbs/cli.ipynb #df2c4524
-def _validate_taxonomy_block(
-    tax: Any,  # taxonomy sub-dict (may be None or non-dict; we type-check here)
-    top_level_interface: str,  # `interface` field for cross-check
-    path_prefix: str,  # Error message prefix (e.g., "manifest" or "manifest: code")
-) -> List[str]:
-    """Type-check the taxonomy block + cross-check interface_fqcn vs top-level interface.
-    
-    Shared between v1.0 (flat) and v2.0 (nested) validators. `path_prefix` is
-    used to disambiguate error messages between layouts.
-    """
-    errors: List[str] = []
-    if tax is None:
-        return errors
-    if not isinstance(tax, dict):
-        errors.append(f"{path_prefix}: 'taxonomy' must be an object when present")
-        return errors
-    for tax_key in ("domain", "role", "interface_fqcn"):
-        tax_val = tax.get(tax_key)
-        if tax_val is None or tax_val == "":
-            errors.append(f"{path_prefix}: 'taxonomy.{tax_key}' is required when taxonomy block present")
-        elif not isinstance(tax_val, str):
-            errors.append(f"{path_prefix}: 'taxonomy.{tax_key}' must be a string")
-    # Cross-check: taxonomy.interface_fqcn must agree with the sibling `interface`
-    # field if both are present. Drift here means manifest corruption —
-    # regenerate-manifest is the operator fix.
-    if (
-        isinstance(tax.get("interface_fqcn"), str)
-        and isinstance(top_level_interface, str)
-        and top_level_interface
-        and tax["interface_fqcn"] != top_level_interface
-    ):
-        errors.append(
-            f"{path_prefix}: 'taxonomy.interface_fqcn' ({tax['interface_fqcn']!r}) "
-            f"disagrees with sibling 'interface' ({top_level_interface!r})"
-        )
-    return errors
-
 # %% ../nbs/cli.ipynb #fn-validate-resources-block
 def _validate_resources_block(
     res: Any,  # resources sub-dict (may be None or non-dict; we type-check here)
@@ -1661,7 +1570,7 @@ def _validate_manifest_v2_dict(
         errors.append(f"manifest: 'overrides' must be an object when present, got {type(overrides).__name__}")
     
     # Required code.* fields (mirroring v1.0 contract)
-    for key in ("name", "version", "description", "module", "class", "interface"):
+    for key in ("name", "version", "description", "module", "class"):
         val = code.get(key) if isinstance(code, dict) else None
         if val is None or (isinstance(val, str) and not val.strip()):
             errors.append(f"manifest: required field 'code.{key}' is missing or empty")
@@ -1674,14 +1583,6 @@ def _validate_manifest_v2_dict(
         errors.append("manifest: required field 'install.python_path' is missing or empty")
     elif not isinstance(py_path, str):
         errors.append(f"manifest: 'install.python_path' must be a string, got {type(py_path).__name__}")
-    
-    # Interface FQN must be a dotted path (SG-7 format check)
-    iface = code.get("interface", "") if isinstance(code, dict) else ""
-    if isinstance(iface, str) and iface and "." not in iface:
-        errors.append(
-            f"manifest: 'code.interface' {iface!r} is not a dotted FQN "
-            f"(expected 'module.subpackage.ClassName')"
-        )
     
     # Optional install.* fields — type-check only
     for key in ("conda_env", "db_path", "installed_at", "installer_version", "package_source"):
@@ -1703,13 +1604,8 @@ def _validate_manifest_v2_dict(
         elif "properties" in cs and not isinstance(cs["properties"], dict):
             errors.append("manifest: 'code.config_schema.properties' must be an object when present")
     
-    # Optional code.taxonomy block — shared helper for cross-check + type-check
+    # Optional code.resources block — type-check
     if isinstance(code, dict):
-        errors.extend(_validate_taxonomy_block(
-            code.get("taxonomy"),
-            top_level_interface=code.get("interface", "") if isinstance(code.get("interface"), str) else "",
-            path_prefix="manifest: code",
-        ))
         errors.extend(_validate_resources_block(
             code.get("resources"),
             path_prefix="manifest: code",
@@ -1761,24 +1657,16 @@ def _validate_manifest_v1_dict(
     # Required string fields. `description` is required per OQ-3 — it's the
     # one human-readable label the substrate genuinely owns + has consumers
     # for; making it dead-letter optional is what SG-6 explicitly fixes.
-    for key in ("name", "version", "description", "module", "class", "interface", "python_path"):
+    for key in ("name", "version", "description", "module", "class", "python_path"):
         val = data.get(key)
         if val is None or (isinstance(val, str) and not val.strip()):
             errors.append(f"manifest: required field {key!r} is missing or empty")
         elif not isinstance(val, str):
             errors.append(f"manifest: field {key!r} must be a string, got {type(val).__name__}")
     
-    # Interface FQN must be a dotted path (SG-7 format check)
-    iface = data.get("interface", "")
-    if isinstance(iface, str) and iface and "." not in iface:
-        errors.append(
-            f"manifest: field 'interface' {iface!r} is not a dotted FQN "
-            f"(expected 'module.subpackage.ClassName')"
-        )
-    
     # Optional fields — type-check only
     for key in (
-        "category", "category_override", "conda_env", "db_path",
+        "conda_env", "db_path",
         "package_source", "installer_version", "installed_at",
     ):
         if key in data and not isinstance(data[key], str):
@@ -1794,12 +1682,7 @@ def _validate_manifest_v1_dict(
         elif "properties" in cs and not isinstance(cs["properties"], dict):
             errors.append("manifest: 'config_schema.properties' must be an object when present")
     
-    # Shared helpers for taxonomy + resources (flat-layout path prefix)
-    errors.extend(_validate_taxonomy_block(
-        data.get("taxonomy"),
-        top_level_interface=data.get("interface", "") if isinstance(data.get("interface"), str) else "",
-        path_prefix="manifest",
-    ))
+    # Shared helper for resources (flat-layout path prefix)
     errors.extend(_validate_resources_block(data.get("resources"), path_prefix="manifest"))
     
     return errors

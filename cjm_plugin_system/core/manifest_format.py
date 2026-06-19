@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .metadata import CapabilityTaxonomy, ResourceRequirements
+from .metadata import ResourceRequirements
 from ..utils.hashing import hash_bytes
 
 # %% ../../nbs/core/manifest_format.ipynb #format-version-const
@@ -45,9 +45,9 @@ class CodeSection:
     """Code-derived facts refreshed by `cjm-ctl regenerate-manifest`.
     
     Everything in this section comes from running the introspection script
-    inside the plugin's conda env: metadata + interface + config_schema +
-    derived taxonomy + binary platform/hardware hard-facts. Drift detection
-    hashes this section's `config_schema` field as its witness shape.
+    inside the plugin's conda env: metadata + config_schema + binary
+    platform/hardware hard-facts. Drift detection hashes this section's
+    `config_schema` field as its witness shape.
     
     `class_name` serializes as the JSON key `"class"` (Python reserved-word
     workaround).
@@ -57,8 +57,6 @@ class CodeSection:
     description: str = ""        # Brief description (SG-6 required)
     module: str = ""             # Importable module path for the plugin class
     class_name: str = ""         # Plugin class name (JSON key: "class")
-    interface: str = ""          # Fully qualified interface class name
-    taxonomy: Optional[CapabilityTaxonomy] = None        # CR-1 domain/role/FQCN triple
     resources: Optional[ResourceRequirements] = None  # Phase 5a hard-facts
     config_schema: Optional[Dict[str, Any]] = None    # JSON Schema for plugin config
     regenerated_at: Optional[str] = None              # ISO-8601 UTC of last regen
@@ -125,17 +123,6 @@ def compute_structural_surface_hash(
     return hash_bytes(canonical.encode("utf-8"))
 
 # %% ../../nbs/core/manifest_format.ipynb #parser-helpers
-def _parse_taxonomy_dict(d: Optional[Dict[str, Any]]) -> Optional[CapabilityTaxonomy]:
-    """Build a `CapabilityTaxonomy` from its JSON sub-dict, or None."""
-    if not d:
-        return None
-    return CapabilityTaxonomy(
-        domain=d.get("domain", "") or "",
-        role=d.get("role", "") or "",
-        interface_fqcn=d.get("interface_fqcn", "") or "",
-    )
-
-
 def _parse_resources_dict(d: Optional[Dict[str, Any]]) -> Optional[ResourceRequirements]:
     """Build a `ResourceRequirements` from its JSON sub-dict, or None."""
     if not d:
@@ -169,8 +156,6 @@ def _from_v2_dict(
         description=code_d.get("description", "") or "",
         module=code_d.get("module", "") or "",
         class_name=code_d.get("class", "") or "",
-        interface=code_d.get("interface", "") or "",
-        taxonomy=_parse_taxonomy_dict(code_d.get("taxonomy")),
         resources=_parse_resources_dict(code_d.get("resources")),
         config_schema=code_d.get("config_schema"),
         regenerated_at=code_d.get("regenerated_at"),
@@ -218,8 +203,6 @@ def _from_v1_flat_dict(
         description=data.get("description", "") or "",
         module=data.get("module", "") or "",
         class_name=data.get("class", "") or "",
-        interface=data.get("interface", "") or "",
-        taxonomy=_parse_taxonomy_dict(data.get("taxonomy")),
         resources=_parse_resources_dict(data.get("resources")),
         config_schema=data.get("config_schema"),
         regenerated_at=None,
@@ -263,13 +246,6 @@ def load_manifest(
     )
 
 # %% ../../nbs/core/manifest_format.ipynb #to-dict-helpers
-def _taxonomy_to_dict(t: Optional[CapabilityTaxonomy]) -> Optional[Dict[str, str]]:
-    """Serialize a `CapabilityTaxonomy` back to its JSON sub-dict, or None."""
-    if t is None:
-        return None
-    return {"domain": t.domain, "role": t.role, "interface_fqcn": t.interface_fqcn}
-
-
 def _resources_to_dict(r: Optional[ResourceRequirements]) -> Optional[Dict[str, Any]]:
     """Serialize a `ResourceRequirements` back to its JSON sub-dict, or None."""
     if r is None:
@@ -289,11 +265,8 @@ def _code_section_to_dict(c: CodeSection) -> Dict[str, Any]:
         "description": c.description,
         "module": c.module,
         "class": c.class_name,
-        "interface": c.interface,
     }
     # Optional fields written only when populated, keeping manifests legible.
-    if c.taxonomy is not None:
-        d["taxonomy"] = _taxonomy_to_dict(c.taxonomy)
     if c.resources is not None:
         d["resources"] = _resources_to_dict(c.resources)
     if c.config_schema is not None:

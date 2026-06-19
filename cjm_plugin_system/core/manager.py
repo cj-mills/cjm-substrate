@@ -7,17 +7,15 @@ Docs: https://cj-mills.github.io/cjm-plugin-systemcore/manager.html.md"""
 # %% auto #0
 __all__ = ['CapabilityManager', 'register_system_monitor', 'get_global_stats', 'get_admission_profile',
            'get_instance_concurrency_cap', 'discover_manifests', 'get_adapters_for_task', 'check_adapter_compatibility',
-           'get_capabilities_compatible_with', 'get_discovered_by_category', 'get_capabilities_by_category',
-           'get_discovered_categories', 'get_loaded_categories', 'get_capability_meta', 'get_discovered_meta',
-           'get_instance', 'list_instances', 'get_worker_env_status', 'missing_required_env', 'set_capability_secret',
+           'get_capabilities_compatible_with', 'get_capability_meta', 'get_discovered_meta', 'get_instance',
+           'list_instances', 'get_worker_env_status', 'missing_required_env', 'set_capability_secret',
            'load_capability', 'load_all', 'unload_capability', 'unload_all', 'get_capability', 'list_capabilities',
            'execute_capability', 'execute_capability_async', 'execute_capability_task', 'execute_capability_task_async',
            'enable_capability', 'disable_capability', 'get_capability_diagnostics', 'get_capability_config',
            'get_capability_config_schema', 'get_config_options', 'get_all_capability_configs',
            'update_capability_config', 'reload_capability', 'get_capability_stats', 'execute_capability_stream',
            'load_capability_async', 'unload_capability_async', 'load_capabilities_concurrent',
-           'unload_capabilities_concurrent', 'CapabilityBinding', 'bind', 'get_by_role', 'get_by_domain',
-           'get_canonical', 'get_compatible_for_current_platform']
+           'unload_capabilities_concurrent', 'CapabilityBinding', 'bind', 'get_compatible_for_current_platform']
 
 # %% ../../nbs/core/manager.ipynb #31a5a9f1
 import asyncio
@@ -44,7 +42,7 @@ from .capability import ToolCapability
 from cjm_plugin_system.core.manifest_format import (
     ManifestV2, load_manifest, manifest_to_dict, compute_config_schema_hash,
 )
-from .metadata import CapabilityInstance, CapabilityLoadSpec, CapabilityMeta, CapabilityTaxonomy, ResourceRequirements
+from .metadata import CapabilityInstance, CapabilityLoadSpec, CapabilityMeta, ResourceRequirements
 from .proxy import RemoteCapabilityProxy
 from cjm_plugin_system.core.adapter_manifest import (
     AdapterManifest, adapter_manifest_from_dict, is_adapter_manifest,
@@ -424,58 +422,6 @@ def get_instance_concurrency_cap(
 
 CapabilityManager.get_instance_concurrency_cap = get_instance_concurrency_cap
 
-# %% ../../nbs/core/manager.ipynb #pm-fn-_check_interface_fqn
-def _check_interface_fqn(
-    self,
-    iface_fqn:str, # Interface FQN string from the manifest
-    capability_name:str # For error messages
-) -> bool: # True if FQN passes the format check
-    """SG-7: sanity-check the interface FQN format at discovery time.
-    
-    Substrate cannot actually import every interface library (the host
-    env doesn't carry them all), so this is a format-only check. The
-    authoritative import check happens at install time in
-    _generate_manifest's introspection script.
-    """
-    if not iface_fqn:
-        self.logger.warning(
-            f"Plugin {capability_name!r}: manifest has empty `interface` field. "
-            f"Run `cjm-ctl regenerate-manifest {capability_name}` to refresh."
-        )
-        return False
-    if "." not in iface_fqn:
-        self.logger.warning(
-            f"Plugin {capability_name!r}: malformed interface FQN {iface_fqn!r} "
-            f"(expected dotted path like 'module.subpackage.ClassName'). "
-            f"Run `cjm-ctl regenerate-manifest {capability_name}` to refresh."
-        )
-        return False
-    return True
-
-CapabilityManager._check_interface_fqn = _check_interface_fqn
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-_parse_taxonomy
-def _parse_taxonomy(
-    self,
-    manifest: Dict[str, Any]  # Loaded manifest dict
-) -> Optional[CapabilityTaxonomy]:
-    """CR-1: parse the manifest's taxonomy block into a CapabilityTaxonomy.
-    
-    Returns None when the manifest predates CR-1 (no taxonomy block).
-    Used for callers that have a flat dict (post-CR-8, discover_manifests
-    uses load_manifest's typed CapabilityTaxonomy directly and bypasses this).
-    """
-    tax_dict = manifest.get("taxonomy")
-    if not tax_dict or not isinstance(tax_dict, dict):
-        return None
-    return CapabilityTaxonomy(
-        domain=tax_dict.get("domain", ""),
-        role=tax_dict.get("role", ""),
-        interface_fqcn=tax_dict.get("interface_fqcn", manifest.get("interface", "")),
-    )
-
-CapabilityManager._parse_taxonomy = _parse_taxonomy
-
 # %% ../../nbs/core/manager.ipynb #pm-fn-_parse_resources
 def _parse_resources(
     self,
@@ -492,30 +438,6 @@ def _parse_resources(
     )
 
 CapabilityManager._parse_resources = _parse_resources
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-_derive_category
-def _derive_category(
-    self,
-    manifest: Dict[str, Any],  # Loaded manifest dict (flat-shaped)
-    taxonomy: Optional[CapabilityTaxonomy]  # Parsed taxonomy (or None for legacy manifests)
-) -> str:
-    """CR-1: derive the human-readable category label.
-    
-    Resolution: category_override > Title-Case of taxonomy.domain (with
-    underscores → spaces) > legacy `category` field > empty.
-    `category_override` lives at top level on v1.0 flat manifests only
-    (v2.0 layout has no slot — CR-1 closed decision deferred a custom
-    label channel until a concrete consumer asks for one).
-    """
-    override = manifest.get("category_override")
-    if isinstance(override, str) and override:
-        return override
-    if taxonomy and taxonomy.domain:
-        return taxonomy.domain.replace("_", " ").title()
-    legacy = manifest.get("category", "")
-    return legacy if isinstance(legacy, str) else ""
-
-CapabilityManager._derive_category = _derive_category
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-discover_manifests
 def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugin metadata
@@ -569,11 +491,9 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
                 nested = manifest_to_dict(v2)
                 manifest = {**nested.get("install", {}), **nested.get("code", {})}
                 
-                # CR-8: use the typed taxonomy/resources directly — no
-                # re-parse from the dict needed (load_manifest already did it).
-                taxonomy = v2.code.taxonomy
+                # CR-8: use the typed resources directly — no re-parse from
+                # the dict needed (load_manifest already did it).
                 resources = v2.code.resources
-                derived_category = self._derive_category(manifest, taxonomy)
                 
                 # SG-35: `author` + `package_name` removed; `description`
                 # kept and validated by SG-6.
@@ -581,9 +501,6 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
                     name=name,
                     version=v2.code.version or "0.0.0",
                     description=v2.code.description,
-                    category=derived_category,
-                    interface=v2.code.interface,
-                    taxonomy=taxonomy,
                     resources=resources,
                     config_schema=v2.code.config_schema,
                 )
@@ -594,10 +511,6 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
                 # existing assignment pattern; CapabilityMeta dataclass doesn't
                 # declare either).
                 meta.manifest_v2 = v2
-                
-                # SG-7: format-check the interface FQN; warn but still
-                # discover the manifest so older capabilities remain usable.
-                self._check_interface_fqn(meta.interface, name)
                 
                 self.discovered.append(meta)
                 seen_capabilities.add(name)
@@ -710,40 +623,6 @@ CapabilityManager.check_adapter_compatibility = check_adapter_compatibility
 CapabilityManager.get_capabilities_compatible_with = get_capabilities_compatible_with
 CapabilityManager._resolve_adapter_specs = _resolve_adapter_specs
 
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_by_category
-def get_discovered_by_category(
-    self,
-    category:str # Category to filter by (e.g., "transcription")
-) -> List[CapabilityMeta]: # List of matching discovered capabilities
-    """Get discovered capabilities filtered by category."""
-    return [meta for meta in self.discovered if meta.category == category]
-
-CapabilityManager.get_discovered_by_category = get_discovered_by_category
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_capabilities_by_category
-def get_capabilities_by_category(
-    self,
-    category:str # Category to filter by (e.g., "transcription")
-) -> List[CapabilityMeta]: # List of matching loaded capabilities
-    """Get loaded capabilities filtered by category."""
-    return [meta for meta in self.capabilities.values() if meta.category == category]
-
-CapabilityManager.get_capabilities_by_category = get_capabilities_by_category
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_categories
-def get_discovered_categories(self) -> List[str]: # List of unique categories
-    """Get all unique categories among discovered capabilities."""
-    return list(set(meta.category for meta in self.discovered if meta.category))
-
-CapabilityManager.get_discovered_categories = get_discovered_categories
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_loaded_categories
-def get_loaded_categories(self) -> List[str]: # List of unique categories
-    """Get all unique categories among loaded capabilities."""
-    return list(set(meta.category for meta in self.capabilities.values() if meta.category))
-
-CapabilityManager.get_loaded_categories = get_loaded_categories
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_meta
 def get_capability_meta(
@@ -2663,55 +2542,6 @@ def bind(
     )
 
 CapabilityManager.bind = bind
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_by_role
-def get_by_role(
-    self,
-    role: str  # Interface class name segment of the FQCN (e.g., "TranscriptionPlugin")
-) -> List[CapabilityMeta]:  # Discovered capabilities matching the role
-    """CR-1: return discovered capabilities implementing the given interface role."""
-    return [m for m in self.discovered if m.taxonomy and m.taxonomy.role == role]
-
-CapabilityManager.get_by_role = get_by_role
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_by_domain
-def get_by_domain(
-    self,
-    domain: str  # Domain segment of the taxonomy (e.g., "transcription")
-) -> List[CapabilityMeta]:  # Discovered capabilities in the domain
-    """CR-1: return discovered capabilities in the given domain."""
-    return [m for m in self.discovered if m.taxonomy and m.taxonomy.domain == domain]
-
-CapabilityManager.get_by_domain = get_by_domain
-
-# %% ../../nbs/core/manager.ipynb #pm-fn-get_canonical
-def get_canonical(
-    self,
-    role: str  # Interface class name to look up
-) -> Optional[CapabilityMeta]:  # The unique matching plugin or None
-    """CR-1: return the single canonical plugin for a role.
-    
-    Returns None if zero or multiple capabilities implement the role — useful for
-    substrate-internal use cases (e.g., the graph storage plugin) where the
-    expectation is exactly one implementation. Callers that want
-    multi-implementation handling use `get_by_role()` directly.
-    
-    Multi-match is logged at WARNING level because it's a substrate-visible
-    configuration-time surprise — without the warning, the caller's None-handling
-    branch can't distinguish "no capabilities installed for this role" from
-    "multiple capabilities competing for an exactly-one role." Zero-match is silent
-    because absence-of-optional-plugin is a normal probe outcome.
-    """
-    matches = self.get_by_role(role)
-    if len(matches) > 1:
-        self.logger.warning(
-            f"get_canonical({role!r}): {len(matches)} matches found "
-            f"({[m.name for m in matches]}); returning None per exactly-one contract. "
-            f"Use get_by_role() if multi-match is intentional."
-        )
-    return matches[0] if len(matches) == 1 else None
-
-CapabilityManager.get_canonical = get_canonical
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_compatible_for_current_platform
 def get_compatible_for_current_platform(self) -> List[CapabilityMeta]:  # Plugins compatible with current platform
