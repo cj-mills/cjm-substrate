@@ -107,13 +107,13 @@ class CapabilityInstance:
     - CapabilityMeta is per-plugin-name discovery + canonical-instance state.
     - CapabilityInstance is per-load-call runtime state.
     
-    A plugin loaded with no instance_id (default) gets `instance_id == plugin_name`
+    A plugin loaded with no instance_id (default) gets `instance_id == capability_name`
     and is the canonical instance referenced by CapabilityMeta.instance. Multi-instance
-    loads (instance_id != plugin_name) add entries to CapabilityManager.instances
+    loads (instance_id != capability_name) add entries to CapabilityManager.instances
     without changing the canonical reference.
     """
-    instance_id: str  # Unique key in CapabilityManager.instances; default = plugin_name
-    plugin_name: str  # The underlying discovered plugin's name (CapabilityMeta.name)
+    instance_id: str  # Unique key in CapabilityManager.instances; default = capability_name
+    capability_name: str  # The underlying discovered plugin's name (CapabilityMeta.name)
     config: Dict[str, Any] = field(default_factory=dict)  # Effective config used at initialize()
     # The actual proxy (RemoteCapabilityProxy) bound to this instance. Typed as Any
     # to avoid importing proxy.py here (proxy depends on interface; interface +
@@ -152,9 +152,9 @@ class CapabilityLoadSpec:
     - `config`: initial configuration; falls through to persisted-or-schema-defaults
       when None (default-instance only; multi-instance starts fresh).
     - `instance_id`: explicit instance_id (validated against [A-Za-z0-9_-]{1,64}).
-      None defaults to plugin_name (single-instance backward compat).
+      None defaults to capability_name (single-instance backward compat).
     - `new_instance`: when True with instance_id=None, auto-generate
-      `{plugin_name}-{6-hex}`.
+      `{capability_name}-{6-hex}`.
     """
     meta: Any  # CapabilityMeta — typed as Any to avoid forward-reference quirk under nbdev's late binding
     config: Optional[Dict[str, Any]] = None

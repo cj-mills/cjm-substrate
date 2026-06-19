@@ -99,15 +99,15 @@ def _load_capability_instance(
     """
     try:
         module = importlib.import_module(module_name)
-        plugin_cls = getattr(module, class_name)
-        return plugin_cls()
+        capability_cls = getattr(module, class_name)
+        return capability_cls()
     except Exception as e:
         print(f"FATAL: Failed to load {module_name}:{class_name} - {e}")
         sys.exit(1)
 
 # %% ../../nbs/core/worker.ipynb #45de0055
 def _make_lifespan(
-    plugin_instance  # The loaded plugin object (closure-captured for shutdown cleanup)
+    capability_instance  # The loaded plugin object (closure-captured for shutdown cleanup)
 ):                   # FastAPI lifespan async context manager
     """Build the FastAPI lifespan that invokes plugin.cleanup() on shutdown."""
     @asynccontextmanager
@@ -142,7 +142,7 @@ def _make_lifespan(
         yield
         # Shutdown: invoke plugin.cleanup() best-effort.
         try:
-            cleanup = getattr(plugin_instance, "cleanup", None)
+            cleanup = getattr(capability_instance, "cleanup", None)
             if cleanup is not None:
                 cleanup()
         except Exception as e:
@@ -159,7 +159,7 @@ def _make_lifespan(
 # %% ../../nbs/core/worker.ipynb #6b3a081a
 def _register_identity_endpoints(
     app,             # FastAPI app under construction
-    plugin_instance, # The loaded plugin object
+    capability_instance, # The loaded plugin object
 ) -> None:
     """/health + /stats: worker identity + process-subtree telemetry."""
     @app.get("/health")
@@ -168,8 +168,8 @@ def _register_identity_endpoints(
         return {
             "status": "running",
             "pid": os.getpid(),
-            "name": getattr(plugin_instance, "name", "unknown"),
-            "version": getattr(plugin_instance, "version", "unknown")
+            "name": getattr(capability_instance, "name", "unknown"),
+            "version": getattr(capability_instance, "version", "unknown")
         }
 
     # Closure-captured Process instance + per-child baseline cache (SG-40 pattern).
@@ -243,7 +243,7 @@ def _register_identity_endpoints(
             "subtree_pids": subtree_pids,  # Worker + descendants; substrate intersects with sysmon GPU PIDs
             # SG-54: unit-agnostic measured usage the plugin reported via
             # report_usage() during the last execute (None if it reported none).
-            "usage": getattr(plugin_instance, "_last_api_usage", None),
+            "usage": getattr(capability_instance, "_last_api_usage", None),
         }
 
     @app.get("/structural_surface")
@@ -254,14 +254,14 @@ def _register_identity_endpoints(
         third instance). Same derivation the introspection script records
         at install/regenerate time.
         """
-        return derive_structural_surface(type(plugin_instance))
+        return derive_structural_surface(type(capability_instance))
 
 
 
 # %% ../../nbs/core/worker.ipynb #a96c1c47
 def _register_lifecycle_endpoints(
     app,             # FastAPI app under construction
-    plugin_instance, # The loaded plugin object
+    capability_instance, # The loaded plugin object
 ) -> None:
     """/initialize /prefetch /reconfigure /on_disable /on_enable /cleanup:
     the tool-capability lifecycle surface."""
@@ -270,7 +270,7 @@ def _register_lifecycle_endpoints(
         """Initialize or reconfigure the plugin."""
         try:
             config = await request.json()
-            plugin_instance.initialize(config)
+            capability_instance.initialize(config)
             return {"status": "ok"}
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -284,10 +284,10 @@ def _register_lifecycle_endpoints(
         eager model-download / cache-warming. Errors surface as 500 with the
         exception detail; idempotent calls are the plugin's responsibility.
         """
-        if not hasattr(plugin_instance, "prefetch"):
+        if not hasattr(capability_instance, "prefetch"):
             return {"status": "not_supported"}
         try:
-            plugin_instance.prefetch()
+            capability_instance.prefetch()
             return {"status": "prefetched"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -303,13 +303,13 @@ def _register_lifecycle_endpoints(
         branch — substrate falls back to /initialize when reconfigure is a
         no-op.
         """
-        if not hasattr(plugin_instance, "reconfigure"):
+        if not hasattr(capability_instance, "reconfigure"):
             return {"status": "not_supported"}
         try:
             data = await request.json()
             old_config = data.get("old_config")
             new_config = data.get("new_config")
-            plugin_instance.reconfigure(old_config, new_config)
+            capability_instance.reconfigure(old_config, new_config)
             return {"status": "reconfigured"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -323,9 +323,9 @@ def _register_lifecycle_endpoints(
         PluginInterface.on_disable() is a no-op so plugins that don't
         opt in see no behavior change.
         """
-        if hasattr(plugin_instance, 'on_disable'):
+        if hasattr(capability_instance, 'on_disable'):
             try:
-                plugin_instance.on_disable()
+                capability_instance.on_disable()
                 return {"status": "disabled"}
             except Exception as e:
                 return {"status": "error", "detail": str(e)}
@@ -339,9 +339,9 @@ def _register_lifecycle_endpoints(
         re-acquisition via the next execute() call. Default
         PluginInterface.on_enable() is a no-op.
         """
-        if hasattr(plugin_instance, 'on_enable'):
+        if hasattr(capability_instance, 'on_enable'):
             try:
-                plugin_instance.on_enable()
+                capability_instance.on_enable()
                 return {"status": "enabled"}
             except Exception as e:
                 return {"status": "error", "detail": str(e)}
@@ -350,8 +350,8 @@ def _register_lifecycle_endpoints(
     @app.post("/cleanup")
     def cleanup() -> Dict[str, str]:
         """Clean up plugin resources."""
-        if hasattr(plugin_instance, 'cleanup'):
-            plugin_instance.cleanup()
+        if hasattr(capability_instance, 'cleanup'):
+            capability_instance.cleanup()
         return {"status": "cleaned"}
 
 
@@ -359,21 +359,21 @@ def _register_lifecycle_endpoints(
 # %% ../../nbs/core/worker.ipynb #e93abae4
 def _register_config_endpoints(
     app,             # FastAPI app under construction
-    plugin_instance, # The loaded plugin object
+    capability_instance, # The loaded plugin object
 ) -> None:
     """/config_schema /config /config_options: the config surface."""
     @app.get("/config_schema")
     def get_config_schema() -> Dict[str, Any]:
         """Return JSON Schema for plugin configuration."""
-        if hasattr(plugin_instance, 'get_config_schema'):
-            return plugin_instance.get_config_schema()
+        if hasattr(capability_instance, 'get_config_schema'):
+            return capability_instance.get_config_schema()
         return {}
 
     @app.get("/config")
     def get_config() -> Dict[str, Any]:
         """Return current plugin configuration."""
-        if hasattr(plugin_instance, 'get_current_config'):
-            cfg = plugin_instance.get_current_config()
+        if hasattr(capability_instance, 'get_current_config'):
+            cfg = capability_instance.get_current_config()
             # Ensure dataclasses are serialized
             return json.loads(json.dumps(cfg, cls=EnhancedJSONEncoder))
         return {}
@@ -381,8 +381,8 @@ def _register_config_endpoints(
     @app.get("/config_options")
     def get_config_options() -> Dict[str, Any]:
         """CR-11: return live config option domains (dynamic schema enrichment)."""
-        if hasattr(plugin_instance, 'get_config_options'):
-            opts = plugin_instance.get_config_options()
+        if hasattr(capability_instance, 'get_config_options'):
+            opts = capability_instance.get_config_options()
             # FieldOptions/ConfigOption dataclasses -> JSON-serializable dicts
             return json.loads(json.dumps(opts, cls=EnhancedJSONEncoder))
         return {}
@@ -391,7 +391,7 @@ def _register_config_endpoints(
 
 # %% ../../nbs/core/worker.ipynb #747f2011
 def _load_adapters(
-    plugin_instance,  # The loaded tool-capability instance
+    capability_instance,  # The loaded tool-capability instance
     adapter_specs,    # List of "module:ClassName" impl specs (host-matched)
 ) -> Dict[str, Any]:  # task_name -> bound adapter instance
     """Instantiate task-adapter impls bound to this worker's tool (CR-17 pt 2).
@@ -400,7 +400,7 @@ def _load_adapters(
     capability's recorded structural surface) before reaching the worker, so a
     spec failing HERE is an INSTALL gap (interface lib missing from this env),
     not a compatibility miss — log loudly, skip, keep serving /execute.
-    Binding convention: `AdapterClass(plugin_instance)`; keyed by the class's
+    Binding convention: `AdapterClass(capability_instance)`; keyed by the class's
     `task_name` ClassVar.
     """
     adapters: Dict[str, Any] = {}
@@ -418,7 +418,7 @@ def _load_adapters(
                     f"Task {task_name!r} already bound to "
                     f"{type(adapters[task_name]).__name__}; skipping {spec!r}")
                 continue
-            adapters[task_name] = cls(plugin_instance)
+            adapters[task_name] = cls(capability_instance)
             logging.info(f"Bound adapter {class_name} for task {task_name!r}")
         except Exception as e:
             logging.error(f"Failed to load adapter {spec!r}: {e}")
@@ -465,7 +465,7 @@ def _accounts_headers() -> Dict[str, str]:
 
 def _register_task_endpoints(
     app,             # FastAPI app under construction
-    plugin_instance, # The loaded plugin object
+    capability_instance, # The loaded plugin object
     adapters=None,   # task_name -> bound adapter instance (CR-17 pt 2; stage 4)
 ) -> None:
     """/execute /execute_stream /cancel /progress /task: the task channel.
@@ -511,11 +511,11 @@ def _register_task_endpoints(
         
         # CR-4: reset cancellation flag before invoking execute() so stale
         # state from a previous job doesn't immediately raise.
-        if hasattr(plugin_instance, "_cancel_requested"):
-            plugin_instance._cancel_requested = False
+        if hasattr(capability_instance, "_cancel_requested"):
+            capability_instance._cancel_requested = False
         # SG-54: reset measured usage so a failed / usage-less call can't inherit
         # a prior run's usage when the substrate reads /stats post-execute.
-        plugin_instance._last_api_usage = None
+        capability_instance._last_api_usage = None
         
         try:
             loop = asyncio.get_event_loop()
@@ -523,7 +523,7 @@ def _register_task_endpoints(
             # thread's plugin code (and its logger calls) sees the identity.
             ctx = contextvars.copy_context()
             result = await loop.run_in_executor(
-                None, lambda: ctx.run(plugin_instance.execute, *args, **kwargs)
+                None, lambda: ctx.run(capability_instance.execute, *args, **kwargs)
             )
             # Typed wire envelope for registered result DTOs (stage 2);
             # EnhancedJSONEncoder still flattens unregistered dataclasses
@@ -549,7 +549,7 @@ def _register_task_endpoints(
             # old bare-string detail collapsed every failure to RuntimeError
             # host-side, leaving the retry path blind on this channel.
             job_error = map_bare_exception_to_job_error(
-                e, plugin_name=getattr(plugin_instance, "name", "unknown"),
+                e, capability_name=getattr(capability_instance, "name", "unknown"),
             )
             body = json.loads(json.dumps({"_job_error": job_error},
                                          cls=EnhancedJSONEncoder))
@@ -596,9 +596,9 @@ def _register_task_endpoints(
 
         # Cancel-flag + usage reset parity with /execute (the adapter drives
         # the same tool instance underneath).
-        if hasattr(plugin_instance, "_cancel_requested"):
-            plugin_instance._cancel_requested = False
-        plugin_instance._last_api_usage = None
+        if hasattr(capability_instance, "_cancel_requested"):
+            capability_instance._cancel_requested = False
+        capability_instance._last_api_usage = None
         _t0 = time.monotonic()
         try:
             loop = asyncio.get_event_loop()
@@ -619,7 +619,7 @@ def _register_task_endpoints(
             import traceback
             traceback.print_exc()
             job_error = map_bare_exception_to_job_error(
-                e, plugin_name=getattr(plugin_instance, "name", "unknown"),
+                e, capability_name=getattr(capability_instance, "name", "unknown"),
             )
             record_account(SubstrateEventType.TASK_ACCOUNT.value, {
                 "task": task, "method": method_name, "ok": False,
@@ -667,14 +667,14 @@ def _register_task_endpoints(
         def iter_response() -> Generator[str, None, None]:
             # SG-51: reset cancel flag so stale state from a previous job doesn't
             # immediately raise inside the plugin's execute_stream iterator.
-            if hasattr(plugin_instance, "_cancel_requested"):
-                plugin_instance._cancel_requested = False
+            if hasattr(capability_instance, "_cancel_requested"):
+                capability_instance._cancel_requested = False
             try:
-                if hasattr(plugin_instance, 'execute_stream'):
-                    iterator = plugin_instance.execute_stream(*args, **kwargs)
+                if hasattr(capability_instance, 'execute_stream'):
+                    iterator = capability_instance.execute_stream(*args, **kwargs)
                 else:
                     # Fallback: wrap single result
-                    iterator = [plugin_instance.execute(*args, **kwargs)]
+                    iterator = [capability_instance.execute(*args, **kwargs)]
                 
                 for chunk in iterator:
                     # Line-delimited JSON (NDJSON)
@@ -685,7 +685,7 @@ def _register_task_endpoints(
                 # and raise the corresponding typed exception client-side
                 # (CapabilityCancelledError, CapabilityTransientError, etc.).
                 job_error = map_bare_exception_to_job_error(
-                    e, plugin_name=getattr(plugin_instance, "name", "unknown"),
+                    e, capability_name=getattr(capability_instance, "name", "unknown"),
                 )
                 yield json.dumps({"_job_error": job_error}, cls=EnhancedJSONEncoder) + "\n"
 
@@ -694,9 +694,9 @@ def _register_task_endpoints(
     @app.post("/cancel")
     def cancel() -> Dict[str, str]:
         """Cancel any running execution."""
-        if hasattr(plugin_instance, 'cancel'):
+        if hasattr(capability_instance, 'cancel'):
             try:
-                plugin_instance.cancel()
+                capability_instance.cancel()
                 return {"status": "cancelled"}
             except Exception as e:
                 return {"status": "error", "detail": str(e)}
@@ -706,15 +706,15 @@ def _register_task_endpoints(
     def get_progress() -> Dict[str, Any]:
         """Get current execution progress."""
         return {
-            "progress": getattr(plugin_instance, '_progress', 0.0),
-            "message": getattr(plugin_instance, '_status_message', "")
+            "progress": getattr(capability_instance, '_progress', 0.0),
+            "message": getattr(capability_instance, '_status_message', "")
         }
 
 
 # %% ../../nbs/core/worker.ipynb #580f8d04
 def _register_monitor_endpoints(
     app,             # FastAPI app under construction
-    plugin_instance, # The loaded plugin object
+    capability_instance, # The loaded plugin object
     class_name: str, # Plugin class name (for 404 detail messages)
 ) -> None:
     """/get_system_status /list_processes: CR-3 typed MonitorPlugin accessors."""
@@ -732,16 +732,16 @@ def _register_monitor_endpoints(
               failure; do not silently fall back.
         - 200: typed call succeeded; body is SystemStats.to_dict().
         """
-        if not hasattr(plugin_instance, 'get_system_status'):
+        if not hasattr(capability_instance, 'get_system_status'):
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Plugin {getattr(plugin_instance, 'name', class_name)!r} "
+                    f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
                     f"is not a MonitorPlugin (no get_system_status method)."
                 ),
             )
         try:
-            stats = plugin_instance.get_system_status()
+            stats = capability_instance.get_system_status()
         except NotImplementedError as exc:
             raise HTTPException(status_code=501, detail=str(exc) or "get_system_status not implemented")
         # Serialize via EnhancedJSONEncoder so SystemStats dataclass flattens
@@ -758,16 +758,16 @@ def _register_monitor_endpoints(
         default list_processes() returns `[]`, so non-implementing monitors
         return 200 with an empty list rather than 501.
         """
-        if not hasattr(plugin_instance, 'list_processes'):
+        if not hasattr(capability_instance, 'list_processes'):
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"Plugin {getattr(plugin_instance, 'name', class_name)!r} "
+                    f"Plugin {getattr(capability_instance, 'name', class_name)!r} "
                     f"is not a MonitorPlugin (no list_processes method)."
                 ),
             )
         try:
-            procs = plugin_instance.list_processes()
+            procs = capability_instance.list_processes()
         except NotImplementedError as exc:
             raise HTTPException(status_code=501, detail=str(exc) or "list_processes not implemented")
         # Each ProcessStats has .to_dict(); EnhancedJSONEncoder handles either
@@ -788,14 +788,14 @@ def create_app(
     lifespan, register the endpoint groups. Endpoint behavior lives in the
     module-level `_register_*` helpers above.
     """
-    plugin_instance = _load_capability_instance(module_name, class_name)
-    adapters = _load_adapters(plugin_instance, adapter_specs)
-    app = FastAPI(title="Plugin Worker", lifespan=_make_lifespan(plugin_instance))
-    _register_identity_endpoints(app, plugin_instance)
-    _register_lifecycle_endpoints(app, plugin_instance)
-    _register_config_endpoints(app, plugin_instance)
-    _register_task_endpoints(app, plugin_instance, adapters)
-    _register_monitor_endpoints(app, plugin_instance, class_name)
+    capability_instance = _load_capability_instance(module_name, class_name)
+    adapters = _load_adapters(capability_instance, adapter_specs)
+    app = FastAPI(title="Plugin Worker", lifespan=_make_lifespan(capability_instance))
+    _register_identity_endpoints(app, capability_instance)
+    _register_lifecycle_endpoints(app, capability_instance)
+    _register_config_endpoints(app, capability_instance)
+    _register_task_endpoints(app, capability_instance, adapters)
+    _register_monitor_endpoints(app, capability_instance, class_name)
     return app
 
 # %% ../../nbs/core/worker.ipynb #main-block

@@ -49,7 +49,7 @@ class Pipeline:
 # %% ../nbs/bootstrap.ipynb #spec-helpers
 def _normalize_spec(
     spec: PluginSpec  # Raw spec from caller
-) -> Tuple[str, Optional[Dict[str, Any]]]:  # (plugin_name, optional config)
+) -> Tuple[str, Optional[Dict[str, Any]]]:  # (capability_name, optional config)
     """Normalize a plugin spec into a `(name, config)` pair.
     
     Accepts a bare string, a `(name, config)` tuple, or a mapping with a 'name'

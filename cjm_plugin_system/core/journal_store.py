@@ -77,8 +77,8 @@ class JournalEvent:
     job_id: Optional[str] = None  # Queue job correlation
     composition_id: Optional[str] = None  # Stage-3 composition correlation
     node_id: Optional[str] = None  # Composition node correlation
-    plugin_instance_id: Optional[str] = None  # CR-10 instance correlation
-    plugin_name: Optional[str] = None  # Denormalized for filtering
+    capability_instance_id: Optional[str] = None  # CR-10 instance correlation
+    capability_name: Optional[str] = None  # Denormalized for filtering
     config_hash: Optional[str] = None  # Effective config at event time (CR-7 keying)
     task_name: Optional[str] = None  # Task-channel address (stage 4)
     method: Optional[str] = None  # Task-channel method (stage 4)
@@ -108,7 +108,7 @@ class JournalStore(Protocol):
         job_id: Optional[str] = None,
         run_id: Optional[str] = None,
         composition_id: Optional[str] = None,
-        plugin_instance_id: Optional[str] = None,
+        capability_instance_id: Optional[str] = None,
         worker_session_id: Optional[str] = None,
         event_type: Optional[str] = None,
         after_seq: Optional[int] = None,
@@ -145,8 +145,8 @@ CREATE TABLE IF NOT EXISTS journal (
     job_id TEXT,
     composition_id TEXT,
     node_id TEXT,
-    plugin_instance_id TEXT,
-    plugin_name TEXT,
+    capability_instance_id TEXT,
+    capability_name TEXT,
     config_hash TEXT,
     task_name TEXT,
     method TEXT,
@@ -159,7 +159,7 @@ CREATE INDEX IF NOT EXISTS idx_journal_job ON journal (job_id);
 CREATE INDEX IF NOT EXISTS idx_journal_run ON journal (run_id);
 CREATE INDEX IF NOT EXISTS idx_journal_comp ON journal (composition_id);
 CREATE INDEX IF NOT EXISTS idx_journal_type_ts ON journal (event_type, ts);
-CREATE INDEX IF NOT EXISTS idx_journal_instance_ts ON journal (plugin_instance_id, ts);
+CREATE INDEX IF NOT EXISTS idx_journal_instance_ts ON journal (capability_instance_id, ts);
 CREATE INDEX IF NOT EXISTS idx_journal_wsession ON journal (worker_session_id);
 """
 
@@ -189,7 +189,7 @@ class LocalJournalStore:
 
     _SELECT_COLS = (
         "seq, event_id, ts, event_type, run_id, job_id, composition_id, "
-        "node_id, plugin_instance_id, plugin_name, config_hash, task_name, "
+        "node_id, capability_instance_id, capability_name, config_hash, task_name, "
         "method, worker_session_id, actor, worker_reported, payload"
     )
 
@@ -197,7 +197,7 @@ class LocalJournalStore:
     def _row_to_event(row) -> JournalEvent:
         """Rehydrate a typed JournalEvent from a SELECT row."""
         (seq, event_id, ts_str, event_type, run_id, job_id, composition_id,
-         node_id, plugin_instance_id, plugin_name, config_hash, task_name,
+         node_id, capability_instance_id, capability_name, config_hash, task_name,
          method, worker_session_id, actor, worker_reported, payload_json) = row
         try:
             payload = json.loads(payload_json) if payload_json else {}
@@ -210,7 +210,7 @@ class LocalJournalStore:
         return JournalEvent(
             event_type=event_type, event_id=event_id, ts=ts, run_id=run_id,
             job_id=job_id, composition_id=composition_id, node_id=node_id,
-            plugin_instance_id=plugin_instance_id, plugin_name=plugin_name,
+            capability_instance_id=capability_instance_id, capability_name=capability_name,
             config_hash=config_hash, task_name=task_name, method=method,
             worker_session_id=worker_session_id, actor=actor,
             worker_reported=bool(worker_reported), payload=payload, seq=seq,
@@ -260,13 +260,13 @@ def append(
     with self._conn() as conn:
         cur = conn.execute(
             "INSERT INTO journal (event_id, ts, event_type, run_id, job_id, "
-            "composition_id, node_id, plugin_instance_id, plugin_name, "
+            "composition_id, node_id, capability_instance_id, capability_name, "
             "config_hash, task_name, method, worker_session_id, actor, "
             "worker_reported, payload) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 event.event_id, event.ts.isoformat(), event.event_type,
                 event.run_id, event.job_id, event.composition_id, event.node_id,
-                event.plugin_instance_id, event.plugin_name, event.config_hash,
+                event.capability_instance_id, event.capability_name, event.config_hash,
                 event.task_name, event.method, event.worker_session_id,
                 event.actor, 1 if event.worker_reported else 0,
                 json.dumps(event.payload, default=str, sort_keys=True),
@@ -284,7 +284,7 @@ def query(
     job_id: Optional[str] = None,  # Filter: job correlation
     run_id: Optional[str] = None,  # Filter: host-tier run
     composition_id: Optional[str] = None,  # Filter: composition
-    plugin_instance_id: Optional[str] = None,  # Filter: instance
+    capability_instance_id: Optional[str] = None,  # Filter: instance
     worker_session_id: Optional[str] = None,  # Filter: worker session
     event_type: Optional[str] = None,  # Filter: one vocabulary value
     after_seq: Optional[int] = None,  # Tail cursor: rows with seq > this
@@ -299,7 +299,7 @@ def query(
     clauses, params = [], []
     for col, val in (("job_id", job_id), ("run_id", run_id),
                      ("composition_id", composition_id),
-                     ("plugin_instance_id", plugin_instance_id),
+                     ("capability_instance_id", capability_instance_id),
                      ("worker_session_id", worker_session_id),
                      ("event_type", event_type)):
         if val is not None:

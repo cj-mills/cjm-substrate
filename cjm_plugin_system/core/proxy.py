@@ -117,7 +117,7 @@ class RemoteCapabilityProxy(ToolCapability):
         """Append a worker-lifecycle journal event with this proxy's identity."""
         self.journal.append(JournalEvent(
             event_type=event_type,
-            plugin_name=self.name,
+            capability_name=self.name,
             worker_session_id=self.worker_session_id,
             payload=payload or {},
         ))
@@ -270,12 +270,12 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
     env.update(self.extra_env)
 
     # Inject CJM paths for plugin runtime
-    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.plugin_data_dir)
+    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.capability_data_dir)
     # Stage 8 (PILLAR 1c): the substrate OWNS the per-capability data-dir
     # convention (formerly duplicated in every plugin's meta.py). Inject the
     # resolved per-capability dir + ensure it exists, so adapters/tools read
     # PLUGIN_DATA_DIR instead of recomputing CJM_PLUGIN_DATA_DIR/<name>.
-    _pdd = Path(cfg.plugin_data_dir) / self.name
+    _pdd = Path(cfg.capability_data_dir) / self.name
     _pdd.mkdir(parents=True, exist_ok=True)
     env["PLUGIN_DATA_DIR"] = str(_pdd)
     if cfg.models_dir:
@@ -499,7 +499,7 @@ def _harvest_worker_accounts(
                 composition_id=env.composition_id if env is not None else None,
                 node_id=env.node_id if env is not None else None,
                 actor=env.actor if env is not None else None,
-                plugin_name=self.name,
+                capability_name=self.name,
                 worker_session_id=self.worker_session_id,
                 worker_reported=True,
                 payload=acct.get("payload") or {},
@@ -538,7 +538,7 @@ RemoteCapabilityProxy.execute_async = execute_async
 # %% ../../nbs/core/proxy.ipynb #fn-raise-from-job-error-chunk
 def _raise_from_job_error_chunk(
     job_error: Dict[str, Any],  # _job_error payload from /execute_stream terminal chunk
-    plugin_name: str,  # Caller's plugin name (for CapabilityCancelledError reconstruction)
+    capability_name: str,  # Caller's plugin name (for CapabilityCancelledError reconstruction)
 ) -> None:
     """SG-52: convert a `_job_error` JobError-shaped dict into the right typed exception.
     
@@ -562,7 +562,7 @@ def _raise_from_job_error_chunk(
     
     # Cancellation special-case (transient category, non-retriable semantic)
     if repr_str.startswith("CapabilityCancelledError"):
-        raise CapabilityCancelledError(plugin_name)
+        raise CapabilityCancelledError(capability_name)
     
     if category == "user_input":
         raise CapabilityInputError(message, fields_invalid=job_error.get("fields_invalid"))
@@ -580,7 +580,7 @@ def _raise_from_job_error_chunk(
 # %% ../../nbs/core/proxy.ipynb #fn-raise-typed-execute-error
 def _raise_typed_execute_error(
     resp,              # The worker's non-200 httpx response
-    plugin_name: str,  # Plugin name for exception context
+    capability_name: str,  # Plugin name for exception context
 ) -> None:             # Never returns — always raises
     """SG-52 parity for the unary execute path (stage-3 ledger G7).
 
@@ -598,7 +598,7 @@ def _raise_typed_execute_error(
     except Exception:
         body = None
     if isinstance(body, dict) and "_job_error" in body:
-        _raise_from_job_error_chunk(body["_job_error"], plugin_name)
+        _raise_from_job_error_chunk(body["_job_error"], capability_name)
     raise RuntimeError(f"Execute failed: {resp.text}")
 
 # %% ../../nbs/core/proxy.ipynb #fn-execute-stream-sync
@@ -1179,7 +1179,7 @@ async def _run_prefetch_with_stall_detection_async(
             async with httpx.AsyncClient(timeout=None) as client:
                 resp = await client.post(f"{proxy.base_url}/prefetch")
             if resp.status_code == 500:
-                return {'status': 'plugin_error', 'detail': resp.text}
+                return {'status': 'capability_error', 'detail': resp.text}
             if resp.status_code == 200:
                 return {'status': 'done'}
             return {'status': 'unexpected_status', 'detail': resp.status_code}
@@ -1222,7 +1222,7 @@ async def _run_prefetch_with_stall_detection_async(
             raise CapabilityTimeoutError(proxy.name, elapsed)
 
     result = await post_task
-    if result['status'] == 'plugin_error':
+    if result['status'] == 'capability_error':
         raise RuntimeError(f"Plugin prefetch failed: {result['detail']}")
     if result['status'] == 'connect_error':
         return False

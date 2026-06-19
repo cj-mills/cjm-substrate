@@ -325,12 +325,12 @@ else:
 if "config_schema" not in meta:
     try:
         # Import plugin module and class
-        plugin_module = meta.get("module", "{module_name}.plugin")
-        plugin_class = meta.get("class", "")
+        capability_module = meta.get("module", "{module_name}.plugin")
+        capability_class = meta.get("class", "")
         
-        if plugin_module and plugin_class:
-            mod = importlib.import_module(plugin_module)
-            cls = getattr(mod, plugin_class)
+        if capability_module and capability_class:
+            mod = importlib.import_module(capability_module)
+            cls = getattr(mod, capability_class)
             
             # Instantiate and get config schema
             instance = cls()
@@ -388,7 +388,7 @@ print(json.dumps(meta, indent=2))
     
     # Build environment with CJM paths for plugin introspection
     env = dict(os.environ)
-    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.plugin_data_dir)
+    env["CJM_PLUGIN_DATA_DIR"] = str(cfg.capability_data_dir)
     if cfg.models_dir:
         env["CJM_MODELS_DIR"] = str(cfg.models_dir)
     
@@ -446,8 +446,8 @@ print(json.dumps(meta, indent=2))
             # taxonomy block supersedes it.
             meta_json.pop("type", None)
 
-            plugin_name = meta_json.get('name', 'unknown')
-            out_file = manifest_dir / f"{plugin_name}.json"
+            capability_name = meta_json.get('name', 'unknown')
+            out_file = manifest_dir / f"{capability_name}.json"
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # CR-8: convert flat introspection output into a nested ManifestV2.
@@ -557,7 +557,7 @@ print(json.dumps(meta, indent=2))
 # %% ../nbs/cli.ipynb #4eacfb61
 @app.command("regenerate-manifest")
 def regenerate_manifest(
-    plugin_name: str = typer.Argument(..., help="Plugin name as it appears in the manifest"),
+    capability_name: str = typer.Argument(..., help="Plugin name as it appears in the manifest"),
     plugins_path: Optional[str] = typer.Option(
         None, "--plugins",
         help="Path to plugins.yaml for package_source recovery (legacy manifests)",
@@ -577,7 +577,7 @@ def regenerate_manifest(
     regenerating a v1.0 manifest transparently upgrades it.
     """
     cfg = get_config()
-    manifest_path = cfg.manifests_dir / f"{plugin_name}.json"
+    manifest_path = cfg.manifests_dir / f"{capability_name}.json"
     if not manifest_path.exists():
         typer.echo(f"No manifest found at {manifest_path}", err=True)
         raise typer.Exit(code=1)
@@ -594,7 +594,7 @@ def regenerate_manifest(
     )
     if not env_name:
         typer.echo(
-            f"Cannot determine conda env for {plugin_name!r}: manifest lacks both "
+            f"Cannot determine conda env for {capability_name!r}: manifest lacks both "
             f"'conda_env' field and a parseable 'python_path'. Reinstall the plugin "
             f"via `cjm-ctl install-all` to refresh.",
             err=True,
@@ -612,13 +612,13 @@ def regenerate_manifest(
         with open(plugins_path) as f:
             yconfig = yaml.safe_load(f)
         for p in (yconfig or {}).get("plugins", []):
-            if p.get("name") == plugin_name:
+            if p.get("name") == capability_name:
                 package_source = p.get("package")
                 source_origin = f"{plugins_path} lookup"
                 break
     if package_source is None:
         typer.echo(
-            f"Cannot recover package spec for {plugin_name!r}. Manifest predates the "
+            f"Cannot recover package spec for {capability_name!r}. Manifest predates the "
             f"`package_source` field. Supply --package <spec> or "
             f"--plugins plugins.yaml.",
             err=True,
@@ -629,10 +629,10 @@ def regenerate_manifest(
     # rewrites the file (which would otherwise set installed_at = regenerated_at = now).
     original_installed_at = existing.install.installed_at
     
-    typer.echo(f"Regenerating {plugin_name} from {package_source} ({source_origin})...")
+    typer.echo(f"Regenerating {capability_name} from {package_source} ({source_origin})...")
     out_path = _generate_manifest(env_name, package_source, cfg.manifests_dir)
     if out_path is None:
-        typer.echo(f"Regeneration failed for {plugin_name}", err=True)
+        typer.echo(f"Regeneration failed for {capability_name}", err=True)
         raise typer.Exit(code=1)
     
     # Post-write fix-up: restore installed_at from the pre-existing manifest.
@@ -1362,7 +1362,7 @@ def logs_command(
         def render(ev):
             line = (f"{ev.ts:%Y-%m-%d %H:%M:%S} {ev.event_type:<22} "
                     f"[job={_fmt_short(ev.job_id)} run={ev.run_id or '-'}] "
-                    f"{ev.plugin_instance_id or ev.plugin_name or '-'}"
+                    f"{ev.capability_instance_id or ev.capability_name or '-'}"
                     f"{' (worker)' if ev.worker_reported else ''} "
                     f"{_compact_payload(ev.payload)}")
             return line
@@ -1465,7 +1465,7 @@ def retention_command(
 # %% ../nbs/cli.ipynb #hl18n81zioc
 @app.command("remove")
 def remove_capability(
-    plugin_name:str=typer.Argument(..., help="Name of the plugin to remove"),
+    capability_name:str=typer.Argument(..., help="Name of the plugin to remove"),
     plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml for env name lookup"),
     keep_env:bool=typer.Option(False, "--keep-env", help="Keep the conda environment, only remove manifest"),
     yes:bool=typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")
@@ -1473,7 +1473,7 @@ def remove_capability(
     """Remove a plugin's manifest and conda environment."""
     cfg = get_config()
     manifest_dir = cfg.manifests_dir
-    manifest_path = manifest_dir / f"{plugin_name}.json"
+    manifest_path = manifest_dir / f"{capability_name}.json"
     
     # Find the manifest. CR-8: read via the legacy-flat-view shim so v2.0
     # nested manifests work with the existing dict-access code below.
@@ -1487,7 +1487,7 @@ def remove_capability(
             pass
     
     if not manifest:
-        typer.echo(f"Plugin manifest not found: {plugin_name}", err=True)
+        typer.echo(f"Plugin manifest not found: {capability_name}", err=True)
         typer.echo(f"  Expected at: {manifest_path}")
         raise typer.Exit(code=1)
     
@@ -1503,7 +1503,7 @@ def remove_capability(
         with open(plugins_path) as f:
             config = yaml.safe_load(f)
         for p in config.get('plugins', []):
-            if p.get('name') == plugin_name:
+            if p.get('name') == capability_name:
                 env_name = p.get('env_name', '')
                 break
     
@@ -1512,7 +1512,7 @@ def remove_capability(
     env_exists = env_name in conda_envs if env_name else False
     
     # Show what will be removed
-    typer.echo(f"=== Remove Plugin: {plugin_name} ===\n")
+    typer.echo(f"=== Remove Plugin: {capability_name} ===\n")
     typer.echo(f"Manifest: {manifest_path}")
     
     if env_name:
@@ -1554,7 +1554,7 @@ def remove_capability(
         typer.echo(f"  Error removing manifest: {e}", err=True)
         raise typer.Exit(code=1)
     
-    typer.echo(f"\nPlugin '{plugin_name}' removed successfully.")
+    typer.echo(f"\nPlugin '{capability_name}' removed successfully.")
 
 # %% ../nbs/cli.ipynb #df2c4524
 def _validate_taxonomy_block(
@@ -2099,7 +2099,7 @@ def _open_secret_store():
 
 @app.command("set-secret")
 def set_secret(
-    plugin_name: str = typer.Argument(..., help="Plugin name (manifest 'name', e.g. cjm-transcription-plugin-gemini)"),
+    capability_name: str = typer.Argument(..., help="Plugin name (manifest 'name', e.g. cjm-transcription-plugin-gemini)"),
     key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. GEMINI_API_KEY)"),
     value: Optional[str] = typer.Option(None, "--value", help="Secret value (omit to be prompted with hidden input)"),
     scope: Optional[str] = typer.Option(None, "--scope", help="Reserved multi-user scope (default: single-user)"),
@@ -2115,24 +2115,24 @@ def set_secret(
     """
     store = _open_secret_store()
     if value is None:
-        value = typer.prompt(f"Value for {plugin_name}/{key}", hide_input=True)
-    store.set_secret(plugin_name, key, value, scope=scope)
-    typer.echo(f"Stored secret {key!r} for plugin {plugin_name!r} at {store.path} (0600).")
+        value = typer.prompt(f"Value for {capability_name}/{key}", hide_input=True)
+    store.set_secret(capability_name, key, value, scope=scope)
+    typer.echo(f"Stored secret {key!r} for plugin {capability_name!r} at {store.path} (0600).")
     typer.echo("Reload the plugin (or restart the host) so its worker respawns with the new env.")
 
 
 @app.command("list-secrets")
 def list_secrets(
-    plugin_name: str = typer.Argument(..., help="Plugin name to list secret KEY NAMES for"),
+    capability_name: str = typer.Argument(..., help="Plugin name to list secret KEY NAMES for"),
     scope: Optional[str] = typer.Option(None, "--scope", help="Reserved multi-user scope"),
 ):
     """List the secret KEY NAMES stored for a plugin — never the values (CR-12)."""
     store = _open_secret_store()
-    keys = store.list_keys(plugin_name, scope=scope)
+    keys = store.list_keys(capability_name, scope=scope)
     if not keys:
-        typer.echo(f"No secrets stored for {plugin_name!r}.")
+        typer.echo(f"No secrets stored for {capability_name!r}.")
         return
-    typer.echo(f"Secrets for {plugin_name!r} ({len(keys)}):")
+    typer.echo(f"Secrets for {capability_name!r} ({len(keys)}):")
     for k in keys:
         typer.echo(f"  - {k}")
 

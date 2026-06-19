@@ -71,19 +71,19 @@ class CapabilityManager:
     """Manages plugin discovery, loading, and lifecycle via process isolation."""
     def __init__(
         self,
-        plugin_interface:Type[ToolCapability]=ToolCapability, # Base interface for type checking
+        capability_interface:Type[ToolCapability]=ToolCapability, # Base interface for type checking
         search_paths:Optional[List[Path]]=None, # Custom manifest search paths
         scheduler:Optional[ResourceScheduler]=None, # Resource allocation policy
         config_store:Optional[CapabilityConfigStore]=None, # CR-2: persistence backend; lazy LocalCapabilityConfigStore default per OQ-4
         empirical_store:Optional[EmpiricalResourceStore]=None, # CR-7: resource-usage tracking backend; lazy LocalEmpiricalResourceStore when cfg.substrate.empirical_tracking
         secret_store:Optional[SecretStore]=None, # CR-12: secret backend; lazy LocalSecretStore default (project-local <data_dir>/secrets)
         max_retries:int=1, # CR-7: how many reactive retries to attempt on CapabilityResourceError (default 1 — one retry after eviction)
-        sysmon_plugin_name:Optional[str]=None, # MonitorPlugin (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)
+        sysmon_capability_name:Optional[str]=None, # MonitorPlugin (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)
         journal_store:Optional[JournalStore]=None, # CR-14: durable account-of-action; lazy LocalJournalStore at <data_dir>/journal.db
         diagnostics_store:Optional[DiagnosticsStore]=None # CR-14: disposable diagnostic narrative; lazy LocalDiagnosticsStore at <data_dir>/diagnostics.db
     ):
         """Initialize the plugin manager."""
-        self.plugin_interface = plugin_interface
+        self.capability_interface = capability_interface
         
         # Use config-based search paths if not explicitly provided
         if search_paths is None:
@@ -100,13 +100,13 @@ class CapabilityManager:
         self.discovered: List[CapabilityMeta] = []
         self.plugins: Dict[str, CapabilityMeta] = {}
         # CR-10: per-instance state keyed by instance_id. Default-loaded plugins
-        # populate self.instances[plugin_name] alongside self.plugins[plugin_name]
+        # populate self.instances[capability_name] alongside self.plugins[capability_name]
         # for backward compat; multi-instance loads populate self.instances only.
         self.instances: Dict[str, CapabilityInstance] = {}
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
         
         # CR-2: persistence + lifecycle hook bookkeeping.
-        # config_store=None → lazy LocalCapabilityConfigStore (~/.cjm/plugin_configs.db)
+        # config_store=None → lazy LocalCapabilityConfigStore (~/.cjm/capability_configs.db)
         # per OQ-4 resolution. Hosts that want a different backend (workflow-
         # scoped, in-memory for tests) pass an explicit CapabilityConfigStore.
         # Resolve the project-local data dir once for all substrate stores
@@ -116,7 +116,7 @@ class CapabilityManager:
         except Exception:
             _data_dir = None
         self.config_store: CapabilityConfigStore = config_store or LocalCapabilityConfigStore(
-            (_data_dir / "plugin_configs.db") if _data_dir is not None else None
+            (_data_dir / "capability_configs.db") if _data_dir is not None else None
         )
         # Track plugins with in-flight execute calls so disable_capability can defer
         # the on_disable hook until the job finishes (audit semantics).
@@ -179,11 +179,11 @@ class CapabilityManager:
         
         # MonitorPlugin name for GPU subtree attribution at sample-record time.
         # _record_sample_safe intersects the worker-reported subtree_pids with this
-        # plugin's list_processes() output. Mirrors JobQueue's sysmon_plugin_name;
+        # plugin's list_processes() output. Mirrors JobQueue's sysmon_capability_name;
         # hosts typically configure both with the same value. Lazy-resolved via
         # self.plugins to tolerate load-order (sysmon may load after this manager
         # is constructed).
-        self._sysmon_plugin_name: Optional[str] = sysmon_plugin_name
+        self._sysmon_capability_name: Optional[str] = sysmon_capability_name
         
         # SG-33 (part-of-CR-7): per-instance asyncio.Semaphore for the async
         # execute path's concurrency cap. Lazy-created on first execute_capability_async
@@ -236,14 +236,14 @@ CapabilityManager._start_diagnostics_retention_sweep = _start_diagnostics_retent
 # %% ../../nbs/core/manager.ipynb #pm-fn-register_system_monitor
 def register_system_monitor(
     self,
-    plugin_name:str # Name of the system monitor plugin
+    capability_name:str # Name of the system monitor plugin
 ) -> None:
     """Bind a loaded plugin to act as the hardware system monitor."""
-    self.system_monitor = self.get_capability(plugin_name)
+    self.system_monitor = self.get_capability(capability_name)
     if self.system_monitor:
-        self.logger.info(f"Registered system monitor: {plugin_name}")
+        self.logger.info(f"Registered system monitor: {capability_name}")
     else:
-        self.logger.warning(f"System monitor plugin not found: {plugin_name}")
+        self.logger.warning(f"System monitor plugin not found: {capability_name}")
 
 CapabilityManager.register_system_monitor = register_system_monitor
 
@@ -252,23 +252,23 @@ def _resolve_system_monitor(
     self,
 ) -> Optional[Any]: # The bound system-monitor proxy, or None
     """Return the system monitor, lazily binding from the constructor's
-    `sysmon_plugin_name` when `register_system_monitor` was never called.
+    `sysmon_capability_name` when `register_system_monitor` was never called.
 
     Stage-3 G11: requiring a SEPARATE `register_system_monitor()` call after
     load was a trap every core CLI fell into — GPU subtree ATTRIBUTION worked
-    (the JobQueue queries its own `sysmon_plugin_name` directly) while the
+    (the JobQueue queries its own `sysmon_capability_name` directly) while the
     stats path silently returned `{}`, so the scheduler quantity checks AND
     the stage-3 admission ladder saw no telemetry and every GPU-profiled job
     ran exclusive. The constructor parameter now expresses the full intent.
     """
     if self.system_monitor:
         return self.system_monitor
-    name = getattr(self, "_sysmon_plugin_name", None)
+    name = getattr(self, "_sysmon_capability_name", None)
     if name:
         monitor = self.get_capability(name)
         if monitor:
             self.system_monitor = monitor
-            self.logger.info(f"System monitor lazily bound from sysmon_plugin_name: {name}")
+            self.logger.info(f"System monitor lazily bound from sysmon_capability_name: {name}")
             return monitor
     return None
 
@@ -428,7 +428,7 @@ CapabilityManager.get_instance_concurrency_cap = get_instance_concurrency_cap
 def _check_interface_fqn(
     self,
     iface_fqn:str, # Interface FQN string from the manifest
-    plugin_name:str # For error messages
+    capability_name:str # For error messages
 ) -> bool: # True if FQN passes the format check
     """SG-7: sanity-check the interface FQN format at discovery time.
     
@@ -439,15 +439,15 @@ def _check_interface_fqn(
     """
     if not iface_fqn:
         self.logger.warning(
-            f"Plugin {plugin_name!r}: manifest has empty `interface` field. "
-            f"Run `cjm-ctl regenerate-manifest {plugin_name}` to refresh."
+            f"Plugin {capability_name!r}: manifest has empty `interface` field. "
+            f"Run `cjm-ctl regenerate-manifest {capability_name}` to refresh."
         )
         return False
     if "." not in iface_fqn:
         self.logger.warning(
-            f"Plugin {plugin_name!r}: malformed interface FQN {iface_fqn!r} "
+            f"Plugin {capability_name!r}: malformed interface FQN {iface_fqn!r} "
             f"(expected dotted path like 'module.subpackage.ClassName'). "
-            f"Run `cjm-ctl regenerate-manifest {plugin_name}` to refresh."
+            f"Run `cjm-ctl regenerate-manifest {capability_name}` to refresh."
         )
         return False
     return True
@@ -657,7 +657,7 @@ def get_capabilities_compatible_with(
 
 def _resolve_adapter_specs(
     self,
-    plugin_meta,  # Capability CapabilityMeta being loaded
+    capability_meta,  # Capability CapabilityMeta being loaded
     adapters=None,  # Explicit adapter unit names (loud refusal on mismatch); None = auto-bind compatibles
 ) -> List[str]:  # Worker specs "module:ClassName"
     """CR-17 pt 2: resolve which adapter impls bind in-worker at spawn.
@@ -673,7 +673,7 @@ def _resolve_adapter_specs(
     """
     from cjm_plugin_system.core.errors import CapabilityInputError
     discovered = getattr(self, 'adapter_manifests', [])
-    surface = (getattr(plugin_meta, 'manifest', None) or {}).get('structural_surface')
+    surface = (getattr(capability_meta, 'manifest', None) or {}).get('structural_surface')
     if adapters is None:
         specs = []
         for am in discovered:
@@ -682,7 +682,7 @@ def _resolve_adapter_specs(
                 specs.append(f"{am.module}:{am.class_name}")
                 self.logger.info(
                     f"Auto-binding adapter {am.name} (task {am.task_name!r}) "
-                    f"to {plugin_meta.name}")
+                    f"to {capability_meta.name}")
         return specs
     specs = []
     for name in adapters:
@@ -695,7 +695,7 @@ def _resolve_adapter_specs(
         if not verdict["compatible"]:
             raise CapabilityInputError(
                 f"Adapter {name!r} (task {am.task_name!r}) is NOT compatible with "
-                f"capability {plugin_meta.name!r}: "
+                f"capability {capability_meta.name!r}: "
                 f"missing methods {verdict['missing_methods']}, "
                 f"missing properties {verdict['missing_properties']}, "
                 f"parameter mismatches {verdict['param_mismatches']}"
@@ -748,21 +748,21 @@ CapabilityManager.get_loaded_categories = get_loaded_categories
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_meta
 def get_capability_meta(
     self,
-    plugin_name:str # Name of the plugin
+    capability_name:str # Name of the plugin
 ) -> Optional[CapabilityMeta]: # Plugin metadata or None
     """Get metadata for a loaded plugin by name."""
-    return self.plugins.get(plugin_name)
+    return self.plugins.get(capability_name)
 
 CapabilityManager.get_capability_meta = get_capability_meta
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_meta
 def get_discovered_meta(
     self,
-    plugin_name:str # Name of the plugin
+    capability_name:str # Name of the plugin
 ) -> Optional[CapabilityMeta]: # Plugin metadata or None
     """Get metadata for a discovered (not necessarily loaded) plugin by name."""
     for meta in self.discovered:
-        if meta.name == plugin_name:
+        if meta.name == capability_name:
             return meta
     return None
 
@@ -793,7 +793,7 @@ def _validate_config_against_schema(
     self,
     config:Optional[Dict[str, Any]], # Caller-provided config dict (or None)
     config_schema:Optional[Dict[str, Any]], # Plugin's JSON Schema from manifest
-    plugin_name:str, # For error messages and warnings
+    capability_name:str, # For error messages and warnings
     strict:bool=True # Reject unknown keys (default); set False to log+filter
 ) -> Dict[str, Any]: # Validated (possibly filtered) config dict
     """SG-5: validate a config dict against the manifest's `config_schema`
@@ -810,16 +810,16 @@ def _validate_config_against_schema(
     if unknown_keys:
         if strict:
             raise CapabilityConfigError(
-                f"Unknown config keys for plugin {plugin_name!r}: {unknown_keys}. "
+                f"Unknown config keys for plugin {capability_name!r}: {unknown_keys}. "
                 f"Accepted keys per manifest config_schema: {sorted(valid_keys)}. "
                 f"Pass strict=False to ignore unknown keys (forward-compat).",
                 fields_invalid=unknown_keys,
-                config_class_name=plugin_name,
+                config_class_name=capability_name,
             )
         else:
             self.logger.warning(
                 "%s: ignoring unknown config keys %s (lenient mode)",
-                plugin_name, unknown_keys,
+                capability_name, unknown_keys,
             )
             return {k: v for k, v in config.items() if k in valid_keys}
     
@@ -831,11 +831,11 @@ CapabilityManager._validate_config_against_schema = _validate_config_against_sch
 def _check_config_schema_drift(
     self,
     proxy:Any, # RemoteCapabilityProxy with a live worker
-    plugin_meta:CapabilityMeta, # Metadata to flag if drift is detected
+    capability_meta:CapabilityMeta, # Metadata to flag if drift is detected
 ) -> None:
     """SG-9 + CR-8: compare live worker `/config_schema` to the stored hash.
     
-    Reads the stored hash from `plugin_meta.manifest_v2.drift_tracking.config_schema_hash`
+    Reads the stored hash from `capability_meta.manifest_v2.drift_tracking.config_schema_hash`
     (populated by `discover_manifests`). Computes the live hash with
     `compute_config_schema_hash` and compares — drift = hashes differ.
     
@@ -863,24 +863,24 @@ def _check_config_schema_drift(
         live_schema = proxy.get_config_schema()
     except Exception as e:
         self.logger.debug(
-            f"Skipping drift detection for {plugin_meta.name}: live schema fetch failed ({e})"
+            f"Skipping drift detection for {capability_meta.name}: live schema fetch failed ({e})"
         )
         return
     
     # CR-8: hash-based comparison. The manifest carries the witness hash
     # computed at install/regenerate time; substrate hashes the live schema
     # the same way and compares.
-    manifest_v2 = getattr(plugin_meta, 'manifest_v2', None)
+    manifest_v2 = getattr(capability_meta, 'manifest_v2', None)
     stored_hash = (manifest_v2.drift_tracking.config_schema_hash
                    if manifest_v2 is not None else None)
     live_hash = compute_config_schema_hash(live_schema)
     
     if stored_hash != live_hash:
-        plugin_meta.config_schema_drift = True
-        plugin_meta.live_config_schema = live_schema
+        capability_meta.config_schema_drift = True
+        capability_meta.live_config_schema = live_schema
         self.logger.warning(
-            f"Config schema drift for {plugin_meta.name}: manifest disagrees with live worker. "
-            f"Run `cjm-ctl regenerate-manifest {plugin_meta.name}` to refresh the manifest."
+            f"Config schema drift for {capability_meta.name}: manifest disagrees with live worker. "
+            f"Run `cjm-ctl regenerate-manifest {capability_meta.name}` to refresh the manifest."
         )
 
 CapabilityManager._check_config_schema_drift = _check_config_schema_drift
@@ -889,7 +889,7 @@ CapabilityManager._check_config_schema_drift = _check_config_schema_drift
 def _check_structural_surface_drift(
     self,
     proxy:Any, # RemoteCapabilityProxy with a live worker
-    plugin_meta:CapabilityMeta, # Metadata to flag if drift is detected
+    capability_meta:CapabilityMeta, # Metadata to flag if drift is detected
 ) -> None:
     """Pass-2 Thread 3 (stage 2): compare the worker's live-derived structural
     surface to the manifest's stored witness hash — third instance of the
@@ -912,7 +912,7 @@ def _check_structural_surface_drift(
     except AttributeError:
         pass
 
-    manifest_v2 = getattr(plugin_meta, 'manifest_v2', None)
+    manifest_v2 = getattr(capability_meta, 'manifest_v2', None)
     stored_hash = (manifest_v2.drift_tracking.structural_surface_hash
                    if manifest_v2 is not None else None)
     if stored_hash is None:
@@ -925,11 +925,11 @@ def _check_structural_surface_drift(
 
     from cjm_plugin_system.core.manifest_format import compute_structural_surface_hash
     if compute_structural_surface_hash(live_surface) != stored_hash:
-        plugin_meta.structural_surface_drift = True
+        capability_meta.structural_surface_drift = True
         self.logger.warning(
-            f"Structural-surface drift for {plugin_meta.name}: the installed "
+            f"Structural-surface drift for {capability_meta.name}: the installed "
             f"code's public surface disagrees with the manifest recording. Run "
-            f"`cjm-ctl regenerate-manifest {plugin_meta.name}` to refresh "
+            f"`cjm-ctl regenerate-manifest {capability_meta.name}` to refresh "
             f"(adapter compatibility matches against the recorded surface)."
         )
 
@@ -938,7 +938,7 @@ CapabilityManager._check_structural_surface_drift = _check_structural_surface_dr
 # %% ../../nbs/core/manager.ipynb #pm-fn-_persist_config
 def _persist_config(
     self,
-    plugin_name: str  # Plugin to persist
+    capability_name: str  # Plugin to persist
 ) -> None:
     """CR-2: write current CapabilityMeta state + live worker config to the store.
     
@@ -946,7 +946,7 @@ def _persist_config(
     current_config (when reachable). Failures are logged + swallowed —
     persistence is a best-effort side-channel, not a correctness invariant.
     """
-    meta = self.plugins.get(plugin_name)
+    meta = self.plugins.get(capability_name)
     if meta is None:
         return
     current_config: Dict[str, Any] = {}
@@ -957,22 +957,22 @@ def _persist_config(
                 current_config = fetched
         except Exception as e:
             self.logger.debug(
-                f"Could not fetch live config for {plugin_name} during persist: {e}"
+                f"Could not fetch live config for {capability_name} during persist: {e}"
             )
     try:
-        self.config_store.set(plugin_name, CapabilityConfigRecord(
+        self.config_store.set(capability_name, CapabilityConfigRecord(
             config=current_config,
             enabled=meta.enabled,
         ))
     except Exception as e:
-        self.logger.warning(f"Failed to persist config for {plugin_name}: {e}")
+        self.logger.warning(f"Failed to persist config for {capability_name}: {e}")
 
 CapabilityManager._persist_config = _persist_config
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_maybe_fire_disable_hook
 def _maybe_fire_disable_hook(
     self,
-    name_or_id: str  # instance_id (or legacy plugin_name) whose in-flight job just finished
+    name_or_id: str  # instance_id (or legacy capability_name) whose in-flight job just finished
 ) -> None:
     """CR-2 + CR-10: fire deferred on_disable for `name_or_id` if pending.
     
@@ -1020,19 +1020,19 @@ def _validate_instance_id(self, instance_id: str) -> None:
 CapabilityManager._validate_instance_id = _validate_instance_id
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_generate_instance_id
-def _generate_instance_id(self, plugin_name: str) -> str:
-    """Generate a unique instance_id of form `{plugin_name}-{6-char-hex}`.
+def _generate_instance_id(self, capability_name: str) -> str:
+    """Generate a unique instance_id of form `{capability_name}-{6-char-hex}`.
     
     Used when load_capability is called with new_instance=True and no explicit
     instance_id. Retries up to 16 times if a collision occurs in self.instances.
     """
     import secrets as _secrets
     for _ in range(16):
-        candidate = f"{plugin_name}-{_secrets.token_hex(3)}"
+        candidate = f"{capability_name}-{_secrets.token_hex(3)}"
         if candidate not in self.instances:
             return candidate
     raise RuntimeError(
-        f"Could not generate unique instance_id for {plugin_name!r} after 16 attempts"
+        f"Could not generate unique instance_id for {capability_name!r} after 16 attempts"
     )
 
 CapabilityManager._generate_instance_id = _generate_instance_id
@@ -1044,7 +1044,7 @@ def get_instance(
 ) -> Optional[CapabilityInstance]:
     """Return the CapabilityInstance for `name_or_id`, or None if not loaded.
     
-    Lookup is keyed by instance_id (which equals plugin_name for default-
+    Lookup is keyed by instance_id (which equals capability_name for default-
     loaded plugins). Multi-instance IDs only exist in self.instances.
     """
     return self.instances.get(name_or_id)
@@ -1054,12 +1054,12 @@ CapabilityManager.get_instance = get_instance
 # %% ../../nbs/core/manager.ipynb #pm-fn-list_instances
 def list_instances(
     self,
-    plugin_name: Optional[str] = None  # If given, filter to this plugin's instances
+    capability_name: Optional[str] = None  # If given, filter to this plugin's instances
 ) -> List[CapabilityInstance]:
     """List all loaded instances, optionally filtered by underlying plugin name."""
-    if plugin_name is None:
+    if capability_name is None:
         return list(self.instances.values())
-    return [i for i in self.instances.values() if i.plugin_name == plugin_name]
+    return [i for i in self.instances.values() if i.capability_name == capability_name]
 
 CapabilityManager.list_instances = list_instances
 
@@ -1069,17 +1069,17 @@ CapabilityManager.list_instances = list_instances
 # ------------------------------------------------------------------
 def _worker_env_specs(
     self,
-    plugin_meta: CapabilityMeta  # Plugin whose WORKER_ENV contract to read
+    capability_meta: CapabilityMeta  # Plugin whose WORKER_ENV contract to read
 ) -> List[Dict[str, Any]]:  # List of EnvVarSpec-as-dict entries (possibly empty)
     """Return a plugin's WORKER_ENV contract as spec dicts (CR-12).
 
     Prefers the typed manifest_v2 code section; falls back to the flat manifest
     dict view. Empty list when the plugin declares no worker-env contract.
     """
-    mv2 = getattr(plugin_meta, "manifest_v2", None)
+    mv2 = getattr(capability_meta, "manifest_v2", None)
     if mv2 is not None and getattr(mv2.code, "worker_env", None):
         return list(mv2.code.worker_env)
-    flat = getattr(plugin_meta, "manifest", None) or {}
+    flat = getattr(capability_meta, "manifest", None) or {}
     return list(flat.get("worker_env") or [])
 
 CapabilityManager._worker_env_specs = _worker_env_specs
@@ -1087,12 +1087,12 @@ CapabilityManager._worker_env_specs = _worker_env_specs
 # %% ../../nbs/core/manager.ipynb #pm-fn-_resolve_worker_env
 def _resolve_worker_env(
     self,
-    plugin_meta: CapabilityMeta,        # Plugin being loaded
+    capability_meta: CapabilityMeta,        # Plugin being loaded
     scope: Optional[str] = None     # SG-55 forward seam: per-principal scope (None = single-user)
 ) -> Dict[str, str]:  # {ENV_NAME: value} overlay injected into the worker at spawn
     """CR-12 + Q1-A: compose the resolved worker-env overlay for a load.
 
-    Secrets resolve from the SecretStore keyed by plugin_name — so every
+    Secrets resolve from the SecretStore keyed by capability_name — so every
     instance of a plugin shares one credential (CR-10: two Gemini instances,
     one GEMINI_API_KEY). A missing secret is OMITTED (the worker spawns without
     it; the plugin reports the gap at execute) rather than injected empty.
@@ -1100,7 +1100,7 @@ def _resolve_worker_env(
     Visible vars resolve from their declared `default`, with Q1-A template
     substitution applied: a default like ``"${CJM_MODELS_DIR}/huggingface"``
     expands to an absolute path using the substrate's current `cfg.models_dir`
-    + `cfg.plugin_data_dir`. Static defaults (no `${...}` syntax) pass through
+    + `cfg.capability_data_dir`. Static defaults (no `${...}` syntax) pass through
     unchanged. A template-substitution failure — unknown placeholder (plugin
     author bug) OR unresolved value (operator hasn't configured
     `cfg.models_dir`) — is WARN-and-OMIT: the worker still spawns, and the
@@ -1116,28 +1116,28 @@ def _resolve_worker_env(
     cfg = get_config()
     # Build the placeholder context once per load. The substrate is the
     # source of truth for CJM_*_DIR; PLUGIN_DATA_DIR is conventionally
-    # `<cfg.plugin_data_dir>/<plugin_name>` (matches the per-plugin data
+    # `<cfg.capability_data_dir>/<capability_name>` (matches the per-plugin data
     # subdirectory each plugin's meta.py traditionally computed).
     placeholders: Dict[str, Optional[str]] = {
         "CJM_MODELS_DIR": str(cfg.models_dir) if cfg.models_dir else None,
-        "CJM_PLUGIN_DATA_DIR": str(cfg.plugin_data_dir) if cfg.plugin_data_dir else None,
+        "CJM_PLUGIN_DATA_DIR": str(cfg.capability_data_dir) if cfg.capability_data_dir else None,
         "PLUGIN_DATA_DIR": (
-            str(cfg.plugin_data_dir / plugin_meta.name) if cfg.plugin_data_dir else None
+            str(cfg.capability_data_dir / capability_meta.name) if cfg.capability_data_dir else None
         ),
-        "PLUGIN_NAME": plugin_meta.name,
+        "PLUGIN_NAME": capability_meta.name,
     }
 
     overlay: Dict[str, str] = {}
-    for spec in self._worker_env_specs(plugin_meta):
+    for spec in self._worker_env_specs(capability_meta):
         name = spec.get("name")
         if not name:
             continue
         if spec.get("secret"):
             try:
-                val = self.secret_store.get_secret(plugin_meta.name, name, scope=scope)
+                val = self.secret_store.get_secret(capability_meta.name, name, scope=scope)
             except Exception as e:
                 self.logger.warning(
-                    f"secret_store.get_secret({plugin_meta.name!r}, {name!r}) failed: {e}"
+                    f"secret_store.get_secret({capability_meta.name!r}, {name!r}) failed: {e}"
                 )
                 val = None
             if val is not None:
@@ -1150,7 +1150,7 @@ def _resolve_worker_env(
                 overlay[name] = expand_worker_env_template(
                     str(default),
                     placeholders,
-                    plugin_name=plugin_meta.name,
+                    capability_name=capability_meta.name,
                     var_name=name,
                 )
             except Exception as e:
@@ -1161,7 +1161,7 @@ def _resolve_worker_env(
                 # install/release time via template_check_placeholders.
                 self.logger.warning(
                     f"failed to expand worker-env default for "
-                    f"{plugin_meta.name!r} EnvVarSpec(name={name!r}, default={default!r}): {e}"
+                    f"{capability_meta.name!r} EnvVarSpec(name={name!r}, default={default!r}): {e}"
                 )
     return overlay
 
@@ -1246,11 +1246,11 @@ def set_capability_secret(
     call. Reload failures are logged, not raised.
     """
     inst = self.instances.get(name_or_id)
-    plugin_name = inst.plugin_name if inst is not None else name_or_id
-    self.secret_store.set_secret(plugin_name, key, value, scope=scope)
+    capability_name = inst.capability_name if inst is not None else name_or_id
+    self.secret_store.set_secret(capability_name, key, value, scope=scope)
     if not reload:
         return True
-    targets = [i.instance_id for i in self.instances.values() if i.plugin_name == plugin_name]
+    targets = [i.instance_id for i in self.instances.values() if i.capability_name == capability_name]
     for iid in targets:
         try:
             self.reload_capability(iid)
@@ -1263,10 +1263,10 @@ CapabilityManager.set_capability_secret = set_capability_secret
 # %% ../../nbs/core/manager.ipynb #pm-fn-load_capability
 def load_capability(
     self,
-    plugin_meta:CapabilityMeta, # Plugin metadata (with manifest attached)
+    capability_meta:CapabilityMeta, # Plugin metadata (with manifest attached)
     config:Optional[Dict[str, Any]]=None, # Initial configuration
     strict:bool=True, # SG-5: reject unknown keys against manifest config_schema (default)
-    instance_id:Optional[str]=None, # CR-10: explicit instance_id; None defaults to plugin_name
+    instance_id:Optional[str]=None, # CR-10: explicit instance_id; None defaults to capability_name
     new_instance:bool=False, # CR-10: auto-generate `{name}-{hex}` instance_id (with instance_id=None)
     max_concurrent_requests:Optional[int]=None, # SG-33 (CR-7): per-instance async concurrency cap; None = unbounded
     adapters:Optional[List[str]]=None # CR-17 pt 2: explicit adapter unit names (loud refusal on mismatch); None = auto-bind discovered compatibles
@@ -1277,15 +1277,15 @@ def load_capability(
     before launching the worker. If a persisted record exists and the
     caller didn't pass an explicit config, the persisted config is used
     as the effective input. The persisted `enabled` flag is applied to
-    `plugin_meta.enabled` so disabled plugins stay disabled across
+    `capability_meta.enabled` so disabled plugins stay disabled across
     process restarts.
     
     CR-10: optional `instance_id` allows multi-instance loading.
     - instance_id=None, new_instance=False (default): instance_id =
-      plugin_meta.name. Populates self.plugins[plugin_name] + self.instances
-      [plugin_name] together (single-instance backward compat).
+      capability_meta.name. Populates self.plugins[capability_name] + self.instances
+      [capability_name] together (single-instance backward compat).
     - instance_id="custom": validated against `[A-Za-z0-9_-]{1,64}`. Populates
-      self.instances[custom]. Persistence is keyed by plugin_name and only
+      self.instances[custom]. Persistence is keyed by capability_name and only
       applied to the default instance.
     - instance_id=None, new_instance=True: auto-generates `{name}-{6-hex}`.
     Idempotent: re-load against an existing instance_id returns True without
@@ -1297,73 +1297,73 @@ def load_capability(
     `max_concurrent_requests` on the instance — the actual asyncio.Semaphore
     is lazy-created in execute_capability_async via `_get_concurrent_limiter`.
     """
-    if not hasattr(plugin_meta, 'manifest'):
-        self.logger.error(f"Plugin {plugin_meta.name} has no manifest data")
+    if not hasattr(capability_meta, 'manifest'):
+        self.logger.error(f"Plugin {capability_meta.name} has no manifest data")
         return False
     
     # CR-10: resolve instance_id + idempotency check
     if instance_id is None:
-        resolved_id = self._generate_instance_id(plugin_meta.name) if new_instance else plugin_meta.name
+        resolved_id = self._generate_instance_id(capability_meta.name) if new_instance else capability_meta.name
     else:
         self._validate_instance_id(instance_id)
         resolved_id = instance_id
     if resolved_id in self.instances:
         self.logger.info(f"Instance {resolved_id!r} already loaded; idempotent skip")
         return True
-    is_default = (resolved_id == plugin_meta.name)
+    is_default = (resolved_id == capability_meta.name)
 
     # CR-2: read persisted record (config + enabled flag) before launching.
-    # Persistence is per-plugin (keyed by plugin_name), not per-instance, so
+    # Persistence is per-plugin (keyed by capability_name), not per-instance, so
     # multi-instance loads ignore the persisted state.
     persisted: Optional[CapabilityConfigRecord] = None
     if is_default:
         try:
-            persisted = self.config_store.get(plugin_meta.name)
+            persisted = self.config_store.get(capability_meta.name)
         except Exception as e:
             self.logger.debug(
-                f"config_store.get({plugin_meta.name}) raised; falling through: {e}"
+                f"config_store.get({capability_meta.name}) raised; falling through: {e}"
             )
 
     try:
         self.logger.info(
-            f"Launching worker for {plugin_meta.name} (instance_id={resolved_id})..."
+            f"Launching worker for {capability_meta.name} (instance_id={resolved_id})..."
         )
         # CR-12: resolve the worker-env overlay (secrets from the SecretStore +
         # visible defaults) and inject it at spawn. Warn — don't fail — when a
         # required secret is unset: the plugin loads lazily and reports the gap
         # at execute, so a config UI / operator can supply the secret post-load.
-        extra_env = self._resolve_worker_env(plugin_meta)
-        _missing_env = self.missing_required_env(plugin_meta)
+        extra_env = self._resolve_worker_env(capability_meta)
+        _missing_env = self.missing_required_env(capability_meta)
         if _missing_env:
             self.logger.warning(
-                f"{plugin_meta.name}: required worker-env unsatisfied {_missing_env}; "
+                f"{capability_meta.name}: required worker-env unsatisfied {_missing_env}; "
                 f"plugin loads but can't do useful work until set "
-                f"(e.g. `cjm-ctl set-secret {plugin_meta.name} <KEY>`)."
+                f"(e.g. `cjm-ctl set-secret {capability_meta.name} <KEY>`)."
             )
         # CR-17 pt 2: resolve adapter impls (auto-bind compatibles, or verify
         # the explicit list with loud refusal) and bind them in-worker at spawn.
-        adapter_specs = self._resolve_adapter_specs(plugin_meta, adapters)
-        proxy = RemoteCapabilityProxy(plugin_meta.manifest, extra_env=extra_env,
+        adapter_specs = self._resolve_adapter_specs(capability_meta, adapters)
+        proxy = RemoteCapabilityProxy(capability_meta.manifest, extra_env=extra_env,
                                   adapter_specs=adapter_specs,
                                   journal=self.journal_store,
                                   diagnostics=self.diagnostics_store)
 
-        config_schema = plugin_meta.manifest.get("config_schema")
+        config_schema = capability_meta.manifest.get("config_schema")
         
         # SG-9 + CR-8: detect drift between manifest-stored schema hash and
         # live worker. Drift check reads the stored hash from
-        # `plugin_meta.manifest_v2.drift_tracking.config_schema_hash` and
+        # `capability_meta.manifest_v2.drift_tracking.config_schema_hash` and
         # honors `cfg.substrate.drift_detection` opt-out internally.
-        self._check_config_schema_drift(proxy, plugin_meta)
+        self._check_config_schema_drift(proxy, capability_meta)
         # Pass-2 Thread 3 companion: structural-surface drift (same idiom,
         # same cjm.yaml opt-out switch).
-        self._check_structural_surface_drift(proxy, plugin_meta)
+        self._check_structural_surface_drift(proxy, capability_meta)
         
         # CR-2: effective config = caller > persisted (default-only) > manifest defaults.
         if not config and persisted is not None and persisted.config:
             config = dict(persisted.config)
             self.logger.info(
-                f"Using persisted config for {plugin_meta.name}: {list(config.keys())}"
+                f"Using persisted config for {capability_meta.name}: {list(config.keys())}"
             )
         
         # If config is still None or empty, extract defaults from the
@@ -1371,12 +1371,12 @@ def load_capability(
         if not config:
             config = self._extract_defaults_from_schema(config_schema)
             if config:
-                self.logger.info(f"Using default config for {plugin_meta.name}: {list(config.keys())}")
+                self.logger.info(f"Using default config for {capability_meta.name}: {list(config.keys())}")
         else:
             # SG-5: validate caller-provided / persisted config against
             # manifest schema before forwarding to the worker.
             config = self._validate_config_against_schema(
-                config, config_schema, plugin_meta.name, strict=strict,
+                config, config_schema, capability_meta.name, strict=strict,
             )
 
         # Initialize with config (defaults or provided)
@@ -1388,7 +1388,7 @@ def load_capability(
         effective_enabled = True
         if is_default and persisted is not None:
             effective_enabled = persisted.enabled
-            plugin_meta.enabled = effective_enabled
+            capability_meta.enabled = effective_enabled
         
         # CR-7: hash the effective config so empirical recording can key by
         # (instance_id, config_hash). Two configs for the same instance get
@@ -1399,7 +1399,7 @@ def load_capability(
         # CR-10: always record the per-instance state
         self.instances[resolved_id] = CapabilityInstance(
             instance_id=resolved_id,
-            plugin_name=plugin_meta.name,
+            capability_name=capability_meta.name,
             config=effective_config,
             proxy=proxy,
             enabled=effective_enabled,
@@ -1408,18 +1408,18 @@ def load_capability(
         )
         
         # Default-instance only: maintain backward-compat single-instance
-        # references (CapabilityMeta.instance, self.plugins[plugin_name]).
+        # references (CapabilityMeta.instance, self.plugins[capability_name]).
         if is_default:
-            plugin_meta.instance = proxy
-            self.plugins[plugin_meta.name] = plugin_meta
-        elif plugin_meta.name not in self.plugins:
+            capability_meta.instance = proxy
+            self.plugins[capability_meta.name] = capability_meta
+        elif capability_meta.name not in self.plugins:
             # First-ever instance for this plugin is multi-instance — record
             # the CapabilityMeta so list_capabilities / get_capability_meta still work,
             # but leave meta.instance=None (no canonical instance exists).
-            self.plugins[plugin_meta.name] = plugin_meta
+            self.plugins[capability_meta.name] = capability_meta
         
         self.logger.info(
-            f"Loaded plugin: {plugin_meta.name} "
+            f"Loaded plugin: {capability_meta.name} "
             f"(instance_id={resolved_id}, enabled={effective_enabled})"
         )
 
@@ -1432,8 +1432,8 @@ def load_capability(
         if _journal is not None:
             _journal.append(JournalEvent(
                 event_type=SubstrateEventType.CONFIG_APPLIED.value,
-                plugin_instance_id=resolved_id,
-                plugin_name=plugin_meta.name,
+                capability_instance_id=resolved_id,
+                capability_name=capability_meta.name,
                 config_hash=instance_config_hash,
                 worker_session_id=getattr(proxy, 'worker_session_id', None),
                 payload={"phase": "load", "config_keys": sorted(effective_config),
@@ -1443,7 +1443,7 @@ def load_capability(
 
     except Exception as e:
         self.logger.error(
-            f"Failed to load plugin {plugin_meta.name} (instance_id={resolved_id}): {e}"
+            f"Failed to load plugin {capability_meta.name} (instance_id={resolved_id}): {e}"
         )
         return False
 
@@ -1474,7 +1474,7 @@ def unload_capability(
 ) -> bool: # True if successfully unloaded
     """Unload a plugin instance and terminate its Worker process (CR-10).
     
-    If name_or_id resolves to the default instance (instance_id == plugin_name)
+    If name_or_id resolves to the default instance (instance_id == capability_name)
     and no other instances remain for the same plugin, also removes the
     CapabilityMeta from self.plugins. Otherwise removes only the instance and
     clears CapabilityMeta.instance if it pointed at the unloaded canonical.
@@ -1483,7 +1483,7 @@ def unload_capability(
     if inst is None:
         self.logger.error(f"Plugin/instance {name_or_id!r} not found")
         return False
-    plugin_name = inst.plugin_name
+    capability_name = inst.capability_name
     instance_id = inst.instance_id
     try:
         if inst.proxy is not None:
@@ -1498,23 +1498,23 @@ def unload_capability(
         _limiters = getattr(self, '_concurrent_limiters', None)
         if _limiters is not None:
             _limiters.pop(instance_id, None)
-        # Backward-compat: also clear plugin_name keys for the canonical instance
-        self._pending_disable_hooks.discard(plugin_name)
-        self._running_executions.discard(plugin_name)
+        # Backward-compat: also clear capability_name keys for the canonical instance
+        self._pending_disable_hooks.discard(capability_name)
+        self._running_executions.discard(capability_name)
         
-        remaining = [i for i in self.instances.values() if i.plugin_name == plugin_name]
+        remaining = [i for i in self.instances.values() if i.capability_name == capability_name]
         if not remaining:
             # No instances of this plugin at all (whether the unloaded one
             # was canonical or multi-instance) — drop the CapabilityMeta entry.
-            self.plugins.pop(plugin_name, None)
-        elif instance_id == plugin_name:
+            self.plugins.pop(capability_name, None)
+        elif instance_id == capability_name:
             # Canonical instance unloaded but multi-instances remain — clear
             # the now-stale canonical reference; CapabilityMeta stays so
             # list_capabilities / get_capability_meta still surface the plugin.
-            meta = self.plugins.get(plugin_name)
+            meta = self.plugins.get(capability_name)
             if meta is not None:
                 meta.instance = None
-        self.logger.info(f"Unloaded plugin: {plugin_name} (instance_id={instance_id})")
+        self.logger.info(f"Unloaded plugin: {capability_name} (instance_id={instance_id})")
         return True
     except Exception as e:
         self.logger.error(f"Error unloading {name_or_id!r}: {e}")
@@ -1545,7 +1545,7 @@ def get_capability(
 ) -> Optional[ToolCapability]: # Plugin proxy instance or None
     """Get a loaded plugin's proxy by name or instance_id (CR-10).
     
-    Lookup order: self.instances first (covers both default plugin_name and
+    Lookup order: self.instances first (covers both default capability_name and
     multi-instance IDs), falling back to CapabilityMeta.instance for any
     legacy code path that populated self.plugins without self.instances
     (defensive — shouldn't happen post-CR-10 since load_capability always
@@ -1570,13 +1570,13 @@ CapabilityManager.list_capabilities = list_capabilities
 def _get_sysmon_capability(self) -> Optional[Any]:
     """Resolve the configured MonitorPlugin (CR-3) for GPU subtree attribution.
 
-    Returns the loaded plugin instance keyed by `sysmon_plugin_name`, or
+    Returns the loaded plugin instance keyed by `sysmon_capability_name`, or
     None when no sysmon is configured / hasn't been loaded yet. Lazy
     resolution against `self.plugins` tolerates load-order: the manager
     can be constructed before the sysmon plugin is loaded; later
     `_record_sample_safe` calls pick it up automatically.
     """
-    name = getattr(self, "_sysmon_plugin_name", None)
+    name = getattr(self, "_sysmon_capability_name", None)
     if not name:
         return None
     meta = self.plugins.get(name)
@@ -1653,7 +1653,7 @@ def _record_sample_safe(self, inst:CapabilityInstance, start_time:float, success
             api_usage=api_usage,
         )
         store.record_sample(
-            inst.instance_id, inst.plugin_name, inst.config_hash, sample,
+            inst.instance_id, inst.capability_name, inst.config_hash, sample,
         )
     except Exception as e:
         self.logger.warning(
@@ -1823,14 +1823,14 @@ def execute_capability(
         raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id  # stable across reload (preserved by reload_capability)
-    plugin_meta = self.plugins.get(inst.plugin_name)
+    capability_meta = self.plugins.get(inst.capability_name)
     
     # CR-7 reactive retry loop. Defensive max_retries lookup so test fixtures
     # bypassing __init__ inherit the default behavior (one retry on resource).
     max_retries = getattr(self, 'max_retries', 1)
     last_resource_error: Optional[CapabilityResourceError] = None
     for attempt in range(max_retries + 1):
-        if last_resource_error is not None and plugin_meta is not None:
+        if last_resource_error is not None and capability_meta is not None:
             # CR-6 Stage 4: notify substrate-side retry observer (best-effort).
             # JobQueue installs `self._on_retry` in `start()`; helper is invoked
             # with (instance_id, attempt_index, exception) so the queue can fire
@@ -1848,7 +1848,7 @@ def execute_capability(
                 f"evicting + reloading + retrying"
             )
             self._reactive_evict_for(
-                plugin_meta,
+                capability_meta,
                 getattr(last_resource_error, 'resource_shortfall', None),
             )
             # CR-7: always reload — Track A (worker dead) needs it for any
@@ -1871,13 +1871,13 @@ def execute_capability(
         
         # Existing pre-execute allocation + eviction flow (LRU + multi-axis under CR-7)
         inst.last_executed = time.time()
-        if plugin_meta is not None:
-            plugin_meta.last_executed = inst.last_executed
+        if capability_meta is not None:
+            capability_meta.last_executed = inst.last_executed
         stats_provider = self._get_global_stats
         
-        if plugin_meta is not None and not self.scheduler.allocate(plugin_meta, stats_provider):
+        if capability_meta is not None and not self.scheduler.allocate(capability_meta, stats_provider):
             self.logger.warning(f"Resources busy for {name_or_id}. Triggering eviction protocol.")
-            if self._evict_for_resources(plugin_meta):
+            if self._evict_for_resources(capability_meta):
                 self.logger.info("Eviction successful. Resources acquired.")
             else:
                 raise RuntimeError(
@@ -1936,7 +1936,7 @@ async def execute_capability_async(
         raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id
-    plugin_meta = self.plugins.get(inst.plugin_name)
+    capability_meta = self.plugins.get(inst.capability_name)
     
     # SG-33 lazy semaphore (None when no cap configured for this instance).
     limiter = self._get_concurrent_limiter(instance_id)
@@ -1944,7 +1944,7 @@ async def execute_capability_async(
     max_retries = getattr(self, 'max_retries', 1)
     last_resource_error: Optional[CapabilityResourceError] = None
     for attempt in range(max_retries + 1):
-        if last_resource_error is not None and plugin_meta is not None:
+        if last_resource_error is not None and capability_meta is not None:
             # CR-6 Stage 4: notify substrate-side retry observer (best-effort).
             # JobQueue installs `self._on_retry` in `start()`; helper is invoked
             # with (instance_id, attempt_index, exception) so the queue can fire
@@ -1962,7 +1962,7 @@ async def execute_capability_async(
                 f"evicting + reloading + retrying"
             )
             self._reactive_evict_for(
-                plugin_meta,
+                capability_meta,
                 getattr(last_resource_error, 'resource_shortfall', None),
             )
             # CR-7: always reload — Track A worker-dead + Track B
@@ -1985,12 +1985,12 @@ async def execute_capability_async(
             limiter = self._get_concurrent_limiter(instance_id)
         
         inst.last_executed = time.time()
-        if plugin_meta is not None:
-            plugin_meta.last_executed = inst.last_executed
+        if capability_meta is not None:
+            capability_meta.last_executed = inst.last_executed
         
-        if plugin_meta is not None and not await self.scheduler.allocate_async(plugin_meta, self._get_global_stats_async):
+        if capability_meta is not None and not await self.scheduler.allocate_async(capability_meta, self._get_global_stats_async):
             self.logger.warning(f"Resources busy for {name_or_id}. Triggering eviction protocol.")
-            if self._evict_for_resources(plugin_meta):
+            if self._evict_for_resources(capability_meta):
                 self.logger.info("Eviction successful. Resources acquired.")
             else:
                 raise RuntimeError(
@@ -2083,11 +2083,11 @@ def enable_capability(
     inst.enabled = True
     # Default instance: also sync the CapabilityMeta.enabled flag (backward compat)
     # and persist via config_store (per-plugin persistence).
-    if inst.instance_id == inst.plugin_name:
-        meta = self.plugins.get(inst.plugin_name)
+    if inst.instance_id == inst.capability_name:
+        meta = self.plugins.get(inst.capability_name)
         if meta is not None:
             meta.enabled = True
-        self._persist_config(inst.plugin_name)
+        self._persist_config(inst.capability_name)
     if was_disabled and inst.proxy is not None:
         try:
             inst.proxy.on_enable()
@@ -2116,11 +2116,11 @@ def disable_capability(
     was_enabled = inst.enabled
     inst.enabled = False
     # Default instance: sync CapabilityMeta.enabled + persist
-    if inst.instance_id == inst.plugin_name:
-        meta = self.plugins.get(inst.plugin_name)
+    if inst.instance_id == inst.capability_name:
+        meta = self.plugins.get(inst.capability_name)
         if meta is not None:
             meta.enabled = False
-        self._persist_config(inst.plugin_name)
+        self._persist_config(inst.capability_name)
     if was_enabled and inst.proxy is not None:
         if inst.instance_id in self._running_executions:
             self._pending_disable_hooks.add(inst.instance_id)
@@ -2154,14 +2154,14 @@ def get_capability_diagnostics(
     (`manager.diagnostics_store` / `JobQueue.get_job_diagnostics`).
     """
     inst = self.instances.get(name_or_id)
-    plugin_name = inst.plugin_name if inst is not None else name_or_id
+    capability_name = inst.capability_name if inst is not None else name_or_id
 
     # Worker sessions for this plugin come from the journal (spawn events).
     sessions = []
     try:
         for ev in self.journal_store.query(event_type="worker_spawned",
                                            descending=True, limit=20):
-            if ev.plugin_name == plugin_name and ev.worker_session_id:
+            if ev.capability_name == capability_name and ev.worker_session_id:
                 sessions.append(ev.worker_session_id)
     except Exception as e:
         self.logger.warning(f"get_capability_diagnostics journal read failed: {e}")
@@ -2191,10 +2191,10 @@ CapabilityManager.get_capability_diagnostics = get_capability_diagnostics
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_config
 def get_capability_config(
     self,
-    plugin_name: str # Name of the plugin
+    capability_name: str # Name of the plugin
 ) -> Optional[Dict[str, Any]]: # Current configuration or None
     """Get the current configuration of a plugin."""
-    plugin = self.get_capability(plugin_name)
+    plugin = self.get_capability(capability_name)
     if plugin:
         return plugin.get_current_config()
     return None
@@ -2204,10 +2204,10 @@ CapabilityManager.get_capability_config = get_capability_config
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_capability_config_schema
 def get_capability_config_schema(
     self,
-    plugin_name: str # Name of the plugin
+    capability_name: str # Name of the plugin
 ) -> Optional[Dict[str, Any]]: # JSON Schema or None
     """Get the configuration JSON Schema for a plugin."""
-    plugin = self.get_capability(plugin_name)
+    plugin = self.get_capability(capability_name)
     if plugin:
         return plugin.get_config_schema()
     return None
@@ -2274,11 +2274,11 @@ def update_capability_config(
         return False
 
     try:
-        meta = self.plugins.get(inst.plugin_name)
+        meta = self.plugins.get(inst.capability_name)
         config_schema = (meta.manifest.get("config_schema") 
                         if (meta is not None and hasattr(meta, "manifest")) else None)
         validated_config = self._validate_config_against_schema(
-            config, config_schema, inst.plugin_name, strict=strict,
+            config, config_schema, inst.capability_name, strict=strict,
         )
         # CR-4 completion (2026-05-25): route through the reconfigure delta path
         # (old -> new) so the worker fires RELOAD_TRIGGER releases for changed
@@ -2301,16 +2301,16 @@ def update_capability_config(
         if _journal is not None:
             _journal.append(JournalEvent(
                 event_type=SubstrateEventType.CONFIG_APPLIED.value,
-                plugin_instance_id=inst.instance_id,
-                plugin_name=inst.plugin_name,
+                capability_instance_id=inst.instance_id,
+                capability_name=inst.capability_name,
                 config_hash=inst.config_hash,
                 payload={"phase": "reconfigure",
                          "config_keys": sorted(validated_config or {})},
             ))
         # CR-2 + CR-10: persist only for the default instance (persistence is
         # per-plugin, not per-instance).
-        if inst.instance_id == inst.plugin_name:
-            self._persist_config(inst.plugin_name)
+        if inst.instance_id == inst.capability_name:
+            self._persist_config(inst.capability_name)
         return True
     except CapabilityConfigError:
         raise
@@ -2332,9 +2332,9 @@ def reload_capability(
         self.logger.error(f"Plugin/instance {name_or_id!r} not found")
         return False
     
-    plugin_meta = self.plugins.get(inst.plugin_name)
-    if plugin_meta is None:
-        self.logger.error(f"CapabilityMeta for {inst.plugin_name!r} missing — cannot reload")
+    capability_meta = self.plugins.get(inst.capability_name)
+    if capability_meta is None:
+        self.logger.error(f"CapabilityMeta for {inst.capability_name!r} missing — cannot reload")
         return False
     
     try:
@@ -2349,7 +2349,7 @@ def reload_capability(
         self.unload_capability(target_instance_id)
         # Re-load using the same instance_id to preserve the addressing for callers
         return self.load_capability(
-            plugin_meta,
+            capability_meta,
             effective_config,
             instance_id=target_instance_id,
         )
@@ -2393,8 +2393,8 @@ async def execute_capability_stream(
     if not inst.enabled:
         raise ValueError(f"Plugin/instance {name_or_id!r} is disabled")
     
-    plugin_meta = self.plugins.get(inst.plugin_name)
-    if plugin_meta is not None and not await self.scheduler.allocate_async(plugin_meta, self._get_global_stats_async):
+    capability_meta = self.plugins.get(inst.capability_name)
+    if capability_meta is not None and not await self.scheduler.allocate_async(capability_meta, self._get_global_stats_async):
         raise RuntimeError(f"ResourceScheduler blocked execution of {name_or_id}")
 
     self.scheduler.on_execution_start(inst.instance_id)
@@ -2411,7 +2411,7 @@ CapabilityManager.execute_capability_stream = execute_capability_stream
 import asyncio
 async def load_capability_async(
     self,
-    plugin_meta: CapabilityMeta,
+    capability_meta: CapabilityMeta,
     config: Optional[Dict[str, Any]] = None,
     strict: bool = True,
     instance_id: Optional[str] = None,
@@ -2424,7 +2424,7 @@ async def load_capability_async(
     Backward compat: identical behavior to the sync method, just non-blocking.
     """
     return await asyncio.to_thread(
-        self.load_capability, plugin_meta, config, strict, instance_id, new_instance,
+        self.load_capability, capability_meta, config, strict, instance_id, new_instance,
     )
 
 CapabilityManager.load_capability_async = load_capability_async
@@ -2468,8 +2468,8 @@ async def load_capabilities_concurrent(
     `max_concurrency=None`. Capped concurrency uses an asyncio.Semaphore.
     
     Result keys come from `_spec_requested_key`: explicit `instance_id` if set,
-    `{plugin_name}#new[{index}]` for ambiguous new_instance specs, else
-    `plugin_name`. Successful entries map to the resolved instance_id (string);
+    `{capability_name}#new[{index}]` for ambiguous new_instance specs, else
+    `capability_name`. Successful entries map to the resolved instance_id (string);
     failures map to the raised exception (caught regardless of fail_fast value
     for non-fail-fast mode; re-raised in fail_fast=True).
     """
@@ -2496,11 +2496,11 @@ async def load_capabilities_concurrent(
             return spec.instance_id
         if not spec.new_instance:
             return spec.meta.name
-        # Auto-gen case: find the newest instance for this plugin_name. Since
+        # Auto-gen case: find the newest instance for this capability_name. Since
         # load_capability_async ran exclusively under the semaphore (or fully
         # concurrently if unbounded — but each spawn's generated ID is unique
         # by construction), we identify "the one just loaded" by created_at.
-        candidates = [i for i in self.instances.values() if i.plugin_name == spec.meta.name]
+        candidates = [i for i in self.instances.values() if i.capability_name == spec.meta.name]
         if not candidates:
             raise RuntimeError(f"Could not resolve auto-gen instance_id for {spec.meta.name!r}")
         return max(candidates, key=lambda i: i.created_at).instance_id
@@ -2557,12 +2557,12 @@ class CapabilityBinding:
     """Pre-bound view of a single plugin through a shared CapabilityManager.
     
     Eliminates the wrapper-class duplication audited across 8 consumer services
-    (SG-17). Methods forward to the manager with `plugin_name` pre-supplied;
+    (SG-17). Methods forward to the manager with `capability_name` pre-supplied;
     `default_config` is the fallback used when `load()` is called without an
     explicit config (matches the manifest-default behavior in `load_capability`).
     """
     manager: "CapabilityManager"  # The shared CapabilityManager
-    plugin_name: str  # Name of the plugin this binding targets
+    capability_name: str  # Name of the plugin this binding targets
     default_config: Dict[str, Any] = _field(default_factory=dict)  # Used when load() called without config
     
     # --- Observation ---
@@ -2570,12 +2570,12 @@ class CapabilityBinding:
     @property
     def meta(self) -> Optional[CapabilityMeta]:
         """The CapabilityMeta if the plugin is loaded, else None."""
-        return self.manager.get_capability_meta(self.plugin_name)
+        return self.manager.get_capability_meta(self.capability_name)
     
     @property
     def is_loaded(self) -> bool:
         """True if the plugin is loaded in the bound manager."""
-        return self.manager.get_capability(self.plugin_name) is not None
+        return self.manager.get_capability(self.capability_name) is not None
     
     @property
     def is_enabled(self) -> bool:
@@ -2591,41 +2591,41 @@ class CapabilityBinding:
         strict: bool = True  # SG-5 strict validation
     ) -> bool:  # True if loaded successfully
         """Load via the bound manager. Uses `default_config` if no `config` provided."""
-        meta = self.manager.get_discovered_meta(self.plugin_name)
+        meta = self.manager.get_discovered_meta(self.capability_name)
         if meta is None:
-            self.manager.logger.error(f"Plugin {self.plugin_name!r} not discovered")
+            self.manager.logger.error(f"Plugin {self.capability_name!r} not discovered")
             return False
         effective = config if config is not None else dict(self.default_config)
         return self.manager.load_capability(meta, effective, strict=strict)
     
     def unload(self) -> bool:  # True if unloaded
         """Unload the bound plugin."""
-        return self.manager.unload_capability(self.plugin_name)
+        return self.manager.unload_capability(self.capability_name)
     
     def reload(
         self,
         config: Optional[Dict[str, Any]] = None  # Optional new config; current config used if None
     ) -> bool:
         """Reload the bound plugin (terminate + restart worker)."""
-        return self.manager.reload_capability(self.plugin_name, config)
+        return self.manager.reload_capability(self.capability_name, config)
     
     def enable(self) -> bool:
         """Enable the bound plugin."""
-        return self.manager.enable_capability(self.plugin_name)
+        return self.manager.enable_capability(self.capability_name)
     
     def disable(self) -> bool:
         """Disable the bound plugin (worker stays alive; jobs rejected)."""
-        return self.manager.disable_capability(self.plugin_name)
+        return self.manager.disable_capability(self.capability_name)
     
     # --- Execution ---
     
     def execute(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (sync)."""
-        return self.manager.execute_capability(self.plugin_name, *args, **kwargs)
+        return self.manager.execute_capability(self.capability_name, *args, **kwargs)
     
     async def execute_async(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (async)."""
-        return await self.manager.execute_capability_async(self.plugin_name, *args, **kwargs)
+        return await self.manager.execute_capability_async(self.capability_name, *args, **kwargs)
     
     # --- Configuration ---
     
@@ -2635,30 +2635,30 @@ class CapabilityBinding:
         strict: bool = True  # SG-5 strict validation
     ) -> bool:
         """Hot-reload the bound plugin's configuration."""
-        return self.manager.update_capability_config(self.plugin_name, config, strict=strict)
+        return self.manager.update_capability_config(self.capability_name, config, strict=strict)
     
     def get_config(self) -> Optional[Dict[str, Any]]:
         """Current configuration values (None if not loaded)."""
-        return self.manager.get_capability_config(self.plugin_name)
+        return self.manager.get_capability_config(self.capability_name)
     
     def get_config_schema(self) -> Optional[Dict[str, Any]]:
         """JSON Schema describing this plugin's configuration."""
-        return self.manager.get_capability_config_schema(self.plugin_name)
+        return self.manager.get_capability_config_schema(self.capability_name)
     
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Resource telemetry for the bound plugin's worker process."""
-        return self.manager.get_capability_stats(self.plugin_name)
+        return self.manager.get_capability_stats(self.capability_name)
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-bind
 def bind(
     self,
-    plugin_name: str,  # Name of the plugin to pre-bind
+    capability_name: str,  # Name of the plugin to pre-bind
     default_config: Optional[Dict[str, Any]] = None  # Default config used by binding.load()
 ) -> CapabilityBinding:  # Bound view ready for instance-style use
-    """Create a CapabilityBinding pre-bound to this manager + plugin_name."""
+    """Create a CapabilityBinding pre-bound to this manager + capability_name."""
     return CapabilityBinding(
         manager=self,
-        plugin_name=plugin_name,
+        capability_name=capability_name,
         default_config=dict(default_config) if default_config else {},
     )
 

@@ -24,19 +24,19 @@ _DEFAULT_SCOPE = "__default__"
 class SecretStore(Protocol):
     """Protocol for resolving per-plugin secrets (API keys, tokens)."""
 
-    def get_secret(self, plugin_name: str, key: str, *, scope: Optional[str] = None) -> Optional[str]:
+    def get_secret(self, capability_name: str, key: str, *, scope: Optional[str] = None) -> Optional[str]:
         """Return the secret value for (plugin, key) under `scope`, or None."""
         ...
 
-    def set_secret(self, plugin_name: str, key: str, value: str, *, scope: Optional[str] = None) -> None:
+    def set_secret(self, capability_name: str, key: str, value: str, *, scope: Optional[str] = None) -> None:
         """Persist a secret value for (plugin, key) under `scope`."""
         ...
 
-    def delete_secret(self, plugin_name: str, key: str, *, scope: Optional[str] = None) -> bool:
+    def delete_secret(self, capability_name: str, key: str, *, scope: Optional[str] = None) -> bool:
         """Remove (plugin, key) under `scope`. Returns True if a secret was deleted."""
         ...
 
-    def list_keys(self, plugin_name: str, *, scope: Optional[str] = None) -> List[str]:
+    def list_keys(self, capability_name: str, *, scope: Optional[str] = None) -> List[str]:
         """Return the NAMES of secrets stored for a plugin under `scope` — never values."""
         ...
 
@@ -109,20 +109,20 @@ def _save(self:LocalSecretStore, data: Dict[str, Dict[str, Dict[str, str]]]) -> 
 @patch
 def get_secret(
     self:LocalSecretStore,
-    plugin_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Plugin the secret belongs to
     key: str,          # Secret key (typically the env-var name, e.g. GEMINI_API_KEY)
     *,
     scope: Optional[str] = None  # Reserved multi-user seam; ignored by the local store
 ) -> Optional[str]:  # The secret value, or None if absent
     """Resolve a secret value."""
     data = self._load()
-    return data.get(self._scope_key(scope), {}).get(plugin_name, {}).get(key)
+    return data.get(self._scope_key(scope), {}).get(capability_name, {}).get(key)
 
 # %% ../../nbs/core/secret_store.ipynb #m-set-secret
 @patch
 def set_secret(
     self:LocalSecretStore,
-    plugin_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Plugin the secret belongs to
     key: str,          # Secret key
     value: str,        # Secret value (stored plaintext at 0600)
     *,
@@ -130,14 +130,14 @@ def set_secret(
 ) -> None:
     """Persist a secret value."""
     data = self._load()
-    data.setdefault(self._scope_key(scope), {}).setdefault(plugin_name, {})[key] = value
+    data.setdefault(self._scope_key(scope), {}).setdefault(capability_name, {})[key] = value
     self._save(data)
 
 # %% ../../nbs/core/secret_store.ipynb #m-delete-secret
 @patch
 def delete_secret(
     self:LocalSecretStore,
-    plugin_name: str,  # Plugin the secret belongs to
+    capability_name: str,  # Plugin the secret belongs to
     key: str,          # Secret key
     *,
     scope: Optional[str] = None  # Reserved multi-user seam
@@ -145,12 +145,12 @@ def delete_secret(
     """Remove a secret, pruning now-empty plugin/scope containers."""
     data = self._load()
     sk = self._scope_key(scope)
-    keys = data.get(sk, {}).get(plugin_name, {})
+    keys = data.get(sk, {}).get(capability_name, {})
     if key not in keys:
         return False
     del keys[key]
     if not keys:
-        del data[sk][plugin_name]
+        del data[sk][capability_name]
     if not data.get(sk):
         data.pop(sk, None)
     self._save(data)
@@ -160,10 +160,10 @@ def delete_secret(
 @patch
 def list_keys(
     self:LocalSecretStore,
-    plugin_name: str,  # Plugin to list secrets for
+    capability_name: str,  # Plugin to list secrets for
     *,
     scope: Optional[str] = None  # Reserved multi-user seam
 ) -> List[str]:  # Secret key NAMES (never values)
     """Return the names of secrets stored for a plugin (never the values)."""
     data = self._load()
-    return sorted(data.get(self._scope_key(scope), {}).get(plugin_name, {}).keys())
+    return sorted(data.get(self._scope_key(scope), {}).get(capability_name, {}).keys())

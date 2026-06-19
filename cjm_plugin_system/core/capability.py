@@ -139,7 +139,7 @@ def expand_worker_env_template(
     template: str,                       # The raw EnvVarSpec.default value (may contain ${...} placeholders)
     placeholders: Mapping[str, Optional[str]],  # Resolved values keyed by placeholder name
     *,
-    plugin_name: str = "",               # For error context ("template X on plugin Y references ...")
+    capability_name: str = "",               # For error context ("template X on plugin Y references ...")
     var_name: str = "",                  # For error context ("on EnvVarSpec(name=Z)")
 ) -> str:
     """Substitute `${VAR}` placeholders in `template` using `placeholders`.
@@ -172,7 +172,7 @@ def expand_worker_env_template(
     # Validate against the allowed vocabulary.
     unknown = referenced - WORKER_ENV_TEMPLATE_PLACEHOLDERS
     if unknown:
-        ctx = f"on plugin {plugin_name!r}" if plugin_name else ""
+        ctx = f"on plugin {capability_name!r}" if capability_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
         raise CapabilityConfigError(
@@ -185,7 +185,7 @@ def expand_worker_env_template(
     # side, NOT a plugin author bug — distinguished error message.
     missing = [n for n in referenced if placeholders.get(n) is None]
     if missing:
-        ctx = f"on plugin {plugin_name!r}" if plugin_name else ""
+        ctx = f"on plugin {capability_name!r}" if capability_name else ""
         if var_name:
             ctx = f"{ctx} EnvVarSpec(name={var_name!r})" if ctx else f"EnvVarSpec(name={var_name!r})"
         raise CapabilityConfigError(

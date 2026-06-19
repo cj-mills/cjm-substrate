@@ -26,7 +26,7 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def allocate(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function that returns fresh stats
     ) -> bool:  # True if execution is allowed
         """Decide if a plugin can start based on its requirements and system state."""
@@ -34,17 +34,17 @@ class ResourceScheduler(ABC):
 
     async def allocate_async(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async function returning stats
     ) -> bool:  # True if execution is allowed
         """Async allocation decision. Default delegates to sync allocate after fetching stats once."""
         stats = await stats_provider()
-        return self.allocate(plugin_meta, lambda: stats)
+        return self.allocate(capability_meta, lambda: stats)
 
     @abstractmethod
     def on_execution_start(
         self,
-        plugin_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the plugin starting execution
     ) -> None:
         """Notify scheduler that a task started (to reserve resources)."""
         ...
@@ -52,7 +52,7 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def on_execution_finish(
         self,
-        plugin_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the plugin finishing execution
     ) -> None:
         """Notify scheduler that a task finished (to release resources)."""
         ...
@@ -63,7 +63,7 @@ class PermissiveScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Stats provider (ignored)
     ) -> bool:  # Always returns True
         """Allow all plugin executions without checking resources."""
@@ -71,14 +71,14 @@ class PermissiveScheduler(ResourceScheduler):
 
     def on_execution_start(
         self,
-        plugin_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the plugin starting execution
     ) -> None:
         """No-op for permissive scheduler."""
         pass
 
     def on_execution_finish(
         self,
-        plugin_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the plugin finishing execution
     ) -> None:
         """No-op for permissive scheduler."""
         pass
@@ -89,13 +89,13 @@ class SafetyScheduler(ResourceScheduler):
     
     def _check_resources(
         self,
-        plugin_meta: CapabilityMeta,  # Plugin metadata with manifest
+        capability_meta: CapabilityMeta,  # Plugin metadata with manifest
         stats: Dict[str, Any]  # Current system stats
     ) -> bool:  # True if resources available
         """Check if system has sufficient resources for the plugin."""
         reqs = {}
-        if hasattr(plugin_meta, 'manifest'):
-            reqs = plugin_meta.manifest.get('resources', {})
+        if hasattr(capability_meta, 'manifest'):
+            reqs = capability_meta.manifest.get('resources', {})
             
         if not reqs:
             return True  # No requirements defined
@@ -110,7 +110,7 @@ class SafetyScheduler(ResourceScheduler):
                 return True
 
             if needed_vram > available_vram:
-                print(f"[Scheduler] Blocked {plugin_meta.name}: Needs {needed_vram}MB VRAM, has {available_vram}MB")
+                print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_vram}MB VRAM, has {available_vram}MB")
                 return False
                 
         # Check System RAM
@@ -118,29 +118,29 @@ class SafetyScheduler(ResourceScheduler):
         available_ram = stats.get('memory_available_mb')
         
         if available_ram is not None and needed_ram > available_ram:
-            print(f"[Scheduler] Blocked {plugin_meta.name}: Needs {needed_ram}MB RAM, has {available_ram}MB")
+            print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_ram}MB RAM, has {available_ram}MB")
             return False
             
         return True
     
     def allocate(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources are available
         """Check resource requirements against system state."""
-        return self._check_resources(plugin_meta, stats_provider())
+        return self._check_resources(capability_meta, stats_provider())
 
     def on_execution_start(
         self,
-        plugin_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the plugin starting execution
     ) -> None:
         """Called when execution starts (for future resource reservation)."""
         pass
 
     def on_execution_finish(
         self,
-        plugin_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the plugin finishing execution
     ) -> None:
         """Called when execution finishes (for future resource release)."""
         pass
@@ -167,7 +167,7 @@ class QueueScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using blocking sleep."""
@@ -175,11 +175,11 @@ class QueueScheduler(ResourceScheduler):
         
         while True:
             stats = stats_provider()
-            if self._check_resources(plugin_meta, stats):
+            if self._check_resources(capability_meta, stats):
                 return True
             
             if time.time() - start_time > self.timeout:
-                self.logger.error(f"Timeout waiting for resources for {plugin_meta.name}")
+                self.logger.error(f"Timeout waiting for resources for {capability_meta.name}")
                 return False
                 
             self.logger.info(f"Resources busy. Waiting {self.poll_interval}s...")
@@ -187,7 +187,7 @@ class QueueScheduler(ResourceScheduler):
 
     async def allocate_async(
         self,
-        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
+        capability_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async stats function
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using non-blocking async sleep."""
@@ -195,11 +195,11 @@ class QueueScheduler(ResourceScheduler):
         
         while True:
             stats = await stats_provider()
-            if self._check_resources(plugin_meta, stats):
+            if self._check_resources(capability_meta, stats):
                 return True
             
             if time.time() - start_time > self.timeout:
-                self.logger.error(f"Timeout waiting for resources for {plugin_meta.name}")
+                self.logger.error(f"Timeout waiting for resources for {capability_meta.name}")
                 return False
                 
             self.logger.info(f"Resources busy. Yielding {self.poll_interval}s...")
@@ -207,29 +207,29 @@ class QueueScheduler(ResourceScheduler):
 
     def on_execution_start(
         self,
-        plugin_name: str  # Name of the plugin starting execution
+        capability_name: str  # Name of the plugin starting execution
     ) -> None:
         """Track that a plugin has started executing."""
-        self._active_plugins.add(plugin_name)
+        self._active_plugins.add(capability_name)
 
     def on_execution_finish(
         self,
-        plugin_name: str  # Name of the plugin finishing execution
+        capability_name: str  # Name of the plugin finishing execution
     ) -> None:
         """Track that a plugin has finished executing."""
-        self._active_plugins.discard(plugin_name)
+        self._active_plugins.discard(capability_name)
 
 # %% ../../nbs/core/scheduling.ipynb #m-check-resources
 @patch
 def _check_resources(
     self:QueueScheduler,
-    plugin_meta: CapabilityMeta,  # Plugin metadata with manifest
+    capability_meta: CapabilityMeta,  # Plugin metadata with manifest
     stats: Dict[str, Any]  # Current system stats
 ) -> bool:  # True if resources available
     """Check if system has sufficient resources for the plugin."""
     reqs = {}
-    if hasattr(plugin_meta, 'manifest'):
-        reqs = plugin_meta.manifest.get('resources', {})
+    if hasattr(capability_meta, 'manifest'):
+        reqs = capability_meta.manifest.get('resources', {})
 
     if not reqs:
         return True

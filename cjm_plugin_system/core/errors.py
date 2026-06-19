@@ -113,9 +113,9 @@ class CapabilityDisabledError(CapabilityInputError):
     Raised by CR-2's enable/disable wiring once that lands.
     """
     
-    def __init__(self, plugin_name: str):
-        super().__init__(f"Plugin {plugin_name!r} is disabled")
-        self.plugin_name = plugin_name
+    def __init__(self, capability_name: str):
+        super().__init__(f"Plugin {capability_name!r} is disabled")
+        self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityNotLoadedError
 class CapabilityNotLoadedError(CapabilityFatalError):
@@ -127,9 +127,9 @@ class CapabilityNotLoadedError(CapabilityFatalError):
     a blanket `except ValueError:`.
     """
     
-    def __init__(self, plugin_name: str):
-        super().__init__(f"Plugin {plugin_name!r} is not loaded")
-        self.plugin_name = plugin_name
+    def __init__(self, capability_name: str):
+        super().__init__(f"Plugin {capability_name!r} is not loaded")
+        self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityTimeoutError
 class CapabilityTimeoutError(CapabilityTransientError):
@@ -142,16 +142,16 @@ class CapabilityTimeoutError(CapabilityTransientError):
     
     def __init__(
         self,
-        plugin_name: str,
+        capability_name: str,
         timeout_seconds: float,
         *,
         retry_after_seconds: Optional[float] = None,
     ):
         super().__init__(
-            f"Plugin {plugin_name!r} timed out after {timeout_seconds:.1f}s",
+            f"Plugin {capability_name!r} timed out after {timeout_seconds:.1f}s",
             retry_after_seconds=retry_after_seconds,
         )
-        self.plugin_name = plugin_name
+        self.capability_name = capability_name
         self.timeout_seconds = timeout_seconds
 
 # %% ../../nbs/core/errors.ipynb #cls-CapabilityCancelledError
@@ -173,9 +173,9 @@ class CapabilityCancelledError(CapabilityTransientError):
     """
     default_retriable: ClassVar[bool] = False
     
-    def __init__(self, plugin_name: str):
-        super().__init__(f"Plugin {plugin_name!r} cancelled by operator")
-        self.plugin_name = plugin_name
+    def __init__(self, capability_name: str):
+        super().__init__(f"Plugin {capability_name!r} cancelled by operator")
+        self.capability_name = capability_name
 
 # %% ../../nbs/core/errors.ipynb #cls-WorkerOOMError
 class WorkerOOMError(CapabilityResourceError):
@@ -203,17 +203,17 @@ class WorkerOOMError(CapabilityResourceError):
     
     def __init__(
         self,
-        plugin_name: str,
+        capability_name: str,
         *,
         process_returncode: Optional[int] = None,
         message: Optional[str] = None,
     ):
         rc_part = f" (returncode={process_returncode})" if process_returncode is not None else ""
         super().__init__(
-            message or f"Worker for plugin {plugin_name!r} died from kill-signal{rc_part}; assuming OOM",
+            message or f"Worker for plugin {capability_name!r} died from kill-signal{rc_part}; assuming OOM",
             resource_shortfall=None,  # Track A: substrate has no needed/available
         )
-        self.plugin_name = plugin_name
+        self.capability_name = capability_name
         self.process_returncode = process_returncode
 
 # %% ../../nbs/core/errors.ipynb #config-error
@@ -267,8 +267,8 @@ class JobError:
     retry_after_seconds: Optional[float] = None  # Backoff hint from CapabilityTransientError
     fields_invalid: Optional[List[str]] = None  # From CapabilityInputError subclasses
     resource_shortfall: Optional[ResourceShortfall] = None  # From CapabilityResourceError
-    plugin_name: Optional[str] = None  # Name of the plugin that raised
-    plugin_instance_id: Optional[str] = None  # Per CR-10 multi-instance support
+    capability_name: Optional[str] = None  # Name of the plugin that raised
+    capability_instance_id: Optional[str] = None  # Per CR-10 multi-instance support
     occurred_at: Optional[datetime] = None  # When the failure was recorded
 
 # %% ../../nbs/core/errors.ipynb #mapping
@@ -319,8 +319,8 @@ def classify_exception(
 def map_bare_exception_to_job_error(
     exc: BaseException,  # The raised exception
     *,
-    plugin_name: Optional[str] = None,  # Name of the plugin that raised
-    plugin_instance_id: Optional[str] = None,  # Per CR-10
+    capability_name: Optional[str] = None,  # Name of the plugin that raised
+    capability_instance_id: Optional[str] = None,  # Per CR-10
     traceback_policy: TracebackPolicy = TracebackPolicy.FULL,  # How much detail to record
     occurred_at: Optional[datetime] = None,  # Override; defaults to datetime.now(timezone.utc)
 ) -> JobError:
@@ -358,8 +358,8 @@ def map_bare_exception_to_job_error(
         retry_after_seconds=retry_after,
         fields_invalid=fields_invalid,
         resource_shortfall=resource_shortfall,
-        plugin_name=plugin_name,
-        plugin_instance_id=plugin_instance_id,
+        capability_name=capability_name,
+        capability_instance_id=capability_instance_id,
         # datetime.now(timezone.utc) — `datetime.utcnow()` is deprecated in
         # Python 3.12+ and returns a naive datetime; the timezone-aware form
         # is the canonical 3.12+ replacement and survives the eventual removal.

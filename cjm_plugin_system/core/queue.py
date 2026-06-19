@@ -152,7 +152,7 @@ class Job:
     journal linkage) and carries who/what initiated it.
     """
     id: str  # Unique job identifier (UUID)
-    plugin_instance_id: str  # Target plugin instance (per CR-10)
+    capability_instance_id: str  # Target plugin instance (per CR-10)
     args: Tuple[Any, ...]  # Positional arguments for execute()
     kwargs: Dict[str, Any]  # Keyword arguments for execute()
     status: JobStatus = JobStatus.pending  # Current job status
@@ -187,11 +187,11 @@ class Job:
 
     # REMOVE-AFTER-OVERHAUL: backward-compat aliases for the CR-6 rename
     # cascade. External consumers (job-monitor library, decomp host) read
-    # `job.plugin_name` and `job.created_at` today; these properties keep
+    # `job.capability_name` and `job.created_at` today; these properties keep
     # those call sites working until SG-47/SG-48 sweeps migrate them.
     @property
-    def plugin_name(self) -> str:
-        return self.plugin_instance_id
+    def capability_name(self) -> str:
+        return self.capability_instance_id
 
     @property
     def created_at(self) -> float:
@@ -213,7 +213,7 @@ class JobEvent:
     """
     type: JobEventType
     job_id: str
-    plugin_instance_id: str
+    capability_instance_id: str
     composition_id: Optional[str] = None
     node_id: Optional[str] = None
     run_id: Optional[str] = None  # Host-tier run correlation (CR-14 follow-up)
@@ -286,7 +286,7 @@ class JobQueue:
         max_history: int = 100,            # Max completed jobs to retain
         cancel_timeout: float = 3.0,       # Seconds to wait for cooperative cancel
         progress_poll_interval: float = 1.0,  # Seconds between progress polls
-        sysmon_plugin_name: Optional[str] = None,  # CR-3 MonitorPlugin instance for GPU stats (None = no GPU info)
+        sysmon_capability_name: Optional[str] = None,  # CR-3 MonitorPlugin instance for GPU stats (None = no GPU info)
         resource_snapshot_cadence_polls: int = 4,  # Sample resources every Nth progress poll
         max_concurrent_lanes: int = 4,     # Stage 3: max in-flight jobs (admission still gates each)
         gpu_headroom_fraction: float = 0.9,  # Stage 3: blunt GPU admission margin (budget = total * fraction)
@@ -312,7 +312,7 @@ class JobQueue:
         self.max_history = max_history
         self.cancel_timeout = cancel_timeout
         self.progress_poll_interval = progress_poll_interval
-        self._sysmon_name = sysmon_plugin_name
+        self._sysmon_name = sysmon_capability_name
         self.resource_snapshot_cadence_polls = max(1, resource_snapshot_cadence_polls)
         self.max_concurrent_lanes = max(1, max_concurrent_lanes)
         self.gpu_headroom_fraction = gpu_headroom_fraction
@@ -417,7 +417,7 @@ async def _enqueue_job(
 
     comp_suffix = f" (comp {job.composition_id[:8]} node {job.node_id})" if job.composition_id else ""
     self.logger.info(
-        f"Submitted job {job.id[:8]} for {job.plugin_instance_id} "
+        f"Submitted job {job.id[:8]} for {job.capability_instance_id} "
         f"(priority={job.priority}){comp_suffix}"
     )
     return job.id
@@ -441,7 +441,7 @@ def _check_journal_wedge(self) -> None:
 
 async def submit(
     self,
-    plugin_instance_id: str,  # Target plugin instance (per CR-10)
+    capability_instance_id: str,  # Target plugin instance (per CR-10)
     *args,
     priority: int = 0,  # Higher = more urgent
     task: Optional[str] = None,  # Task-channel address: adapter task name (stage 4)
@@ -485,13 +485,13 @@ async def submit(
             fields_invalid=["task", "method"],
         )
 
-    meta = self._deps.get_capability_meta(plugin_instance_id)
+    meta = self._deps.get_capability_meta(capability_instance_id)
     if meta is not None and not meta.enabled:
-        raise CapabilityDisabledError(plugin_instance_id)
+        raise CapabilityDisabledError(capability_instance_id)
 
     job = Job(
         id=str(uuid.uuid4()),
-        plugin_instance_id=plugin_instance_id,
+        capability_instance_id=capability_instance_id,
         args=args,
         kwargs=kwargs,
         priority=priority,
@@ -801,7 +801,7 @@ def _publish_event(
             job_id=event.job_id,
             composition_id=event.composition_id,
             node_id=event.node_id,
-            plugin_instance_id=event.plugin_instance_id,
+            capability_instance_id=event.capability_instance_id,
             actor=event.actor,
             payload=event.payload,
         ))
@@ -922,12 +922,12 @@ async def submit_composition(
     self._check_journal_wedge()
 
     for n in comp.nodes:
-        meta = self._deps.get_capability_meta(n.plugin_instance_id)
+        meta = self._deps.get_capability_meta(n.capability_instance_id)
         if meta is not None and not meta.enabled:
             self.logger.error(
                 f"Composition submission rejected: node {n.id!r} targets "
-                f"disabled plugin {n.plugin_instance_id}")
-            raise CapabilityDisabledError(n.plugin_instance_id)
+                f"disabled plugin {n.capability_instance_id}")
+            raise CapabilityDisabledError(n.capability_instance_id)
 
     run = new_composition_run(comp, str(uuid.uuid4()))
     self._compositions[run.id] = run
@@ -1049,14 +1049,14 @@ async def _start_ready_nodes(
             run.record_result(
                 nid, NodeState.failed,
                 error=map_bare_exception_to_job_error(
-                    e, plugin_instance_id=node.plugin_instance_id))
+                    e, capability_instance_id=node.capability_instance_id))
             run.skip_dependents(nid)
             if run.composition.fail_fast and not run.cancel_requested:
                 await self._cancel_pending_members(run)
             continue
         member = Job(
             id=str(uuid.uuid4()),
-            plugin_instance_id=node.plugin_instance_id,
+            capability_instance_id=node.capability_instance_id,
             args=(),
             kwargs=kwargs,
             priority=node.priority if node.priority else run.composition.priority,
@@ -1108,7 +1108,7 @@ async def _advance_composition(
             self._publish_event(JobEvent(
                 type=JobEventType.COMPOSITION_ADVANCED,
                 job_id=completed_job.id,
-                plugin_instance_id=completed_job.plugin_instance_id,
+                capability_instance_id=completed_job.capability_instance_id,
                 composition_id=run.id,
                 node_id=completed_job.node_id,
                 run_id=completed_job.run_id,
@@ -1197,7 +1197,7 @@ def _sample_resource_snapshot(
     GPU enumeration. The pre-fix path matched only `worker_pid` and reported
     `gpu_memory_mb=None` for any subprocess-spawning plugin.
     """
-    proxy = self._deps.get_capability(job.plugin_instance_id)
+    proxy = self._deps.get_capability(job.capability_instance_id)
     if not proxy or not hasattr(proxy, 'get_stats'):
         return None
 
@@ -1257,7 +1257,7 @@ def get_resource_snapshot(
 
     Returns None if the job is unknown or the worker proxy doesn't expose
     `get_stats`. Composes worker stats with sysmon GPU stats when the queue
-    is configured with a `sysmon_plugin_name`.
+    is configured with a `sysmon_capability_name`.
     """
     job = self._jobs.get(job_id)
     if not job:
@@ -1376,7 +1376,7 @@ def _on_manager_retry(
     blunt edge recorded in the stage-3 ledger.
     """
     running = next((j for j in self._running.values()
-                    if j.plugin_instance_id == instance_id), None)
+                    if j.capability_instance_id == instance_id), None)
     if running is None:
         # No matching in-flight job (e.g. queue stopped or different instance).
         return
@@ -1385,7 +1385,7 @@ def _on_manager_retry(
     self._publish_event(JobEvent(
         type=JobEventType.RETRY_STARTED,
         job_id=running.id,
-        plugin_instance_id=running.plugin_instance_id,
+        capability_instance_id=running.capability_instance_id,
         composition_id=running.composition_id,
         node_id=running.node_id,
         run_id=running.run_id,
@@ -1434,7 +1434,7 @@ def _job_snapshot(job: Job) -> Dict[str, Any]:
     """
     return {
         "id": job.id,
-        "plugin_instance_id": job.plugin_instance_id,
+        "capability_instance_id": job.capability_instance_id,
         "status": job.status.value,
         "priority": job.priority,
         "submitted_at": job.submitted_at.isoformat() if job.submitted_at else None,
@@ -1480,7 +1480,7 @@ def _job_from_snapshot(snap: Dict[str, Any]) -> Job:
         status = JobStatus.completed
     return Job(
         id=snap.get("id", ""),
-        plugin_instance_id=snap.get("plugin_instance_id", ""),
+        capability_instance_id=snap.get("capability_instance_id", ""),
         args=(),
         kwargs={},
         status=status,
@@ -1524,7 +1524,7 @@ def _emit_state_transition(
     self._publish_event(JobEvent(
         type=JobEventType.STATE_TRANSITION,
         job_id=job.id,
-        plugin_instance_id=job.plugin_instance_id,
+        capability_instance_id=job.capability_instance_id,
         composition_id=job.composition_id,
         node_id=job.node_id,
         run_id=job.run_id,
@@ -1552,7 +1552,7 @@ def _emit_cancel_phase(
     self._publish_event(JobEvent(
         type=JobEventType.CANCEL_PHASE_CHANGED,
         job_id=job.id,
-        plugin_instance_id=job.plugin_instance_id,
+        capability_instance_id=job.capability_instance_id,
         composition_id=job.composition_id,
         node_id=job.node_id,
         run_id=job.run_id,
@@ -1585,7 +1585,7 @@ def _emit_block_reason(
     self._publish_event(JobEvent(
         type=JobEventType.BLOCK_REASON_CHANGED,
         job_id=job.id,
-        plugin_instance_id=job.plugin_instance_id,
+        capability_instance_id=job.capability_instance_id,
         composition_id=job.composition_id,
         node_id=job.node_id,
         run_id=job.run_id,
@@ -1669,14 +1669,14 @@ def _pop_next_admissible(
     chosen_gpu_peak = 0.0
     for job in sorted(self._pending):
         # 3. per-instance cap (default 1: same-worker concurrency is opt-in).
-        cap = get_cap(job.plugin_instance_id) if callable(get_cap) else None
+        cap = get_cap(job.capability_instance_id) if callable(get_cap) else None
         cap = cap if (isinstance(cap, int) and cap > 0) else 1
         inflight = sum(1 for j in self._running.values()
-                       if j.plugin_instance_id == job.plugin_instance_id)
+                       if j.capability_instance_id == job.capability_instance_id)
         if inflight >= cap:
             continue
 
-        profile = get_profile(job.plugin_instance_id) if callable(get_profile) else None
+        profile = get_profile(job.capability_instance_id) if callable(get_profile) else None
         if profile is None:
             # 2. exclusivity: no evidence → sole occupancy (measurement run).
             if self._running:
@@ -1775,7 +1775,7 @@ async def _process_loop(self) -> None:
             run_id=job.run_id,
             composition_id=job.composition_id,
             node_id=job.node_id,
-            plugin_instance_id=job.plugin_instance_id,
+            capability_instance_id=job.capability_instance_id,
             actor=job.actor,
             payload={
                 "exclusive": job.id in self._running_exclusive,
@@ -1790,7 +1790,7 @@ JobQueue._process_loop = _process_loop
 # %% ../../nbs/core/queue.ipynb #fn-execute-job
 async def _execute_job(self, job: Job) -> None:
     """Execute a single job (runs as an independent task per lane; stage 3)."""
-    self.logger.info(f"Starting job {job.id[:8]} ({job.plugin_instance_id})")
+    self.logger.info(f"Starting job {job.id[:8]} ({job.capability_instance_id})")
 
     # Mark as running + emit transition pending → running
     prev_status = job.status
@@ -1802,9 +1802,9 @@ async def _execute_job(self, job: Job) -> None:
 
     try:
         # Get the plugin proxy
-        plugin = self._deps.get_capability(job.plugin_instance_id)
+        plugin = self._deps.get_capability(job.capability_instance_id)
         if not plugin:
-            raise ValueError(f"Plugin not loaded: {job.plugin_instance_id}")
+            raise ValueError(f"Plugin not loaded: {job.capability_instance_id}")
 
         # Start progress polling task
         progress_task = asyncio.create_task(
@@ -1837,7 +1837,7 @@ async def _execute_job(self, job: Job) -> None:
             # side-channels for CapabilityError subclasses.
             job.error = map_bare_exception_to_job_error(
                 e,
-                plugin_instance_id=job.plugin_instance_id,
+                capability_instance_id=job.capability_instance_id,
             )
             self.logger.error(f"Job {job.id[:8]} failed: {e}")
             self._emit_state_transition(job, prev)
@@ -1853,7 +1853,7 @@ async def _execute_job(self, job: Job) -> None:
         job.status = JobStatus.failed
         job.error = map_bare_exception_to_job_error(
             e,
-            plugin_instance_id=job.plugin_instance_id,
+            capability_instance_id=job.capability_instance_id,
         )
         self.logger.error(f"Job {job.id[:8]} failed: {e}")
         self._emit_state_transition(job, prev)
@@ -1922,11 +1922,11 @@ async def _execute_with_cancellation(
         if job.task_name is not None:
             exec_task = asyncio.create_task(
                 self._deps.execute_capability_task_async(
-                    job.plugin_instance_id, job.task_name, job.method, **job.kwargs)
+                    job.capability_instance_id, job.task_name, job.method, **job.kwargs)
             )
         else:
             exec_task = asyncio.create_task(
-                self._deps.execute_capability_async(job.plugin_instance_id, *job.args, **job.kwargs)
+                self._deps.execute_capability_async(job.capability_instance_id, *job.args, **job.kwargs)
             )
     finally:
         reset_call_envelope(token)
@@ -1957,7 +1957,7 @@ async def _execute_with_cancellation(
 
                 # PHASE: RELOADING — worker reload in progress post-force-kill
                 self._emit_cancel_phase(job, CancelPhase.RELOADING)
-                self._deps.reload_capability(job.plugin_instance_id)
+                self._deps.reload_capability(job.capability_instance_id)
 
                 # PHASE: COMPLETED — cancellation fully resolved
                 self._emit_cancel_phase(job, CancelPhase.COMPLETED)
@@ -2008,7 +2008,7 @@ async def _poll_progress(
                     self._publish_event(JobEvent(
                         type=JobEventType.PROGRESS_CHANGED,
                         job_id=job.id,
-                        plugin_instance_id=job.plugin_instance_id,
+                        capability_instance_id=job.capability_instance_id,
                         composition_id=job.composition_id,
                         node_id=job.node_id,
                         run_id=job.run_id,
@@ -2027,7 +2027,7 @@ async def _poll_progress(
                     self._publish_event(JobEvent(
                         type=JobEventType.RESOURCE_SNAPSHOT,
                         job_id=job.id,
-                        plugin_instance_id=job.plugin_instance_id,
+                        capability_instance_id=job.capability_instance_id,
                         composition_id=job.composition_id,
                         node_id=job.node_id,
                         run_id=job.run_id,

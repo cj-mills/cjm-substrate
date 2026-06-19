@@ -86,7 +86,7 @@ class CJMConfig:
         return self.data_dir / "manifests"
 
     @property
-    def plugin_data_dir(self) -> Path: # Directory for plugin runtime data
+    def capability_data_dir(self) -> Path: # Directory for plugin runtime data
         """Directory for plugin runtime data (databases, caches)."""
         return self.data_dir / "data"
 
@@ -213,7 +213,7 @@ def load_config(
     # NOTE (T31): `CJM_DATA_DIR` here is the OPERATOR-facing knob for the
     # substrate ROOT (`cfg.data_dir` — the parent of manifests/ data/ logs/
     # secrets/). It is DISTINCT from the worker-injected `CJM_PLUGIN_DATA_DIR`
-    # (= `cfg.plugin_data_dir` = `<data_dir>/data`), which the substrate sets on
+    # (= `cfg.capability_data_dir` = `<data_dir>/data`), which the substrate sets on
     # each worker subprocess. Renaming the injection var (proxy/manager/cli)
     # removed the prior overload where one name meant two different paths; this
     # root knob deliberately keeps the `CJM_DATA_DIR` name.

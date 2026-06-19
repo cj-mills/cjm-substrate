@@ -56,7 +56,7 @@ class ResourceSample:
 class EmpiricalResourceRecord:
     """Aggregated empirical resource profile for a (instance_id, config_hash) pair."""
     instance_id: str  # CapabilityInstance.instance_id (CR-10 multi-instance aware)
-    plugin_name: str  # Convenience: CapabilityInstance.plugin_name; derivable but cheap to denormalize
+    capability_name: str  # Convenience: CapabilityInstance.capability_name; derivable but cheap to denormalize
     config_hash: str  # compute_config_hash(inst.config) at sample time
     sample_count: int  # Number of ResourceSamples folded into this record
     cpu_percent_mean: float  # Welford running mean of cpu_percent
@@ -83,7 +83,7 @@ class EmpiricalResourceStore(Protocol):
     def record_sample(
         self,
         instance_id: str,
-        plugin_name: str,
+        capability_name: str,
         config_hash: str,
         sample: ResourceSample,
     ) -> None:
@@ -100,9 +100,9 @@ class EmpiricalResourceStore(Protocol):
     
     def list_records(
         self,
-        plugin_name: Optional[str] = None,
+        capability_name: Optional[str] = None,
     ) -> List[EmpiricalResourceRecord]:
-        """List all records, optionally filtered to a single plugin_name."""
+        """List all records, optionally filtered to a single capability_name."""
         ...
     
     def delete_record(
@@ -121,7 +121,7 @@ from fastcore.basics import patch
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS empirical_resources (
     instance_id TEXT NOT NULL,
-    plugin_name TEXT NOT NULL,
+    capability_name TEXT NOT NULL,
     config_hash TEXT NOT NULL,
     sample_count INTEGER NOT NULL DEFAULT 0,
     success_count INTEGER NOT NULL DEFAULT 0,
@@ -172,7 +172,7 @@ class LocalEmpiricalResourceStore:
         success_rate computed at read time. last_observed parsed back to tz-aware
         datetime (substrate-side records always serialize via isoformat()).
         """
-        (instance_id, plugin_name, config_hash, sample_count, success_count,
+        (instance_id, capability_name, config_hash, sample_count, success_count,
          cpu_mean, mem_max, mem_mean, gpu_max, gpu_mean,
          dur_mean, last_observed_str, api_usage_totals_json) = row
         try:
@@ -186,7 +186,7 @@ class LocalEmpiricalResourceStore:
             last_observed = datetime.now(timezone.utc)
         return EmpiricalResourceRecord(
             instance_id=instance_id,
-            plugin_name=plugin_name,
+            capability_name=capability_name,
             config_hash=config_hash,
             sample_count=int(sample_count),
             cpu_percent_mean=float(cpu_mean),
@@ -223,7 +223,7 @@ def _conn(self:LocalEmpiricalResourceStore) -> Iterator[sqlite3.Connection]:
 def record_sample(
     self:LocalEmpiricalResourceStore,
     instance_id: str,  # CapabilityInstance.instance_id
-    plugin_name: str,  # CapabilityInstance.plugin_name (denormalized for filtering)
+    capability_name: str,  # CapabilityInstance.capability_name (denormalized for filtering)
     config_hash: str,  # compute_config_hash(inst.config)
     sample: ResourceSample,  # One observation
 ) -> None:
@@ -279,13 +279,13 @@ def record_sample(
 
         conn.execute(
             "INSERT OR REPLACE INTO empirical_resources ("
-            "instance_id, plugin_name, config_hash, sample_count, success_count, "
+            "instance_id, capability_name, config_hash, sample_count, success_count, "
             "cpu_percent_mean, memory_mb_peak_max, memory_mb_peak_mean, "
             "gpu_memory_mb_peak_max, gpu_memory_mb_peak_mean, "
             "duration_seconds_mean, last_observed, api_usage_totals"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                instance_id, plugin_name, config_hash, n, success_count,
+                instance_id, capability_name, config_hash, n, success_count,
                 cpu_mean, mem_max, mem_mean, gpu_max, gpu_mean,
                 dur_mean, sample.observed_at.isoformat(), json.dumps(usage_totals, sort_keys=True),
             ),
@@ -304,7 +304,7 @@ def get_record(
         return None
     with self._conn() as conn:
         row = conn.execute(
-            "SELECT instance_id, plugin_name, config_hash, sample_count, success_count, "
+            "SELECT instance_id, capability_name, config_hash, sample_count, success_count, "
             "cpu_percent_mean, memory_mb_peak_max, memory_mb_peak_mean, "
             "gpu_memory_mb_peak_max, gpu_memory_mb_peak_mean, "
             "duration_seconds_mean, last_observed, api_usage_totals "
@@ -317,24 +317,24 @@ def get_record(
 @patch
 def list_records(
     self:LocalEmpiricalResourceStore,
-    plugin_name: Optional[str] = None,
+    capability_name: Optional[str] = None,
 ) -> List[EmpiricalResourceRecord]:
     """List all records, optionally filtered to a plugin."""
     if not self.db_path.exists():
         return []
     with self._conn() as conn:
-        if plugin_name is not None:
+        if capability_name is not None:
             rows = conn.execute(
-                "SELECT instance_id, plugin_name, config_hash, sample_count, success_count, "
+                "SELECT instance_id, capability_name, config_hash, sample_count, success_count, "
                 "cpu_percent_mean, memory_mb_peak_max, memory_mb_peak_mean, "
                 "gpu_memory_mb_peak_max, gpu_memory_mb_peak_mean, "
                 "duration_seconds_mean, last_observed, api_usage_totals "
-                "FROM empirical_resources WHERE plugin_name = ?",
-                (plugin_name,),
+                "FROM empirical_resources WHERE capability_name = ?",
+                (capability_name,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT instance_id, plugin_name, config_hash, sample_count, success_count, "
+                "SELECT instance_id, capability_name, config_hash, sample_count, success_count, "
                 "cpu_percent_mean, memory_mb_peak_max, memory_mb_peak_mean, "
                 "gpu_memory_mb_peak_max, gpu_memory_mb_peak_mean, "
                 "duration_seconds_mean, last_observed, api_usage_totals "

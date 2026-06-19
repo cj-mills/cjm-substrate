@@ -32,11 +32,11 @@ class CapabilityConfigRecord:
 class CapabilityConfigStore(Protocol):
     """Protocol for persisting per-plugin `CapabilityConfigRecord` across sessions."""
     
-    def get(self, plugin_name: str) -> Optional[CapabilityConfigRecord]:
+    def get(self, capability_name: str) -> Optional[CapabilityConfigRecord]:
         """Fetch the record for a plugin, or None if no record exists yet."""
         ...
     
-    def set(self, plugin_name: str, record: CapabilityConfigRecord) -> None:
+    def set(self, capability_name: str, record: CapabilityConfigRecord) -> None:
         """Persist a record. Overwrites any prior record for the same plugin.
         
         Implementations stamp `record.updated_at` to the current time during
@@ -44,7 +44,7 @@ class CapabilityConfigStore(Protocol):
         """
         ...
     
-    def delete(self, plugin_name: str) -> bool:
+    def delete(self, capability_name: str) -> bool:
         """Remove the record for a plugin. Returns True if a record was deleted."""
         ...
     
@@ -58,8 +58,8 @@ from fastcore.basics import patch
 
 # %% ../../nbs/core/config_store.ipynb #local-impl
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS plugin_configs (
-    plugin_name TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS capability_configs (
+    capability_name TEXT PRIMARY KEY,
     config_json TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     updated_at REAL NOT NULL
@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS plugin_configs (
 
 
 def _default_db_path() -> Path:
-    """Default SQLite location: `~/.cjm/plugin_configs.db`."""
-    return Path.home() / ".cjm" / "plugin_configs.db"
+    """Default SQLite location: `~/.cjm/capability_configs.db`."""
+    return Path.home() / ".cjm" / "capability_configs.db"
 
 
 class LocalCapabilityConfigStore:
@@ -81,7 +81,7 @@ class LocalCapabilityConfigStore:
     """
     
     def __init__(self, db_path: Optional[Path] = None):
-        """Initialize the store. `db_path=None` uses `~/.cjm/plugin_configs.db`."""
+        """Initialize the store. `db_path=None` uses `~/.cjm/capability_configs.db`."""
         self.db_path = Path(db_path) if db_path is not None else _default_db_path()
 
 # %% ../../nbs/core/config_store.ipynb #m-conn
@@ -102,15 +102,15 @@ def _conn(self:LocalCapabilityConfigStore) -> Iterator[sqlite3.Connection]:
 @patch
 def get(
     self:LocalCapabilityConfigStore,
-    plugin_name: str  # Plugin to look up
+    capability_name: str  # Plugin to look up
 ) -> Optional[CapabilityConfigRecord]:  # Persisted record or None if absent
     """Fetch the record for a plugin."""
     if not self.db_path.exists():
         return None
     with self._conn() as conn:
         row = conn.execute(
-            "SELECT config_json, enabled, updated_at FROM plugin_configs WHERE plugin_name = ?",
-            (plugin_name,),
+            "SELECT config_json, enabled, updated_at FROM capability_configs WHERE capability_name = ?",
+            (capability_name,),
         ).fetchone()
     if row is None:
         return None
@@ -120,7 +120,7 @@ def get(
     except json.JSONDecodeError as e:
         _logger.warning(
             "Corrupted config row for plugin %s: %s. Returning empty config.",
-            plugin_name, e,
+            capability_name, e,
         )
         config = {}
     return CapabilityConfigRecord(
@@ -133,17 +133,17 @@ def get(
 @patch
 def set(
     self:LocalCapabilityConfigStore,
-    plugin_name: str,  # Plugin to write
+    capability_name: str,  # Plugin to write
     record: CapabilityConfigRecord  # New record (updated_at overwritten with current time)
 ) -> None:
     """Persist a record. Stamps `updated_at` to the current time."""
     record.updated_at = time.time()
     with self._conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO plugin_configs "
-            "(plugin_name, config_json, enabled, updated_at) VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO capability_configs "
+            "(capability_name, config_json, enabled, updated_at) VALUES (?, ?, ?, ?)",
             (
-                plugin_name,
+                capability_name,
                 json.dumps(record.config),
                 1 if record.enabled else 0,
                 record.updated_at,
@@ -155,27 +155,27 @@ def set(
 @patch
 def delete(
     self:LocalCapabilityConfigStore,
-    plugin_name: str  # Plugin to remove
+    capability_name: str  # Plugin to remove
 ) -> bool:  # True if a row was deleted
     """Remove the record for a plugin."""
     if not self.db_path.exists():
         return False
     with self._conn() as conn:
         cur = conn.execute(
-            "DELETE FROM plugin_configs WHERE plugin_name = ?", (plugin_name,),
+            "DELETE FROM capability_configs WHERE capability_name = ?", (capability_name,),
         )
         conn.commit()
         return cur.rowcount > 0
 
 # %% ../../nbs/core/config_store.ipynb #m-list-all
 @patch
-def list_all(self:LocalCapabilityConfigStore) -> Dict[str, CapabilityConfigRecord]:  # plugin_name -> record
+def list_all(self:LocalCapabilityConfigStore) -> Dict[str, CapabilityConfigRecord]:  # capability_name -> record
     """Return all stored records keyed by plugin name."""
     if not self.db_path.exists():
         return {}
     with self._conn() as conn:
         rows = conn.execute(
-            "SELECT plugin_name, config_json, enabled, updated_at FROM plugin_configs",
+            "SELECT capability_name, config_json, enabled, updated_at FROM capability_configs",
         ).fetchall()
     out: Dict[str, CapabilityConfigRecord] = {}
     for name, config_json, enabled, updated_at in rows:

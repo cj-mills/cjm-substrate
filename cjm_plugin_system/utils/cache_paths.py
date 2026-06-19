@@ -174,7 +174,7 @@ def _hash_input_with_stat_cache(
 
 # %% ../../nbs/utils/cache_paths.ipynb #cell-cache-dir-for-config
 def cache_dir_for_config(
-    plugin_data_dir: Union[str, Path],     # The plugin's own data subdirectory (typically <cfg.plugin_data_dir>/<plugin_name>)
+    capability_data_dir: Union[str, Path],     # The plugin's own data subdirectory (typically <cfg.capability_data_dir>/<capability_name>)
     input_path: Union[str, Path],           # The input file the plugin operates on
     action: str,                            # The plugin action name (e.g., "segment_audio", "convert", "execute")
     config_dict: Dict[str, Any],            # The plugin's effective config for this action
@@ -189,7 +189,7 @@ def cache_dir_for_config(
 
     Path layout::
 
-        <plugin_data_dir>/<action>/<sanitized-stem>/<input_hash[:N]>_<config_hash[:M]>/
+        <capability_data_dir>/<action>/<sanitized-stem>/<input_hash[:N]>_<config_hash[:M]>/
 
     The same `(input_content, action, config_dict)` always resolves to the same
     path; any change to input content OR config produces a different path. This
@@ -216,7 +216,7 @@ def cache_dir_for_config(
     `hash_input_content=True`. Raises OSError on directory-create failure
     when `create=True`.
     """
-    base = Path(plugin_data_dir)
+    base = Path(capability_data_dir)
     stem = _sanitize_stem(input_path)
     if hash_input_content:
         input_hash = _hash_input_with_stat_cache(
@@ -240,14 +240,14 @@ def cache_dir_for_config(
 
 # %% ../../nbs/utils/cache_paths.ipynb #cell-companions
 def list_cache_entries(
-    plugin_data_dir: Union[str, Path],  # The plugin's own data subdirectory
+    capability_data_dir: Union[str, Path],  # The plugin's own data subdirectory
     input_path: Union[str, Path],        # The input file whose cache entries to list
     action: str,                          # The plugin action name
 ) -> List[Path]:                          # All config-hash directories for this (input, action)
     """Enumerate all per-config cache directories for a given (input, action).
 
     Returns the paths of every `<input_hash>_<config_hash>` directory under
-    `<plugin_data_dir>/<action>/<sanitized-stem>/`. Each entry corresponds to
+    `<capability_data_dir>/<action>/<sanitized-stem>/`. Each entry corresponds to
     a unique `(input_content, config)` tuple — operators can inspect their
     contents, diff them, or pass selected ones to `prune_cache_for_input` to
     keep them through a sweep.
@@ -255,7 +255,7 @@ def list_cache_entries(
     Returns an empty list if the parent directory doesn't exist (plugin never
     ran this action for this input).
     """
-    base = Path(plugin_data_dir)
+    base = Path(capability_data_dir)
     stem = _sanitize_stem(input_path)
     parent = base / action / stem
     if not parent.exists():
@@ -264,7 +264,7 @@ def list_cache_entries(
 
 
 def prune_cache_for_input(
-    plugin_data_dir: Union[str, Path],  # The plugin's own data subdirectory
+    capability_data_dir: Union[str, Path],  # The plugin's own data subdirectory
     input_path: Union[str, Path],        # The input file whose cache entries to prune
     action: str,                          # The plugin action name
     *,
@@ -284,7 +284,7 @@ def prune_cache_for_input(
     Returns the list of deleted (or would-delete) paths.
     """
     keep_set = keep or set()
-    targets = list_cache_entries(plugin_data_dir, input_path, action)
+    targets = list_cache_entries(capability_data_dir, input_path, action)
     deleted: List[Path] = []
     for entry in targets:
         if entry in keep_set:
