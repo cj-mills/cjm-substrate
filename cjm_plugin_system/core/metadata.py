@@ -27,7 +27,7 @@ class CapabilityTaxonomy:
       "graph", "media", "text").
     - `role`: the interface class name segment of the FQN (e.g.,
       "TranscriptionPlugin", "GraphPlugin", "ForcedAlignmentPlugin"). Multiple
-      plugins can share a role within a domain.
+      capabilities can share a role within a domain.
     - `interface_fqcn`: the full dotted path, kept verbatim for queries and
       reverse-lookup.
     """
@@ -43,7 +43,7 @@ class ResourceRequirements:
     Quantitative resource amounts (min_vram_mb, etc.) deliberately omitted
     per CR-7's reactive resource management reframing — plugin authors can't
     reliably estimate model × dtype × quantization combinatorics, and Blender-
-    style variable-render plugins can't estimate at all. The substrate uses
+    style variable-render capabilities can't estimate at all. The substrate uses
     these binary hard-facts purely for discovery filtering; actual resource
     contention is handled reactively by CR-7's eviction + retry flow.
     

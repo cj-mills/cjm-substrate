@@ -204,12 +204,12 @@ def cache_dir_for_config(
        config indirectly.
 
     `hash_input_content=False` switches to hashing the string form of
-    `input_path` instead of file content — for plugins whose "input" is a URL,
+    `input_path` instead of file content — for capabilities whose "input" is a URL,
     a database row ID, or another non-file identifier. Sequence chaining via
     content propagation only works for true file inputs.
 
     `skip_input_cache=True` recomputes the input content hash even if the
-    stat-cache has a record. Useful for plugins that just wrote the input file
+    stat-cache has a record. Useful for capabilities that just wrote the input file
     and want to record its canonical hash without stale-cache risk.
 
     Raises FileNotFoundError if `input_path` doesn't exist and

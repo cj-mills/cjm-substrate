@@ -116,7 +116,7 @@ def setup_runtime(
     
     if success:
         typer.echo(f"\nRuntime setup complete!")
-        typer.echo(f"You can now run: cjm-ctl install-all --plugins <plugins.yaml>")
+        typer.echo(f"You can now run: cjm-ctl install-all --capabilities <capabilities.yaml>")
     else:
         typer.echo(f"\nError: Failed to download micromamba.", err=True)
         raise typer.Exit(code=1)
@@ -243,7 +243,7 @@ def _generate_manifest(
     introspection_script = f'''
 import json
 import importlib
-# DUAL-MODE (stage 8 / PILLAR 1c): OLD-STYLE plugins expose
+# DUAL-MODE (stage 8 / PILLAR 1c): OLD-STYLE capabilities expose
 # get_plugin_metadata(); re-based NEW-STYLE capabilities (no meta module) are
 # introspected entirely from the installed distribution + the capability class.
 try:
@@ -299,7 +299,7 @@ else:
     import importlib.metadata as _md
     import inspect as _inspect
     from cjm_plugin_system.core.capability import ToolCapability
-    _pmod = importlib.import_module("{module_name}.plugin")
+    _pmod = importlib.import_module("{module_name}.capability")
     _cands = [obj for _n, obj in _inspect.getmembers(_pmod, _inspect.isclass)
               if issubclass(obj, ToolCapability) and obj is not ToolCapability
               and not _inspect.isabstract(obj)
@@ -325,7 +325,7 @@ else:
 if "config_schema" not in meta:
     try:
         # Import plugin module and class
-        capability_module = meta.get("module", "{module_name}.plugin")
+        capability_module = meta.get("module", "{module_name}.capability")
         capability_class = meta.get("class", "")
         
         if capability_module and capability_class:
@@ -348,12 +348,12 @@ if "config_schema" not in meta:
         pass
 
 # CR-12: introspect the plugin's WORKER_ENV spawn-env contract. Read off the
-# CLASS (no instantiation) so plugins that can't construct without resources
+# CLASS (no instantiation) so capabilities that can't construct without resources
 # still surface their env contract. EnvVarSpec is a flat dataclass; asdict gives
 # JSON-serializable entries the substrate stores in the manifest code section.
 try:
     import dataclasses as _dc
-    _pm = meta.get("module", "{module_name}.plugin")
+    _pm = meta.get("module", "{module_name}.capability")
     _pc = meta.get("class", "")
     if _pm and _pc:
         _wmod = importlib.import_module(_pm)
@@ -374,7 +374,7 @@ except Exception:
 # omits the surface until the env resyncs (install-all --force).
 try:
     from cjm_plugin_system.core.capability import derive_structural_surface
-    _sm = meta.get("module", "{module_name}.plugin")
+    _sm = meta.get("module", "{module_name}.capability")
     _sc = meta.get("class", "")
     if _sm and _sc:
         _smod = importlib.import_module(_sm)
@@ -480,7 +480,7 @@ print(json.dumps(meta, indent=2))
                 )
 
             config_schema = meta_json.get("config_schema")
-            # CR-12: worker-env contract (list of asdict(EnvVarSpec)); None for plugins without one.
+            # CR-12: worker-env contract (list of asdict(EnvVarSpec)); None for capabilities without one.
             intro_worker_env = meta_json.get("worker_env")
             # Pass-2 Thread 3: surface recorded in-env; None when the plugin
             # env still runs a pre-fracture substrate (hash stays None so the
@@ -558,13 +558,13 @@ print(json.dumps(meta, indent=2))
 @app.command("regenerate-manifest")
 def regenerate_manifest(
     capability_name: str = typer.Argument(..., help="Plugin name as it appears in the manifest"),
-    plugins_path: Optional[str] = typer.Option(
-        None, "--plugins",
-        help="Path to plugins.yaml for package_source recovery (legacy manifests)",
+    capabilities_path: Optional[str] = typer.Option(
+        None, "--capabilities",
+        help="Path to capabilities.yaml for package_source recovery (legacy manifests)",
     ),
     package: Optional[str] = typer.Option(
         None, "--package",
-        help="Package spec override (e.g., git URL or pip name); wins over manifest/plugins.yaml lookups",
+        help="Package spec override (e.g., git URL or pip name); wins over manifest/capabilities.yaml lookups",
     ),
 ) -> None:
     """Re-run introspection for an installed plugin and rewrite its manifest.
@@ -601,26 +601,26 @@ def regenerate_manifest(
         )
         raise typer.Exit(code=1)
     
-    # Recover package_source: --package > manifest.install.package_source > plugins.yaml lookup.
+    # Recover package_source: --package > manifest.install.package_source > capabilities.yaml lookup.
     package_source = package
     source_origin = "--package override"
     if package_source is None:
         package_source = existing.install.package_source or None
         if package_source:
             source_origin = "manifest.install.package_source"
-    if package_source is None and plugins_path and os.path.exists(plugins_path):
-        with open(plugins_path) as f:
+    if package_source is None and capabilities_path and os.path.exists(capabilities_path):
+        with open(capabilities_path) as f:
             yconfig = yaml.safe_load(f)
-        for p in (yconfig or {}).get("plugins", []):
+        for p in (yconfig or {}).get("capabilities", []):
             if p.get("name") == capability_name:
                 package_source = p.get("package")
-                source_origin = f"{plugins_path} lookup"
+                source_origin = f"{capabilities_path} lookup"
                 break
     if package_source is None:
         typer.echo(
             f"Cannot recover package spec for {capability_name!r}. Manifest predates the "
             f"`package_source` field. Supply --package <spec> or "
-            f"--plugins plugins.yaml.",
+            f"--capabilities capabilities.yaml.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -820,11 +820,11 @@ def _conda_env_exists_configured(
 # %% ../nbs/cli.ipynb #fn-install-all
 @app.command()
 def install_all(
-    plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml (default: cjm.yaml plugins_config)"),
+    capabilities_path:Optional[str]=typer.Option(None, "--capabilities", help="Path to capabilities.yaml (default: cjm.yaml capabilities_config)"),
     substrate_source:str=typer.Option("cjm-plugin-system", "--substrate-source", help="Substrate package spec installed into every worker env (default: published; pass a path or '-e <path>' for local-editable dev)"),
     force:bool=typer.Option(False, help="Force recreation of environments")
 ) -> None:
-    """Install and register all plugins defined in plugins.yaml.
+    """Install and register all capabilities defined in capabilities.yaml.
 
     Per-plugin `adapters:` entries ride the same pipeline (stage 6 J10; closes
     the I6/J8 manual-step gap): each entry's `lib` is pip-installed into the
@@ -835,27 +835,27 @@ def install_all(
     """
     cfg = get_config()
     
-    # Schema v2 (PILLAR 2): default the plugins file from cjm.yaml's
-    # plugins_config (parent-walk-discovered) so install-all runs flagless.
-    if plugins_path is None:
-        plugins_path = str(cfg.plugins_config)
+    # Schema v2 (PILLAR 2): default the capabilities file from cjm.yaml's
+    # capabilities_config (parent-walk-discovered) so install-all runs flagless.
+    if capabilities_path is None:
+        capabilities_path = str(cfg.capabilities_config)
 
     # Check runtime availability
     _check_runtime_available()
     
-    if not os.path.exists(plugins_path):
-        typer.echo(f"Plugins file not found: {plugins_path}", err=True)
+    if not os.path.exists(capabilities_path):
+        typer.echo(f"Plugins file not found: {capabilities_path}", err=True)
         raise typer.Exit(code=1)
 
-    with open(plugins_path) as f:
+    with open(capabilities_path) as f:
         config = yaml.safe_load(f)
 
     # Setup manifest directory using config
     manifest_dir = cfg.manifests_dir
     manifest_dir.mkdir(parents=True, exist_ok=True)
 
-    plugins = config.get('plugins', [])
-    print(f"Found {len(plugins)} plugins to process.")
+    capabilities = config.get('capabilities', [])
+    print(f"Found {len(capabilities)} capabilities to process.")
     
     # Get the conda command string for shell commands
     conda_cmd = _get_conda_cmd_str()
@@ -867,7 +867,7 @@ def install_all(
     temp_files_to_cleanup: List[Path] = []
 
     try:
-        for plugin in plugins:
+        for plugin in capabilities:
             name = plugin.get('name')
             env_name = plugin.get('env_name')
             print(f"\n=== Processing {name} ({env_name}) ===")
@@ -958,22 +958,22 @@ def install_all(
 # %% ../nbs/cli.ipynb #ley0ge2bt8j
 @app.command("setup-host")
 def setup_host(
-    plugins_path:str=typer.Option("plugins.yaml", "--plugins", help="Path to plugins.yaml file"),
+    capabilities_path:str=typer.Option("capabilities.yaml", "--capabilities", help="Path to capabilities.yaml file"),
     yes:bool=typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")
 ) -> None:
     """Install interface libraries in the current Python environment."""
-    if not os.path.exists(plugins_path):
-        typer.echo(f"Plugins file not found: {plugins_path}", err=True)
+    if not os.path.exists(capabilities_path):
+        typer.echo(f"Plugins file not found: {capabilities_path}", err=True)
         raise typer.Exit(code=1)
 
-    with open(plugins_path) as f:
+    with open(capabilities_path) as f:
         config = yaml.safe_load(f)
 
-    # Collect unique interface libraries from all plugins
-    plugins = config.get('plugins', [])
+    # Collect unique interface libraries from all capabilities
+    capabilities = config.get('capabilities', [])
     all_libs: set[str] = set()
     
-    for plugin in plugins:
+    for plugin in capabilities:
         interface_libs = plugin.get('interface_libs', [])
         all_libs.update(interface_libs)
     
@@ -986,7 +986,7 @@ def setup_host(
         raise typer.Exit(code=0)
 
     # Display what will be installed
-    typer.echo(f"Reading {plugins_path}...")
+    typer.echo(f"Reading {capabilities_path}...")
     typer.echo(f"Found {len(all_libs)} unique interface libraries:")
     for lib in sorted(all_libs):
         typer.echo(f"  - {lib}")
@@ -1244,27 +1244,27 @@ def _extract_env_from_python_path(
     
     return ''
 
-# %% ../nbs/cli.ipynb #fn-list-plugins
+# %% ../nbs/cli.ipynb #fn-list-capabilities
 @app.command("list")
 def list_capabilities(
-    plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml for cross-reference"),
+    capabilities_path:Optional[str]=typer.Option(None, "--capabilities", help="Path to capabilities.yaml for cross-reference"),
     show_envs:bool=typer.Option(False, "--envs", "-e", help="Show conda environment status")
 ) -> None:
-    """List installed plugins from manifest directory."""
+    """List installed capabilities from manifest directory."""
     cfg = get_config()
     manifests = _get_installed_manifests()
     
     if not manifests:
-        typer.echo(f"No plugins found in {cfg.manifests_dir}")
+        typer.echo(f"No capabilities found in {cfg.manifests_dir}")
         raise typer.Exit(code=0)
     
     # Load config for cross-reference if provided
-    config_plugins = {}
-    if plugins_path and os.path.exists(plugins_path):
-        with open(plugins_path) as f:
+    config_capabilities = {}
+    if capabilities_path and os.path.exists(capabilities_path):
+        with open(capabilities_path) as f:
             config = yaml.safe_load(f)
-        for p in config.get('plugins', []):
-            config_plugins[p.get('name')] = p
+        for p in config.get('capabilities', []):
+            config_capabilities[p.get('name')] = p
     
     # Get conda envs if requested
     conda_envs = _get_conda_envs() if show_envs else set()
@@ -1293,13 +1293,13 @@ def list_capabilities(
             typer.echo(f"  Env: (not specified in manifest)")
         
         # Cross-reference with config
-        if plugins_path:
-            if name in config_plugins:
-                cfg_env = config_plugins[name].get('env_name', '')
+        if capabilities_path:
+            if name in config_capabilities:
+                cfg_env = config_capabilities[name].get('env_name', '')
                 if cfg_env and cfg_env != env_name:
                     typer.echo(f"  Config env: {cfg_env} (differs from manifest)")
             else:
-                typer.echo(f"  (not in {plugins_path})")
+                typer.echo(f"  (not in {capabilities_path})")
         
         typer.echo("")
 
@@ -1466,7 +1466,7 @@ def retention_command(
 @app.command("remove")
 def remove_capability(
     capability_name:str=typer.Argument(..., help="Name of the plugin to remove"),
-    plugins_path:Optional[str]=typer.Option(None, "--plugins", help="Path to plugins.yaml for env name lookup"),
+    capabilities_path:Optional[str]=typer.Option(None, "--capabilities", help="Path to capabilities.yaml for env name lookup"),
     keep_env:bool=typer.Option(False, "--keep-env", help="Keep the conda environment, only remove manifest"),
     yes:bool=typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")
 ) -> None:
@@ -1498,11 +1498,11 @@ def remove_capability(
     if not env_name:
         env_name = _extract_env_from_python_path(manifest.get('python_path', ''))
     
-    # Fallback 2: Check plugins file
-    if not env_name and plugins_path and os.path.exists(plugins_path):
-        with open(plugins_path) as f:
+    # Fallback 2: Check capabilities file
+    if not env_name and capabilities_path and os.path.exists(capabilities_path):
+        with open(capabilities_path) as f:
             config = yaml.safe_load(f)
-        for p in config.get('plugins', []):
+        for p in config.get('capabilities', []):
             if p.get('name') == capability_name:
                 env_name = p.get('env_name', '')
                 break
@@ -1829,28 +1829,28 @@ def _validate_manifest_dict(
         f"expected '2.0' or legacy (no format_version field)"
     ]
 
-# %% ../nbs/cli.ipynb #fn-validate-plugins-yaml-dict
-def _validate_plugins_yaml_dict(
-    data: Any  # Loaded plugins.yaml content
+# %% ../nbs/cli.ipynb #fn-validate-capabilities-yaml-dict
+def _validate_capabilities_yaml_dict(
+    data: Any  # Loaded capabilities.yaml content
 ) -> List[str]:  # List of human-readable error messages (empty == valid)
-    """Structural validation of a plugins.yaml file.
+    """Structural validation of a capabilities.yaml file.
     
     Each plugin entry must have name + env_name + package, plus either env_file
     or python_version (one defines how the conda env is created).
     """
     errors: List[str] = []
     if not isinstance(data, dict):
-        return [f"plugins.yaml must be a YAML mapping at the top level, got {type(data).__name__}"]
+        return [f"capabilities.yaml must be a YAML mapping at the top level, got {type(data).__name__}"]
     
-    plugins = data.get("plugins")
-    if plugins is None:
-        return ["plugins.yaml: top-level key 'plugins' is missing"]
-    if not isinstance(plugins, list):
-        return [f"plugins.yaml: 'plugins' must be a list, got {type(plugins).__name__}"]
+    capabilities = data.get("capabilities")
+    if capabilities is None:
+        return ["capabilities.yaml: top-level key 'capabilities' is missing"]
+    if not isinstance(capabilities, list):
+        return [f"capabilities.yaml: 'capabilities' must be a list, got {type(capabilities).__name__}"]
     
     seen_names: set[str] = set()
-    for i, plugin in enumerate(plugins):
-        prefix = f"plugins.yaml: plugins[{i}]"
+    for i, plugin in enumerate(capabilities):
+        prefix = f"capabilities.yaml: capabilities[{i}]"
         if not isinstance(plugin, dict):
             errors.append(f"{prefix}: must be a mapping, got {type(plugin).__name__}")
             continue
@@ -2002,7 +2002,7 @@ def _lint_capability_logging(
 # %% ../nbs/cli.ipynb #fn-detect-manifest-format
 def _detect_manifest_format(
     path: Path  # File to inspect
-) -> Optional[str]:  # 'manifest' | 'plugins_yaml' | None
+) -> Optional[str]:  # 'manifest' | 'capabilities_yaml' | None
     """Auto-detect format: extension for files; directories lint as source."""
     if path.is_dir():
         return "source"
@@ -2010,7 +2010,7 @@ def _detect_manifest_format(
     if suffix == ".json":
         return "manifest"
     if suffix in (".yaml", ".yml"):
-        return "plugins_yaml"
+        return "capabilities_yaml"
     if suffix == ".py":
         return "source"
     return None
@@ -2018,16 +2018,16 @@ def _detect_manifest_format(
 # %% ../nbs/cli.ipynb #babd0a83
 @app.command("validate")
 def validate_file(
-    path:Path=typer.Argument(..., help="Manifest JSON, plugins.yaml, or plugin source (.py / package dir) to validate"),
+    path:Path=typer.Argument(..., help="Manifest JSON, capabilities.yaml, or plugin source (.py / package dir) to validate"),
     format:Optional[str]=typer.Option(
         None, "--format", "-f",
-        help="Override format detection: 'manifest', 'plugins_yaml', or 'source'",
+        help="Override format detection: 'manifest', 'capabilities_yaml', or 'source'",
     ),
 ) -> None:
-    """SG-6 + T23: validate a manifest / plugins.yaml / plugin source.
+    """SG-6 + T23: validate a manifest / capabilities.yaml / plugin source.
     
     Auto-detects format from the path (`.json` → manifest, `.yaml`/`.yml` →
-    plugins.yaml, `.py` or a directory → source lint). The source lint is
+    capabilities.yaml, `.py` or a directory → source lint). The source lint is
     the CR-14 `logging.basicConfig` gate: `force=True` is an ERROR (it
     destroys the substrate diagnostics handler), a plain call is a WARNING.
     Exits non-zero with a list of validation errors if any check fails.
@@ -2040,7 +2040,7 @@ def validate_file(
     if fmt is None:
         typer.echo(
             f"Cannot detect format from extension {path.suffix!r}. "
-            f"Pass --format manifest, plugins_yaml, or source.",
+            f"Pass --format manifest, capabilities_yaml, or source.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -2053,11 +2053,11 @@ def validate_file(
             errors = _validate_manifest_dict(data)
             warnings = _collect_manifest_warnings(data)
             kind = "manifest"
-        elif fmt == "plugins_yaml":
+        elif fmt == "capabilities_yaml":
             with open(path) as f:
                 data = yaml.safe_load(f)
-            errors = _validate_plugins_yaml_dict(data)
-            kind = "plugins.yaml"
+            errors = _validate_capabilities_yaml_dict(data)
+            kind = "capabilities.yaml"
         elif fmt == "source":
             errors, warnings = _lint_capability_logging(path)
             kind = "plugin source"
@@ -2107,7 +2107,7 @@ def set_secret(
     """Store a plugin secret in the project-local SecretStore (CR-12).
 
     The value is written to <data_dir>/secrets/secrets.json (0600) — never to
-    plugins.yaml, manifests, or the config store. Plugins read it from their
+    capabilities.yaml, manifests, or the config store. Plugins read it from their
     worker env at spawn. Omit --value to be prompted (hidden input) so the
     secret stays out of shell history. After setting, reload the plugin (or
     restart the host) so its worker respawns with the new env — the GUI /

@@ -453,7 +453,7 @@ async def submit(
 ) -> str:  # Returns job_id
     """Submit a job to the queue.
 
-    CR-2: rejects jobs for disabled plugins at submit time (typed
+    CR-2: rejects jobs for disabled capabilities at submit time (typed
     CapabilityDisabledError) so the failure surface matches CapabilityManager.
     execute_capability's disabled gate. Submitting to a disabled plugin would
     otherwise sit in the queue until execution, then raise — moving the
@@ -695,7 +695,7 @@ def get_job_diagnostics(
 
     Records were stamped with the job id IN THE WORKER via the call-envelope
     contextvar — no timestamp windows, no over-fetch, correct under stage-3
-    same-worker concurrency and across multi-instance plugins (both of which
+    same-worker concurrency and across multi-instance capabilities (both of which
     the deleted `_slice_log_by_job_window` heuristic got wrong). Follow-style
     consumers poll with `after_seq` (the LOG_APPENDED replacement).
 
@@ -1190,7 +1190,7 @@ def _sample_resource_snapshot(
     typed methods, GPU fields stay None and the worker-only snapshot is
     returned.
 
-    Subprocess-spawning plugins (e.g. Voxtral-vLLM's managed vLLM server)
+    Subprocess-spawning capabilities (e.g. Voxtral-vLLM's managed vLLM server)
     spawn grandchild PIDs that hold GPU memory the worker itself doesn't.
     GPU attribution delegates to `attribute_gpu_to_worker_subtree`, which
     intersects the worker-reported `subtree_pids` set with sysmon's per-PID
@@ -1221,7 +1221,7 @@ def _sample_resource_snapshot(
             # when sysmon is unreachable; substrate leaves GPU fields at their
             # defaults. Returns a dict with `gpu_memory_mb` and `gpu_index` when
             # sysmon is reachable (the dict's gpu_memory_mb is 0.0 for CPU-only
-            # plugins on a GPU box — honest "no GPU usage" signal).
+            # capabilities on a GPU box — honest "no GPU usage" signal).
             attribution = attribute_gpu_to_worker_subtree(stats, sysmon)
             if attribution is not None:
                 snapshot.gpu_memory_mb = attribution.get('gpu_memory_mb')

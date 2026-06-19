@@ -61,7 +61,7 @@ class SubstrateConfig:
       operators no longer race network speed against an arbitrary value. Plugins
       defeat the stall counter by calling `self.report_progress(...)` periodically
       during long lifecycle operations (model download / vLLM server startup).
-      Default 60 s; bump higher for plugins that don't report progress, or lower
+      Default 60 s; bump higher for capabilities that don't report progress, or lower
       if false-positive stalls are noisy.
     """
     drift_detection:bool=True # Run /config_schema hash compare on every load_capability
@@ -76,7 +76,7 @@ class CJMConfig:
     """Main configuration for cjm-plugin-system."""
     runtime:RuntimeConfig=field(default_factory=RuntimeConfig) # Runtime environment settings
     data_dir:Path=field(default_factory=lambda: Path.home() / ".cjm") # Base directory for manifests, logs
-    plugins_config:Path=field(default_factory=lambda: Path("plugins.yaml")) # Path to plugins.yaml file
+    capabilities_config:Path=field(default_factory=lambda: Path("capabilities.yaml")) # Path to capabilities.yaml file
     models_dir:Optional[Path]=None # Directory for model downloads
     substrate:SubstrateConfig=field(default_factory=SubstrateConfig) # CR-8 substrate behavior toggles
 
@@ -178,8 +178,8 @@ def _load_from_yaml(
 
     if "data_dir" in data:
         config.data_dir = base_dir / data["data_dir"]
-    if "plugins_config" in data:
-        config.plugins_config = base_dir / data["plugins_config"]
+    if "capabilities_config" in data:
+        config.capabilities_config = base_dir / data["capabilities_config"]
     if "models_dir" in data:
         config.models_dir = base_dir / data["models_dir"]
 
@@ -198,7 +198,7 @@ def load_config(
 
     # 2. Load cjm.yaml: specified path, else walk UP from CWD to the first
     #    cjm.yaml (schema v2 — install-all/setup-host run flagless from anywhere
-    #    in the project tree; plugins_config then resolves relative to it).
+    #    in the project tree; capabilities_config then resolves relative to it).
     yaml_path = config_path
     if yaml_path is None:
         for _d in [Path.cwd(), *Path.cwd().parents]:

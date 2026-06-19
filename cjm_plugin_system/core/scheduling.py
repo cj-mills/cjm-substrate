@@ -162,7 +162,7 @@ class QueueScheduler(ResourceScheduler):
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
-        self._active_plugins: Set[str] = set()  # Track plugins with running executions
+        self._active_capabilities: Set[str] = set()  # Track capabilities with running executions
 
     
     def allocate(
@@ -210,14 +210,14 @@ class QueueScheduler(ResourceScheduler):
         capability_name: str  # Name of the plugin starting execution
     ) -> None:
         """Track that a plugin has started executing."""
-        self._active_plugins.add(capability_name)
+        self._active_capabilities.add(capability_name)
 
     def on_execution_finish(
         self,
         capability_name: str  # Name of the plugin finishing execution
     ) -> None:
         """Track that a plugin has finished executing."""
-        self._active_plugins.discard(capability_name)
+        self._active_capabilities.discard(capability_name)
 
 # %% ../../nbs/core/scheduling.ipynb #m-check-resources
 @patch
@@ -249,8 +249,8 @@ def _check_resources(
 
     return True
 
-# %% ../../nbs/core/scheduling.ipynb #m-get-active-plugins
+# %% ../../nbs/core/scheduling.ipynb #m-get-active-capabilities
 @patch
 def get_active_capabilities(self:QueueScheduler) -> Set[str]:  # Set of currently executing plugin names
-    """Get the set of plugins with active executions."""
-    return self._active_plugins.copy()
+    """Get the set of capabilities with active executions."""
+    return self._active_capabilities.copy()

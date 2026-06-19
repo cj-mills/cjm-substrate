@@ -1,4 +1,4 @@
-plugins:
+capabilities:
   # ----------------------------------------------------------------
   # 1. AI Worker: Whisper
   # Requires PyTorch, CUDA, FFmpeg
@@ -9,7 +9,7 @@ plugins:
     # Environment File (System Deps)
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-transcription-plugin-whisper/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-transcription-plugin-whisper.git"
     
     # Interface Libraries
@@ -27,7 +27,7 @@ plugins:
     # Environment File (System Deps)
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-system-monitor-nvidia/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-system-monitor-nvidia.git"
     
     # Interface Libraries
@@ -47,7 +47,7 @@ plugins:
     # Environment File (System Deps)
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-transcription-plugin-voxtral-hf/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-transcription-plugin-voxtral-hf.git"
     
     # Interface Libraries
@@ -66,7 +66,7 @@ plugins:
     # Environment File (System Deps)
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-transcription-plugin-gemini/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-transcription-plugin-gemini.git"
     
     # Interface Libraries
@@ -85,7 +85,7 @@ plugins:
     # Environment File
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-graph-plugin-sqlite/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-graph-plugin-sqlite.git"
     
     # Interface Libraries
@@ -110,7 +110,7 @@ plugins:
     # Environment File
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-media-plugin-silero-vad/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-media-plugin-silero-vad.git"
     
     # Interface Libraries
@@ -128,7 +128,7 @@ plugins:
     # Environment File
     env_file: "https://raw.githubusercontent.com/cj-mills/cjm-text-plugin-nltk/main/environment.yml"
     
-    # The Plugin Package
+    # The Capability Package
     package: "git+https://github.com/cj-mills/cjm-text-plugin-nltk.git"
     
     # Interface Libraries

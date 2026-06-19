@@ -1,4 +1,4 @@
-"""CR-12: project-local secret storage for API-based plugins (file-backed, 0600)
+"""CR-12: project-local secret storage for API-based capabilities (file-backed, 0600)
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/secret_store.html.md"""
 

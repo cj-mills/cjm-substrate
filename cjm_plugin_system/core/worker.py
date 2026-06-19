@@ -129,7 +129,7 @@ def _make_lifespan(
         through uvicorn's graceful-shutdown path, which fires this lifespan
         teardown. Pre-Session-A the plugin's cleanup() hook was only invoked
         on the manager-driven unload_capability path — never on watchdog or
-        stall-triggered termination — so plugins that spawn grandchild
+        stall-triggered termination — so capabilities that spawn grandchild
         subprocesses (Voxtral-vLLM's vLLM server is the driving case) leaked
         them as orphans whenever the worker died abnormally. Cleanup failures
         are swallowed-with-log because they must NOT prevent uvicorn shutdown.
@@ -190,7 +190,7 @@ def _register_identity_endpoints(
         """Return process-tree resource usage for the worker subprocess.
 
         Aggregates RSS + CPU% across the worker AND its descendants in one
-        psutil.children() walk so subprocess-spawning plugins (Voxtral-vLLM's
+        psutil.children() walk so subprocess-spawning capabilities (Voxtral-vLLM's
         managed vLLM server is the driving case) report subtree totals rather
         than worker-only values. `subtree_pids` is emitted alongside so the
         substrate's GPU-attribution helper can intersect with the system-
@@ -231,7 +231,7 @@ def _register_identity_endpoints(
                 pass
 
         # Evict cache entries for children that have exited (avoid unbounded growth
-        # in long-running plugins that frequently spawn-and-exit subprocesses).
+        # in long-running capabilities that frequently spawn-and-exit subprocesses).
         for stale_pid in list(_child_procs.keys()):
             if stale_pid not in live_child_pids:
                 _child_procs.pop(stale_pid, None)
@@ -320,7 +320,7 @@ def _register_lifecycle_endpoints(
         
         Worker stays alive; plugin's on_disable() hook gets a chance to
         release heavy resources (GPU memory, model files, etc.). Default
-        PluginInterface.on_disable() is a no-op so plugins that don't
+        PluginInterface.on_disable() is a no-op so capabilities that don't
         opt in see no behavior change.
         """
         if hasattr(capability_instance, 'on_disable'):

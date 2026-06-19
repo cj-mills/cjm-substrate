@@ -26,7 +26,7 @@ _logger = logging.getLogger(__name__)
 # existing call sites continue to work without churn during the SG-47 plugin
 # cascade.
 # REMOVE-AFTER-OVERHAUL: drop the re-export after SG-47 cascade migrates
-# plugins to import directly from core.errors.
+# capabilities to import directly from core.errors.
 from ..core.errors import CapabilityConfigError  # noqa: F401
 
 # %% ../../nbs/utils/validation.ipynb #qpdvkb9f5z

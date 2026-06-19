@@ -98,9 +98,9 @@ class CapabilityManager:
         self.scheduler = scheduler or PermissiveScheduler()
         self.system_monitor: Optional[ToolCapability] = None
         self.discovered: List[CapabilityMeta] = []
-        self.plugins: Dict[str, CapabilityMeta] = {}
-        # CR-10: per-instance state keyed by instance_id. Default-loaded plugins
-        # populate self.instances[capability_name] alongside self.plugins[capability_name]
+        self.capabilities: Dict[str, CapabilityMeta] = {}
+        # CR-10: per-instance state keyed by instance_id. Default-loaded capabilities
+        # populate self.instances[capability_name] alongside self.capabilities[capability_name]
         # for backward compat; multi-instance loads populate self.instances only.
         self.instances: Dict[str, CapabilityInstance] = {}
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
@@ -118,7 +118,7 @@ class CapabilityManager:
         self.config_store: CapabilityConfigStore = config_store or LocalCapabilityConfigStore(
             (_data_dir / "capability_configs.db") if _data_dir is not None else None
         )
-        # Track plugins with in-flight execute calls so disable_capability can defer
+        # Track capabilities with in-flight execute calls so disable_capability can defer
         # the on_disable hook until the job finishes (audit semantics).
         self._running_executions: Set[str] = set()
         self._pending_disable_hooks: Set[str] = set()
@@ -181,7 +181,7 @@ class CapabilityManager:
         # _record_sample_safe intersects the worker-reported subtree_pids with this
         # plugin's list_processes() output. Mirrors JobQueue's sysmon_capability_name;
         # hosts typically configure both with the same value. Lazy-resolved via
-        # self.plugins to tolerate load-order (sysmon may load after this manager
+        # self.capabilities to tolerate load-order (sysmon may load after this manager
         # is constructed).
         self._sysmon_capability_name: Optional[str] = sysmon_capability_name
         
@@ -519,7 +519,7 @@ CapabilityManager._derive_category = _derive_category
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-discover_manifests
 def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugin metadata
-    """Discover plugins via JSON manifests in search paths.
+    """Discover capabilities via JSON manifests in search paths.
     
     CR-8: reads each manifest via `load_manifest`, which transparently parses
     both v2.0 nested + legacy v1.0 flat layouts into a typed `ManifestV2`.
@@ -531,7 +531,7 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
     """
     self.discovered = []
     self.adapter_manifests = []  # CR-17 pt 2: adapter units discovered beside capabilities
-    seen_plugins = set()
+    seen_capabilities = set()
     seen_adapters = set()
 
     for base_path in self.search_paths:
@@ -559,7 +559,7 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
                 v2 = load_manifest(manifest_file)
                 
                 name = v2.code.name
-                if not name or name in seen_plugins:
+                if not name or name in seen_capabilities:
                     continue  # Skip duplicates (local shadows global)
                 
                 # Build a flat-shaped dict view for legacy consumers that
@@ -596,11 +596,11 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered plugi
                 meta.manifest_v2 = v2
                 
                 # SG-7: format-check the interface FQN; warn but still
-                # discover the manifest so older plugins remain usable.
+                # discover the manifest so older capabilities remain usable.
                 self._check_interface_fqn(meta.interface, name)
                 
                 self.discovered.append(meta)
-                seen_plugins.add(name)
+                seen_capabilities.add(name)
                 self.logger.info(f"Discovered manifest: {name} from {manifest_file}")
 
             except Exception as e:
@@ -715,8 +715,8 @@ CapabilityManager._resolve_adapter_specs = _resolve_adapter_specs
 def get_discovered_by_category(
     self,
     category:str # Category to filter by (e.g., "transcription")
-) -> List[CapabilityMeta]: # List of matching discovered plugins
-    """Get discovered plugins filtered by category."""
+) -> List[CapabilityMeta]: # List of matching discovered capabilities
+    """Get discovered capabilities filtered by category."""
     return [meta for meta in self.discovered if meta.category == category]
 
 CapabilityManager.get_discovered_by_category = get_discovered_by_category
@@ -725,23 +725,23 @@ CapabilityManager.get_discovered_by_category = get_discovered_by_category
 def get_capabilities_by_category(
     self,
     category:str # Category to filter by (e.g., "transcription")
-) -> List[CapabilityMeta]: # List of matching loaded plugins
-    """Get loaded plugins filtered by category."""
-    return [meta for meta in self.plugins.values() if meta.category == category]
+) -> List[CapabilityMeta]: # List of matching loaded capabilities
+    """Get loaded capabilities filtered by category."""
+    return [meta for meta in self.capabilities.values() if meta.category == category]
 
 CapabilityManager.get_capabilities_by_category = get_capabilities_by_category
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_discovered_categories
 def get_discovered_categories(self) -> List[str]: # List of unique categories
-    """Get all unique categories among discovered plugins."""
+    """Get all unique categories among discovered capabilities."""
     return list(set(meta.category for meta in self.discovered if meta.category))
 
 CapabilityManager.get_discovered_categories = get_discovered_categories
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_loaded_categories
 def get_loaded_categories(self) -> List[str]: # List of unique categories
-    """Get all unique categories among loaded plugins."""
-    return list(set(meta.category for meta in self.plugins.values() if meta.category))
+    """Get all unique categories among loaded capabilities."""
+    return list(set(meta.category for meta in self.capabilities.values() if meta.category))
 
 CapabilityManager.get_loaded_categories = get_loaded_categories
 
@@ -751,7 +751,7 @@ def get_capability_meta(
     capability_name:str # Name of the plugin
 ) -> Optional[CapabilityMeta]: # Plugin metadata or None
     """Get metadata for a loaded plugin by name."""
-    return self.plugins.get(capability_name)
+    return self.capabilities.get(capability_name)
 
 CapabilityManager.get_capability_meta = get_capability_meta
 
@@ -946,7 +946,7 @@ def _persist_config(
     current_config (when reachable). Failures are logged + swallowed —
     persistence is a best-effort side-channel, not a correctness invariant.
     """
-    meta = self.plugins.get(capability_name)
+    meta = self.capabilities.get(capability_name)
     if meta is None:
         return
     current_config: Dict[str, Any] = {}
@@ -977,7 +977,7 @@ def _maybe_fire_disable_hook(
     """CR-2 + CR-10: fire deferred on_disable for `name_or_id` if pending.
     
     Idempotent. Resolves via self.instances first; falls back to
-    self.plugins[name].instance for legacy code paths.
+    self.capabilities[name].instance for legacy code paths.
     """
     if name_or_id not in self._pending_disable_hooks:
         return
@@ -987,7 +987,7 @@ def _maybe_fire_disable_hook(
     if inst is not None:
         proxy = inst.proxy
     else:
-        meta = self.plugins.get(name_or_id)
+        meta = self.capabilities.get(name_or_id)
         if meta is not None:
             proxy = meta.instance
     if proxy is None:
@@ -1045,7 +1045,7 @@ def get_instance(
     """Return the CapabilityInstance for `name_or_id`, or None if not loaded.
     
     Lookup is keyed by instance_id (which equals capability_name for default-
-    loaded plugins). Multi-instance IDs only exist in self.instances.
+    loaded capabilities). Multi-instance IDs only exist in self.instances.
     """
     return self.instances.get(name_or_id)
 
@@ -1182,7 +1182,7 @@ def get_worker_env_status(
     required secrets being satisfied.
     """
     meta = name_or_meta if not isinstance(name_or_meta, str) else (
-        self.plugins.get(name_or_meta) or self.get_discovered_meta(name_or_meta)
+        self.capabilities.get(name_or_meta) or self.get_discovered_meta(name_or_meta)
     )
     out: List[Dict[str, Any]] = []
     if meta is None:
@@ -1277,12 +1277,12 @@ def load_capability(
     before launching the worker. If a persisted record exists and the
     caller didn't pass an explicit config, the persisted config is used
     as the effective input. The persisted `enabled` flag is applied to
-    `capability_meta.enabled` so disabled plugins stay disabled across
+    `capability_meta.enabled` so disabled capabilities stay disabled across
     process restarts.
     
     CR-10: optional `instance_id` allows multi-instance loading.
     - instance_id=None, new_instance=False (default): instance_id =
-      capability_meta.name. Populates self.plugins[capability_name] + self.instances
+      capability_meta.name. Populates self.capabilities[capability_name] + self.instances
       [capability_name] together (single-instance backward compat).
     - instance_id="custom": validated against `[A-Za-z0-9_-]{1,64}`. Populates
       self.instances[custom]. Persistence is keyed by capability_name and only
@@ -1408,15 +1408,15 @@ def load_capability(
         )
         
         # Default-instance only: maintain backward-compat single-instance
-        # references (CapabilityMeta.instance, self.plugins[capability_name]).
+        # references (CapabilityMeta.instance, self.capabilities[capability_name]).
         if is_default:
             capability_meta.instance = proxy
-            self.plugins[capability_meta.name] = capability_meta
-        elif capability_meta.name not in self.plugins:
+            self.capabilities[capability_meta.name] = capability_meta
+        elif capability_meta.name not in self.capabilities:
             # First-ever instance for this plugin is multi-instance — record
             # the CapabilityMeta so list_capabilities / get_capability_meta still work,
             # but leave meta.instance=None (no canonical instance exists).
-            self.plugins[capability_meta.name] = capability_meta
+            self.capabilities[capability_meta.name] = capability_meta
         
         self.logger.info(
             f"Loaded plugin: {capability_meta.name} "
@@ -1454,7 +1454,7 @@ def load_all(
     self,
     configs:Optional[Dict[str, Dict[str, Any]]]=None # Plugin name -> config mapping
 ) -> Dict[str, bool]: # Plugin name -> success mapping
-    """Discover and load all available plugins."""
+    """Discover and load all available capabilities."""
     configs = configs or {}
     results = {}
     
@@ -1476,7 +1476,7 @@ def unload_capability(
     
     If name_or_id resolves to the default instance (instance_id == capability_name)
     and no other instances remain for the same plugin, also removes the
-    CapabilityMeta from self.plugins. Otherwise removes only the instance and
+    CapabilityMeta from self.capabilities. Otherwise removes only the instance and
     clears CapabilityMeta.instance if it pointed at the unloaded canonical.
     """
     inst = self.instances.get(name_or_id)
@@ -1506,12 +1506,12 @@ def unload_capability(
         if not remaining:
             # No instances of this plugin at all (whether the unloaded one
             # was canonical or multi-instance) — drop the CapabilityMeta entry.
-            self.plugins.pop(capability_name, None)
+            self.capabilities.pop(capability_name, None)
         elif instance_id == capability_name:
             # Canonical instance unloaded but multi-instances remain — clear
             # the now-stale canonical reference; CapabilityMeta stays so
             # list_capabilities / get_capability_meta still surface the plugin.
-            meta = self.plugins.get(capability_name)
+            meta = self.capabilities.get(capability_name)
             if meta is not None:
                 meta.instance = None
         self.logger.info(f"Unloaded plugin: {capability_name} (instance_id={instance_id})")
@@ -1526,14 +1526,14 @@ CapabilityManager.unload_capability = unload_capability
 def unload_all(self) -> None:
     """Unload all plugin instances and terminate all Worker processes (CR-10).
     
-    Iterates self.instances (CR-10 keying) rather than self.plugins so all
+    Iterates self.instances (CR-10 keying) rather than self.capabilities so all
     multi-instance entries get torn down, not just the canonical instances.
     """
     for inst_id in list(self.instances.keys()):
         self.unload_capability(inst_id)
     # Catch any legacy plugin entries that didn't have a corresponding instance
     # (shouldn't happen post-CR-10 but defensive cleanup)
-    for name in list(self.plugins.keys()):
+    for name in list(self.capabilities.keys()):
         self.unload_capability(name)
 
 CapabilityManager.unload_all = unload_all
@@ -1547,22 +1547,22 @@ def get_capability(
     
     Lookup order: self.instances first (covers both default capability_name and
     multi-instance IDs), falling back to CapabilityMeta.instance for any
-    legacy code path that populated self.plugins without self.instances
+    legacy code path that populated self.capabilities without self.instances
     (defensive — shouldn't happen post-CR-10 since load_capability always
     records the instance).
     """
     inst = self.instances.get(name_or_id)
     if inst is not None:
         return inst.proxy
-    meta = self.plugins.get(name_or_id)
+    meta = self.capabilities.get(name_or_id)
     return meta.instance if meta else None
 
 CapabilityManager.get_capability = get_capability
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-list_capabilities
 def list_capabilities(self) -> List[CapabilityMeta]: # List of loaded plugin metadata
-    """List all loaded plugins."""
-    return list(self.plugins.values())
+    """List all loaded capabilities."""
+    return list(self.capabilities.values())
 
 CapabilityManager.list_capabilities = list_capabilities
 
@@ -1572,14 +1572,14 @@ def _get_sysmon_capability(self) -> Optional[Any]:
 
     Returns the loaded plugin instance keyed by `sysmon_capability_name`, or
     None when no sysmon is configured / hasn't been loaded yet. Lazy
-    resolution against `self.plugins` tolerates load-order: the manager
+    resolution against `self.capabilities` tolerates load-order: the manager
     can be constructed before the sysmon plugin is loaded; later
     `_record_sample_safe` calls pick it up automatically.
     """
     name = getattr(self, "_sysmon_capability_name", None)
     if not name:
         return None
-    meta = self.plugins.get(name)
+    meta = self.capabilities.get(name)
     return getattr(meta, "instance", None) if meta else None
 
 CapabilityManager._get_sysmon_capability = _get_sysmon_capability
@@ -1631,7 +1631,7 @@ def _record_sample_safe(self, inst:CapabilityInstance, start_time:float, success
                 pass
 
         # GPU subtree attribution via the shared helper. Returns None when no
-        # sysmon is configured / reachable; returns 0.0 for CPU-only plugins.
+        # sysmon is configured / reachable; returns 0.0 for CPU-only capabilities.
         gpu_mb = 0.0
         sysmon = self._get_sysmon_capability() if hasattr(self, '_get_sysmon_capability') else None
         if sysmon is not None and worker_stats:
@@ -1701,7 +1701,7 @@ def _reactive_evict_for(
     
     Wraps `_evict_for_resources` with reactive-flow logging. `_evict_for_resources`
     itself extends to multi-axis + cost-aware candidate selection (drops the
-    GPU-only filter, prefers evicting empirically-expensive idle plugins).
+    GPU-only filter, prefers evicting empirically-expensive idle capabilities).
     
     `shortfall` is recorded for log context but doesn't currently steer
     candidate selection beyond what _evict_for_resources already does via
@@ -1723,7 +1723,7 @@ CapabilityManager._reactive_evict_for = _reactive_evict_for
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-_evict_for_resources
 def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
-    """Attempt to free resources by unloading/releasing idle plugins (LRU).
+    """Attempt to free resources by unloading/releasing idle capabilities (LRU).
     
     CR-7: extended from GPU-only LRU to multi-axis cost-aware eviction.
     - Candidate set: any loaded plugin that isn't the one we're allocating
@@ -1741,7 +1741,7 @@ def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
     self.logger.info(f"Attempting eviction to make room for {needed_meta.name}...")
     
     candidates = [
-        meta for name, meta in self.plugins.items()
+        meta for name, meta in self.capabilities.items()
         if meta.instance is not None and name != needed_meta.name
     ]
     
@@ -1805,7 +1805,7 @@ def execute_capability(
     
     CR-2: raises CapabilityDisabledError (typed) when the instance is disabled.
     
-    CR-7: reactive retry on CapabilityResourceError — evicts other plugins to
+    CR-7: reactive retry on CapabilityResourceError — evicts other capabilities to
     free resources, then ALWAYS reloads the failing plugin's worker before
     the retry attempt. Track A (WorkerOOMError — worker died from SIGKILL)
     needs the reload because there's no live worker to retry on. Track B
@@ -1823,7 +1823,7 @@ def execute_capability(
         raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id  # stable across reload (preserved by reload_capability)
-    capability_meta = self.plugins.get(inst.capability_name)
+    capability_meta = self.capabilities.get(inst.capability_name)
     
     # CR-7 reactive retry loop. Defensive max_retries lookup so test fixtures
     # bypassing __init__ inherit the default behavior (one retry on resource).
@@ -1936,7 +1936,7 @@ async def execute_capability_async(
         raise CapabilityDisabledError(inst.instance_id)
     
     instance_id = inst.instance_id
-    capability_meta = self.plugins.get(inst.capability_name)
+    capability_meta = self.capabilities.get(inst.capability_name)
     
     # SG-33 lazy semaphore (None when no cap configured for this instance).
     limiter = self._get_concurrent_limiter(instance_id)
@@ -2084,7 +2084,7 @@ def enable_capability(
     # Default instance: also sync the CapabilityMeta.enabled flag (backward compat)
     # and persist via config_store (per-plugin persistence).
     if inst.instance_id == inst.capability_name:
-        meta = self.plugins.get(inst.capability_name)
+        meta = self.capabilities.get(inst.capability_name)
         if meta is not None:
             meta.enabled = True
         self._persist_config(inst.capability_name)
@@ -2117,7 +2117,7 @@ def disable_capability(
     inst.enabled = False
     # Default instance: sync CapabilityMeta.enabled + persist
     if inst.instance_id == inst.capability_name:
-        meta = self.plugins.get(inst.capability_name)
+        meta = self.capabilities.get(inst.capability_name)
         if meta is not None:
             meta.enabled = False
         self._persist_config(inst.capability_name)
@@ -2243,10 +2243,10 @@ CapabilityManager.get_config_options = get_config_options
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_all_capability_configs
 def get_all_capability_configs(self) -> Dict[str, Dict[str, Any]]: # Plugin name -> config mapping
-    """Get current configuration for all loaded plugins."""
+    """Get current configuration for all loaded capabilities."""
     return {
         name: plugin.get_current_config()
-        for name, meta in self.plugins.items()
+        for name, meta in self.capabilities.items()
         if meta.instance
         for plugin in [meta.instance]
     }
@@ -2274,7 +2274,7 @@ def update_capability_config(
         return False
 
     try:
-        meta = self.plugins.get(inst.capability_name)
+        meta = self.capabilities.get(inst.capability_name)
         config_schema = (meta.manifest.get("config_schema") 
                         if (meta is not None and hasattr(meta, "manifest")) else None)
         validated_config = self._validate_config_against_schema(
@@ -2332,7 +2332,7 @@ def reload_capability(
         self.logger.error(f"Plugin/instance {name_or_id!r} not found")
         return False
     
-    capability_meta = self.plugins.get(inst.capability_name)
+    capability_meta = self.capabilities.get(inst.capability_name)
     if capability_meta is None:
         self.logger.error(f"CapabilityMeta for {inst.capability_name!r} missing — cannot reload")
         return False
@@ -2393,7 +2393,7 @@ async def execute_capability_stream(
     if not inst.enabled:
         raise ValueError(f"Plugin/instance {name_or_id!r} is disabled")
     
-    capability_meta = self.plugins.get(inst.capability_name)
+    capability_meta = self.capabilities.get(inst.capability_name)
     if capability_meta is not None and not await self.scheduler.allocate_async(capability_meta, self._get_global_stats_async):
         raise RuntimeError(f"ResourceScheduler blocked execution of {name_or_id}")
 
@@ -2668,8 +2668,8 @@ CapabilityManager.bind = bind
 def get_by_role(
     self,
     role: str  # Interface class name segment of the FQCN (e.g., "TranscriptionPlugin")
-) -> List[CapabilityMeta]:  # Discovered plugins matching the role
-    """CR-1: return discovered plugins implementing the given interface role."""
+) -> List[CapabilityMeta]:  # Discovered capabilities matching the role
+    """CR-1: return discovered capabilities implementing the given interface role."""
     return [m for m in self.discovered if m.taxonomy and m.taxonomy.role == role]
 
 CapabilityManager.get_by_role = get_by_role
@@ -2678,8 +2678,8 @@ CapabilityManager.get_by_role = get_by_role
 def get_by_domain(
     self,
     domain: str  # Domain segment of the taxonomy (e.g., "transcription")
-) -> List[CapabilityMeta]:  # Discovered plugins in the domain
-    """CR-1: return discovered plugins in the given domain."""
+) -> List[CapabilityMeta]:  # Discovered capabilities in the domain
+    """CR-1: return discovered capabilities in the given domain."""
     return [m for m in self.discovered if m.taxonomy and m.taxonomy.domain == domain]
 
 CapabilityManager.get_by_domain = get_by_domain
@@ -2691,15 +2691,15 @@ def get_canonical(
 ) -> Optional[CapabilityMeta]:  # The unique matching plugin or None
     """CR-1: return the single canonical plugin for a role.
     
-    Returns None if zero or multiple plugins implement the role — useful for
+    Returns None if zero or multiple capabilities implement the role — useful for
     substrate-internal use cases (e.g., the graph storage plugin) where the
     expectation is exactly one implementation. Callers that want
     multi-implementation handling use `get_by_role()` directly.
     
     Multi-match is logged at WARNING level because it's a substrate-visible
     configuration-time surprise — without the warning, the caller's None-handling
-    branch can't distinguish "no plugins installed for this role" from
-    "multiple plugins competing for an exactly-one role." Zero-match is silent
+    branch can't distinguish "no capabilities installed for this role" from
+    "multiple capabilities competing for an exactly-one role." Zero-match is silent
     because absence-of-optional-plugin is a normal probe outcome.
     """
     matches = self.get_by_role(role)
@@ -2715,7 +2715,7 @@ CapabilityManager.get_canonical = get_canonical
 
 # %% ../../nbs/core/manager.ipynb #pm-fn-get_compatible_for_current_platform
 def get_compatible_for_current_platform(self) -> List[CapabilityMeta]:  # Plugins compatible with current platform
-    """Phase 5a: return discovered plugins compatible with the host platform.
+    """Phase 5a: return discovered capabilities compatible with the host platform.
     
     Filters by `resources.platforms`. Plugins with an empty (or absent)
     platforms list are considered universally compatible — that's the

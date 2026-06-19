@@ -106,7 +106,7 @@ class EnvVarSpec:
 # Q1-A (Track 19): EnvVarSpec.default templating — `string.Template` substitution
 # with a constrained placeholder vocabulary.
 #
-# Why templating: 7 of 8 local-model plugins carry derived path vars
+# Why templating: 7 of 8 local-model capabilities carry derived path vars
 # (`HF_HOME=<CJM_MODELS_DIR>/huggingface`, `TORCH_HOME`, `NLTK_DATA`, etc.) that
 # were computed at install time in each plugin's `meta.py` and baked into
 # `install.env_vars` as install-machine absolute paths. Moving derivation into a
@@ -235,7 +235,7 @@ class ToolCapability(ABC):
     The task channel is NOT part of this surface: `execute` left the abstract
     set when the capability-unit fracture split tool capabilities from task
     adapters. Typed task contracts live on adapters (`core.adapter` + the
-    per-task `cjm-<task>-adapter-interface` libraries). Fused-era plugins (the
+    per-task `cjm-<task>-adapter-interface` libraries). Fused-era capabilities (the
     pre-Option-C 12) still define `execute` themselves and their domain ABCs
     still declare it abstract — they keep working unchanged through the
     class-identical `ToolCapability` alias in `core.interface` until the
@@ -297,7 +297,7 @@ class ToolCapability(ABC):
 
         TRANSITIONAL(option-c-cascade): streaming is substrate/composition-
         supplied under the pass-2 fracture (off both interfaces); the default
-        stays here only because fused-era plugins rely on it (it calls the
+        stays here only because fused-era capabilities rely on it (it calls the
         plugin's own `execute`, which a split tool capability does not have).
         Relocates when CR-17 adapter routing lands (execution stage 4).
         """
@@ -317,7 +317,7 @@ class ToolCapability(ABC):
     def get_config_options(self) -> Dict[str, "FieldOptions"]:
         """CR-11: live option domains for dynamic config fields, keyed by field name.
 
-        Optional. Default: {} (fully static plugins). For fields whose valid
+        Optional. Default: {} (fully static capabilities). For fields whose valid
         domain is determined at runtime (e.g. an API model list), return a
         `FieldOptions` carrying current `ConfigOption` values + per-option
         metadata (token limits, etc.) + optional derived constraints. Runs in
@@ -347,7 +347,7 @@ class ToolCapability(ABC):
         
         CR-4 (SG-19): default no-op. Plugin authors override when downstream
         callers benefit from eager acquisition — typically transcription /
-        inference plugins that lazy-download models on first execute. The
+        inference capabilities that lazy-download models on first execute. The
         substrate's prefetch_plugin(name) API + worker /prefetch endpoint
         invoke this. Should be idempotent (safe to call multiple times) since
         the substrate may pre-warm at load time AND on operator request.
@@ -499,7 +499,7 @@ class ToolCapability(ABC):
     ) -> None:
         """Register a callback that fires when cancel() is called.
         
-        CR-4 (SG-16 callback primitive): for plugins that can't easily insert
+        CR-4 (SG-16 callback primitive): for capabilities that can't easily insert
         polling at strategic points (e.g., a plugin wrapping a blocking C
         extension). Callbacks should be non-blocking and idempotent. Multiple
         callbacks can be registered; all fire in registration order when
@@ -545,7 +545,7 @@ class ToolCapability(ABC):
         Worker stays alive; plugin can release heavy resources here (e.g., free
         GPU memory, close model files). The substrate fires this hook AFTER any
         in-flight job for this plugin finishes — see CapabilityManager.disable_capability
-        deferred-hook semantics. Default: no-op; plugins opt in by overriding.
+        deferred-hook semantics. Default: no-op; capabilities opt in by overriding.
         """
         pass
 
@@ -554,7 +554,7 @@ class ToolCapability(ABC):
         
         Plugin can eagerly re-acquire heavy resources here, or rely on lazy
         re-acquisition via the next execute() call (substrate doesn't prefer
-        one strategy over the other). Default: no-op; plugins opt in by overriding.
+        one strategy over the other). Default: no-op; capabilities opt in by overriding.
         """
         pass
 
@@ -603,7 +603,7 @@ class ToolCapability(ABC):
 #
 # Voxtral-vLLM is the first adopter (single-threaded, plugin-owned poll loop —
 # the heartbeat is "call report_progress on every iteration of my loop"). The 5
-# remaining model-loading plugins (Whisper / Voxtral-HF / Qwen3-FA / Demucs /
+# remaining model-loading capabilities (Whisper / Voxtral-HF / Qwen3-FA / Demucs /
 # LavaSR) have a different shape: ONE blocking call inside third-party code
 # they don't own. That shape needs a BACKGROUND thread emitting heartbeats
 # while the main thread blocks in `from_pretrained`.
@@ -626,7 +626,7 @@ class ToolCapability(ABC):
 #
 # Per Q2 Option C: this is opt-in convenience on top of the existing
 # report_progress seam, NOT a forced shape. Voxtral-vLLM's plugin-owned loop
-# stays as-is. 5 model-loading plugins adopt this CM in Phase 3.
+# stays as-is. 5 model-loading capabilities adopt this CM in Phase 3.
 def _report_progress_threadsafe(
     self,
     progress: float,  # 0.0 to 1.0, or -1.0 for indeterminate
@@ -708,7 +708,7 @@ def _heartbeat(
     """
     # Lazy-init the lock BEFORE spawning the thread. This is the single point
     # where a write-write race is possible if multiple heartbeat() calls
-    # nested or interleaved at the millisecond level — in practice plugins
+    # nested or interleaved at the millisecond level — in practice capabilities
     # never call heartbeat() reentrantly, and the GIL makes the dict write
     # atomic anyway. Belt-and-suspenders: if the attribute already exists
     # (e.g. from a previous heartbeat() call in the same plugin lifetime),
@@ -804,7 +804,7 @@ def _dispatch_to_action(
     typed `CapabilityInputError(fields_invalid=["action"])` (CR-5) — identical
     behaviour to the hand-rolled dispatchers this replaces.
 
-    Dispatcher-style plugins (MediaProcessing / Graph / Text) collapse their
+    Dispatcher-style capabilities (MediaProcessing / Graph / Text) collapse their
     `execute` to a one-liner instead of reimplementing the MRO walk in every
     plugin (the 5x copy SG-44 + this helper retire):
 

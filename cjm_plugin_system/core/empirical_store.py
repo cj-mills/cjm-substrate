@@ -30,7 +30,7 @@ def compute_config_hash(
     
     Same canonicalization as CR-8's `compute_config_schema_hash` — sorted keys,
     no whitespace, `"sha256:hex"` shape. None / empty configs hash deterministically
-    to the canonical-empty value so plugins with no config still get a single
+    to the canonical-empty value so capabilities with no config still get a single
     record per instance rather than scattering across hash-of-None edge cases.
     """
     return hash_dict_canonical(config)
@@ -49,7 +49,7 @@ class ResourceSample:
     duration_seconds: float  # Wall-clock execute duration
     success: bool  # True if execute returned normally; False if raised
     observed_at: datetime  # tz-aware datetime — when the sample was captured
-    api_usage: Optional[Dict[str, float]] = None  # SG-54: unit-agnostic measured usage {unit_name: amount}; None for compute-only plugins
+    api_usage: Optional[Dict[str, float]] = None  # SG-54: unit-agnostic measured usage {unit_name: amount}; None for compute-only capabilities
 
 # %% ../../nbs/core/empirical_store.ipynb #resource-record
 @dataclass
@@ -67,7 +67,7 @@ class EmpiricalResourceRecord:
     duration_seconds_mean: float  # Welford running mean of sample.duration_seconds
     success_rate: float  # success_count / sample_count
     last_observed: datetime  # tz-aware; tracks most recent ResourceSample.observed_at
-    api_usage_totals: Dict[str, float] = field(default_factory=dict)  # SG-54: cumulative per-unit usage summed across runs (tokens/credits/pages/...); {} for compute-only plugins
+    api_usage_totals: Dict[str, float] = field(default_factory=dict)  # SG-54: cumulative per-unit usage summed across runs (tokens/credits/pages/...); {} for compute-only capabilities
 
 # %% ../../nbs/core/empirical_store.ipynb #store-protocol
 @runtime_checkable

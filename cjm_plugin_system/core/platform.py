@@ -128,7 +128,7 @@ def terminate_process(
     Strategy on Windows:
       1. process.terminate() + wait + kill (legacy path). True process-group
          signaling on Windows requires Job Objects which the substrate doesn't
-         currently wire — Windows users are advised to avoid plugins that
+         currently wire — Windows users are advised to avoid capabilities that
          spawn subprocesses until that's added. (TODO: track as substrate gap.)
     """
     if process is None or process.poll() is not None:
