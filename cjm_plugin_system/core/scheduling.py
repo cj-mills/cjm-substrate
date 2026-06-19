@@ -13,7 +13,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Callable, Awaitable, Set
 
-from .metadata import PluginMeta
+from .metadata import CapabilityMeta
 
 # SG-39: library modules use `logging.getLogger(__name__)` and let the host
 # (CLI entry point, FastHTML app, worker subprocess) own `basicConfig`.
@@ -26,7 +26,7 @@ class ResourceScheduler(ABC):
     @abstractmethod
     def allocate(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function that returns fresh stats
     ) -> bool:  # True if execution is allowed
         """Decide if a plugin can start based on its requirements and system state."""
@@ -34,7 +34,7 @@ class ResourceScheduler(ABC):
 
     async def allocate_async(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async function returning stats
     ) -> bool:  # True if execution is allowed
         """Async allocation decision. Default delegates to sync allocate after fetching stats once."""
@@ -63,7 +63,7 @@ class PermissiveScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Stats provider (ignored)
     ) -> bool:  # Always returns True
         """Allow all plugin executions without checking resources."""
@@ -89,7 +89,7 @@ class SafetyScheduler(ResourceScheduler):
     
     def _check_resources(
         self,
-        plugin_meta: PluginMeta,  # Plugin metadata with manifest
+        plugin_meta: CapabilityMeta,  # Plugin metadata with manifest
         stats: Dict[str, Any]  # Current system stats
     ) -> bool:  # True if resources available
         """Check if system has sufficient resources for the plugin."""
@@ -125,7 +125,7 @@ class SafetyScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources are available
         """Check resource requirements against system state."""
@@ -167,7 +167,7 @@ class QueueScheduler(ResourceScheduler):
     
     def allocate(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using blocking sleep."""
@@ -187,7 +187,7 @@ class QueueScheduler(ResourceScheduler):
 
     async def allocate_async(
         self,
-        plugin_meta: PluginMeta,  # Metadata of the plugin requesting resources
+        plugin_meta: CapabilityMeta,  # Metadata of the plugin requesting resources
         stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async stats function
     ) -> bool:  # True if resources become available before timeout
         """Wait for resources using non-blocking async sleep."""
@@ -223,7 +223,7 @@ class QueueScheduler(ResourceScheduler):
 @patch
 def _check_resources(
     self:QueueScheduler,
-    plugin_meta: PluginMeta,  # Plugin metadata with manifest
+    plugin_meta: CapabilityMeta,  # Plugin metadata with manifest
     stats: Dict[str, Any]  # Current system stats
 ) -> bool:  # True if resources available
     """Check if system has sufficient resources for the plugin."""

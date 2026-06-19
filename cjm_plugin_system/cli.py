@@ -30,7 +30,7 @@ from cjm_plugin_system.core.platform import (
     ensure_runtime_available, download_micromamba, get_micromamba_binary_path,
     get_current_platform
 )
-from .core.metadata import PluginTaxonomy, ResourceRequirements
+from .core.metadata import CapabilityTaxonomy, ResourceRequirements
 from cjm_plugin_system.core.manifest_format import (
     ManifestV2, InstallSection, CodeSection, DriftTracking,
     CURRENT_FORMAT_VERSION,
@@ -462,9 +462,9 @@ print(json.dumps(meta, indent=2))
             # when the plugin predates those CRs). Substrate stores strings
             # only — no host-side imports of interface libraries needed.
             intro_tax = meta_json.get("taxonomy")
-            tax_obj: Optional[PluginTaxonomy] = None
+            tax_obj: Optional[CapabilityTaxonomy] = None
             if isinstance(intro_tax, dict):
-                tax_obj = PluginTaxonomy(
+                tax_obj = CapabilityTaxonomy(
                     domain=str(intro_tax.get("domain", "") or ""),
                     role=str(intro_tax.get("role", "") or ""),
                     interface_fqcn=str(intro_tax.get("interface_fqcn", "") or ""),
@@ -1429,7 +1429,7 @@ def retention_command(
 ) -> None:
     """Apply the diagnostics retention policy now (CR-14).
 
-    The explicit half of the invocation policy (PluginManager's startup
+    The explicit half of the invocation policy (CapabilityManager's startup
     sweep is the automatic half). Defaults come from `cjm.yaml`'s
     `substrate.diagnostics_retention_days` / `diagnostics_retention_max_mb`.
     The JOURNAL is never touched — it has no retention surface by design.
@@ -2111,7 +2111,7 @@ def set_secret(
     worker env at spawn. Omit --value to be prompted (hidden input) so the
     secret stays out of shell history. After setting, reload the plugin (or
     restart the host) so its worker respawns with the new env — the GUI /
-    PluginManager.set_plugin_secret do this automatically.
+    CapabilityManager.set_plugin_secret do this automatically.
     """
     store = _open_secret_store()
     if value is None:

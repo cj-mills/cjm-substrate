@@ -1,4 +1,4 @@
-"""One-call factory that assembles a PluginManager + JobQueue + plugin bindings — closes the demo-app boilerplate duplication audited across 5 substrate consumers.
+"""One-call factory that assembles a CapabilityManager + JobQueue + plugin bindings — closes the demo-app boilerplate duplication audited across 5 substrate consumers.
 
 Docs: https://cj-mills.github.io/cjm-plugin-systembootstrap.html.md"""
 
@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 
 import logging
 
-from .core.manager import PluginBinding, PluginManager
+from .core.manager import CapabilityBinding, CapabilityManager
 from .core.queue import JobQueue
 from .core.scheduling import ResourceScheduler
 
@@ -26,9 +26,9 @@ PluginSpec = Union[str, Tuple[str, Optional[Dict[str, Any]]], Mapping[str, Any]]
 @dataclass
 class Pipeline:
     """Assembled substrate stack: manager + queue + plugin bindings."""
-    manager: PluginManager  # Discovery + lifecycle
+    manager: CapabilityManager  # Discovery + lifecycle
     queue: JobQueue  # Job submission + scheduling
-    bindings: Dict[str, PluginBinding] = field(default_factory=dict)  # Plugin name -> bound view
+    bindings: Dict[str, CapabilityBinding] = field(default_factory=dict)  # Plugin name -> bound view
     
     async def start(self) -> None:
         """Start the job queue's background processor."""
@@ -81,12 +81,12 @@ def create_pipeline(
     queue_kwargs: Optional[Dict[str, Any]] = None,  # Extra kwargs forwarded to JobQueue
     strict: bool = True,  # SG-5 strict config validation on each load
 ) -> Pipeline:  # Assembled stack ready to start
-    """Assemble a PluginManager + JobQueue + plugin bindings in one call.
+    """Assemble a CapabilityManager + JobQueue + plugin bindings in one call.
     
     Steps performed:
-      1. Construct PluginManager with the given scheduler + search paths
+      1. Construct CapabilityManager with the given scheduler + search paths
       2. discover_manifests()
-      3. For each spec in `plugins`: load the plugin and create a PluginBinding
+      3. For each spec in `plugins`: load the plugin and create a CapabilityBinding
       4. If `system_monitor` is set, register that plugin as the sys-mon
       5. Construct JobQueue (NOT started — caller starts via context manager)
     
@@ -94,10 +94,10 @@ def create_pipeline(
     omitted from `Pipeline.bindings`. Use the returned `Pipeline.manager` to
     inspect which loads succeeded.
     """
-    manager = PluginManager(scheduler=scheduler, search_paths=search_paths)
+    manager = CapabilityManager(scheduler=scheduler, search_paths=search_paths)
     manager.discover_manifests()
     
-    bindings: Dict[str, PluginBinding] = {}
+    bindings: Dict[str, CapabilityBinding] = {}
     for spec in (plugins or []):
         name, config = _normalize_spec(spec)
         binding = manager.bind(name, default_config=config or {})

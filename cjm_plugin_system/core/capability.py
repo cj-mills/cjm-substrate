@@ -326,7 +326,7 @@ class ToolCapability(ABC):
         Kept SEPARATE from get_config_schema(): the schema is static + hashed for
         CR-8 drift detection; these options are the live, un-hashed companion the
         plugin-config UI merges on top. A fetch failure should raise a typed CR-5
-        error; the substrate's PluginManager.get_config_options accessor degrades
+        error; the substrate's CapabilityManager.get_config_options accessor degrades
         to {} so the UI can fall back to the static schema.
         """
         return {}
@@ -362,7 +362,7 @@ class ToolCapability(ABC):
         """Apply a configuration change without re-running full initialize().
         
         CR-4 completion (2026-05-25): reconfigure is the substrate's canonical
-        delta path - `PluginManager.update_plugin_config` routes here, NOT through
+        delta path - `CapabilityManager.update_plugin_config` routes here, NOT through
         a bare `initialize(new_config)`. It fires `_release_<trigger>` releases for
         changed RELOAD_TRIGGER fields, then re-applies config (see body below).
         
@@ -544,7 +544,7 @@ class ToolCapability(ABC):
         
         Worker stays alive; plugin can release heavy resources here (e.g., free
         GPU memory, close model files). The substrate fires this hook AFTER any
-        in-flight job for this plugin finishes — see PluginManager.disable_plugin
+        in-flight job for this plugin finishes — see CapabilityManager.disable_plugin
         deferred-hook semantics. Default: no-op; plugins opt in by overriding.
         """
         pass
@@ -828,7 +828,7 @@ def _dispatch_to_action(
 ToolCapability.dispatch_to_action = _dispatch_to_action
 
 # %% ../../nbs/core/capability.ipynb #9342f856-f07e-4e18-b016-4f089a50c4c4
-class _CR4MinimalPlugin(ToolCapability):
+class _CR4MinimalCapability(ToolCapability):
     """Concrete plugin satisfying abstracts; relies on CR-4 default cleanup()."""
     @property
     def name(self) -> str: return "cr4-minimal"

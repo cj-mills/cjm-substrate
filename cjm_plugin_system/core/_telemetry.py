@@ -1,4 +1,4 @@
-"""Shared GPU/CPU attribution helpers used by both `JobQueue._sample_resource_snapshot` (CR-6 Stage 3) and `PluginManager._record_sample_safe` (CR-7).
+"""Shared GPU/CPU attribution helpers used by both `JobQueue._sample_resource_snapshot` (CR-6 Stage 3) and `CapabilityManager._record_sample_safe` (CR-7).
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/telemetry.html.md"""
 

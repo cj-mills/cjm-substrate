@@ -25,7 +25,7 @@ from cjm_plugin_system.core.capability import (
     ToolCapability,
     plugin_action,
     collect_plugin_actions,
-    _CR4MinimalPlugin,
+    _CR4MinimalCapability,
 )
 from .wire import FileBackedDTO
 

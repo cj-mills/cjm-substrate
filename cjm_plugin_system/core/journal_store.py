@@ -174,7 +174,7 @@ class LocalJournalStore:
     """
 
     def __init__(self, db_path: Optional[Path] = None):
-        """`db_path=None` uses `~/.cjm/journal.db`; PluginManager passes
+        """`db_path=None` uses `~/.cjm/journal.db`; CapabilityManager passes
         `cfg.journal_db_path` (project-scoped) automatically."""
         self.db_path = Path(db_path) if db_path is not None else Path.home() / ".cjm" / "journal.db"
         # Persistent lock-protected connection (stage-7 stress part-1 catch):

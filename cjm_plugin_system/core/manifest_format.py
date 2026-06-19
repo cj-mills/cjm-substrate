@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .metadata import PluginTaxonomy, ResourceRequirements
+from .metadata import CapabilityTaxonomy, ResourceRequirements
 from ..utils.hashing import hash_bytes
 
 # %% ../../nbs/core/manifest_format.ipynb #format-version-const
@@ -58,7 +58,7 @@ class CodeSection:
     module: str = ""             # Importable module path for the plugin class
     class_name: str = ""         # Plugin class name (JSON key: "class")
     interface: str = ""          # Fully qualified interface class name
-    taxonomy: Optional[PluginTaxonomy] = None        # CR-1 domain/role/FQCN triple
+    taxonomy: Optional[CapabilityTaxonomy] = None        # CR-1 domain/role/FQCN triple
     resources: Optional[ResourceRequirements] = None  # Phase 5a hard-facts
     config_schema: Optional[Dict[str, Any]] = None    # JSON Schema for plugin config
     regenerated_at: Optional[str] = None              # ISO-8601 UTC of last regen
@@ -72,9 +72,9 @@ class DriftTracking:
     
     `config_schema_hash` is computed at write time (regenerate-manifest /
     install_all) from a canonical JSON encoding of the code section's
-    `config_schema`. The PluginManager's drift-check fetches the live
+    `config_schema`. The CapabilityManager's drift-check fetches the live
     `/config_schema` from the worker, hashes it the same way, and compares;
-    a mismatch raises `PluginMeta.config_schema_drift = True` plus a
+    a mismatch raises `CapabilityMeta.config_schema_drift = True` plus a
     warning log.
     """
     config_schema_hash: Optional[str] = None  # "sha256:hexdigest" of canonical config_schema
@@ -125,11 +125,11 @@ def compute_structural_surface_hash(
     return hash_bytes(canonical.encode("utf-8"))
 
 # %% ../../nbs/core/manifest_format.ipynb #parser-helpers
-def _parse_taxonomy_dict(d: Optional[Dict[str, Any]]) -> Optional[PluginTaxonomy]:
-    """Build a `PluginTaxonomy` from its JSON sub-dict, or None."""
+def _parse_taxonomy_dict(d: Optional[Dict[str, Any]]) -> Optional[CapabilityTaxonomy]:
+    """Build a `CapabilityTaxonomy` from its JSON sub-dict, or None."""
     if not d:
         return None
-    return PluginTaxonomy(
+    return CapabilityTaxonomy(
         domain=d.get("domain", "") or "",
         role=d.get("role", "") or "",
         interface_fqcn=d.get("interface_fqcn", "") or "",
@@ -263,8 +263,8 @@ def load_manifest(
     )
 
 # %% ../../nbs/core/manifest_format.ipynb #to-dict-helpers
-def _taxonomy_to_dict(t: Optional[PluginTaxonomy]) -> Optional[Dict[str, str]]:
-    """Serialize a `PluginTaxonomy` back to its JSON sub-dict, or None."""
+def _taxonomy_to_dict(t: Optional[CapabilityTaxonomy]) -> Optional[Dict[str, str]]:
+    """Serialize a `CapabilityTaxonomy` back to its JSON sub-dict, or None."""
     if t is None:
         return None
     return {"domain": t.domain, "role": t.role, "interface_fqcn": t.interface_fqcn}

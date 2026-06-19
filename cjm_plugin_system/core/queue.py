@@ -39,12 +39,12 @@ from .diagnostics_store import DiagnosticRecord, DiagnosticsStore
 from .wire import CallEnvelope, reset_call_envelope, set_call_envelope
 from ._telemetry import attribute_gpu_to_worker_subtree
 
-# CR-6: PluginManager continues to satisfy JobQueueDependencies structurally.
+# CR-6: CapabilityManager continues to satisfy JobQueueDependencies structurally.
 # Imported under TYPE_CHECKING to thin runtime coupling per OQ-5 resolution —
 # JobQueue stays inline in cjm-plugin-system for v1; the Protocol enables clean
 # future extraction.
 if TYPE_CHECKING:
-    from cjm_plugin_system.core.manager import PluginManager
+    from cjm_plugin_system.core.manager import CapabilityManager
 
 # SG-39: library modules use `logging.getLogger(__name__)` and let the host
 # (CLI entry point, FastHTML app, worker subprocess) own `basicConfig`.
@@ -109,7 +109,7 @@ class CancelPhase(str, Enum):
 class JobQueueDependencies(Protocol):
     """Substrate dependencies the JobQueue requires (CR-6 + stage 3).
 
-    PluginManager satisfies this structurally; the Protocol exists so JobQueue
+    CapabilityManager satisfies this structurally; the Protocol exists so JobQueue
     can be tested in isolation (with a lightweight test double) and so a future
     extraction into a separate library has no API constraint locked in.
 
@@ -282,7 +282,7 @@ class JobQueue:
 
     def __init__(
         self,
-        deps: JobQueueDependencies,        # Substrate dependencies (PluginManager satisfies structurally)
+        deps: JobQueueDependencies,        # Substrate dependencies (CapabilityManager satisfies structurally)
         max_history: int = 100,            # Max completed jobs to retain
         cancel_timeout: float = 3.0,       # Seconds to wait for cooperative cancel
         progress_poll_interval: float = 1.0,  # Seconds between progress polls
@@ -304,7 +304,7 @@ class JobQueue:
 
         CR-14 (stage 7): emission is journal-primary — `_publish_event`
         writes journal-class events as durable rows before fanning out to
-        live subscribers. The stores default to the deps' (PluginManager's)
+        live subscribers. The stores default to the deps' (CapabilityManager's)
         stores via getattr, so the cores gain journaling with zero host
         changes; a deps without them (test doubles) yields no journaling.
         """
@@ -454,7 +454,7 @@ async def submit(
     """Submit a job to the queue.
 
     CR-2: rejects jobs for disabled plugins at submit time (typed
-    CapabilityDisabledError) so the failure surface matches PluginManager.
+    CapabilityDisabledError) so the failure surface matches CapabilityManager.
     execute_plugin's disabled gate. Submitting to a disabled plugin would
     otherwise sit in the queue until execution, then raise — moving the
     check earlier gives operators an actionable signal immediately.
@@ -1274,7 +1274,7 @@ async def start(self) -> None:
     """Start the queue processor.
 
     CR-6 Stage 4: installs the substrate-side retry observer on `_deps`
-    (typically a PluginManager). When CR-7's reactive-retry path fires for
+    (typically a CapabilityManager). When CR-7's reactive-retry path fires for
     a running job, the observer updates `Job.retry_count` and publishes a
     RETRY_STARTED event tagged with the in-flight job. Previous observer
     value (if any) is saved + restored in stop() for cooperative coexistence.
@@ -1283,8 +1283,8 @@ async def start(self) -> None:
         return
 
     # CR-6 Stage 4: install retry observer. Uses setattr defensively so
-    # non-PluginManager deps implementations don't fail — they just accept
-    # an unused attribute. PluginManager's execute paths look up
+    # non-CapabilityManager deps implementations don't fail — they just accept
+    # an unused attribute. CapabilityManager's execute paths look up
     # `getattr(self, '_on_retry', None)` so the hook only fires when both
     # sides are wired.
     self._prev_deps_on_retry = getattr(self._deps, '_on_retry', None)
@@ -1354,17 +1354,17 @@ JobQueue.stop = stop
 def _on_manager_retry(
     self,
     instance_id: str,  # Plugin instance whose execute is retrying
-    attempt: int,      # 1-based retry number (PluginManager's loop var; first retry is 1)
+    attempt: int,      # 1-based retry number (CapabilityManager's loop var; first retry is 1)
     exception: BaseException,  # The CapabilityResourceError that triggered the retry
 ) -> None:
     """Substrate-side retry observer (CR-6 Stage 4; stage-3 multi-lane).
 
-    Invoked synchronously by PluginManager's CR-7 retry loop just before
+    Invoked synchronously by CapabilityManager's CR-7 retry loop just before
     each retry attempt. Updates `Job.retry_count` on the matching in-flight
     job + emits RETRY_STARTED. Best-effort: synchronous callback; emission
     failure shouldn't propagate back into the retry loop.
 
-    `attempt` semantics: PluginManager's loop iterates
+    `attempt` semantics: CapabilityManager's loop iterates
     `for attempt in range(max_retries + 1)`. The first iteration
     (`attempt=0`) is the original try and never invokes this callback —
     so the value PASSED here is already the 1-based retry number.

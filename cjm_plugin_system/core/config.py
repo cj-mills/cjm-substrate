@@ -50,10 +50,10 @@ class SubstrateConfig:
     per-load or per-execute cost.
     
     - `drift_detection` (CR-8): per-load `/config_schema` HTTP call + hash
-      comparison against the manifest's stored hash. PluginManager's load
+      comparison against the manifest's stored hash. CapabilityManager's load
       path branches around `_check_config_schema_drift` when False.
     - `empirical_tracking` (CR-7): per-execute resource sample recording into
-      `EmpiricalResourceStore`. PluginManager skips `record_sample` calls when
+      `EmpiricalResourceStore`. CapabilityManager skips `record_sample` calls when
       False; the store's lazy-init also short-circuits.
     - `prefetch_stall_threshold_seconds` (CR-4 / Session A 2026-05-27): how long
       proxy.prefetch waits with no observed progress (via `/progress` polling)

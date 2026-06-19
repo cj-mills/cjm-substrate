@@ -1,4 +1,4 @@
-"""Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — `record_sample` is called from `PluginManager.execute_plugin*` finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
+"""Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — `record_sample` is called from `CapabilityManager.execute_plugin*` finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
 
 Docs: https://cj-mills.github.io/cjm-plugin-systemcore/empirical_store.html.md"""
 
@@ -55,8 +55,8 @@ class ResourceSample:
 @dataclass
 class EmpiricalResourceRecord:
     """Aggregated empirical resource profile for a (instance_id, config_hash) pair."""
-    instance_id: str  # PluginInstance.instance_id (CR-10 multi-instance aware)
-    plugin_name: str  # Convenience: PluginInstance.plugin_name; derivable but cheap to denormalize
+    instance_id: str  # CapabilityInstance.instance_id (CR-10 multi-instance aware)
+    plugin_name: str  # Convenience: CapabilityInstance.plugin_name; derivable but cheap to denormalize
     config_hash: str  # compute_config_hash(inst.config) at sample time
     sample_count: int  # Number of ResourceSamples folded into this record
     cpu_percent_mean: float  # Welford running mean of cpu_percent
@@ -143,7 +143,7 @@ def _default_db_path() -> Path:
     
     Hosts using per-project `data_dir` (the intended pattern per CR-8 cascade_manifests
     docs) override this by passing `db_path=cfg.data_dir / "empirical_resources.db"`
-    when constructing the store. PluginManager's lazy-init does this automatically.
+    when constructing the store. CapabilityManager's lazy-init does this automatically.
     """
     return Path.home() / ".cjm" / "empirical_resources.db"
 
@@ -222,8 +222,8 @@ def _conn(self:LocalEmpiricalResourceStore) -> Iterator[sqlite3.Connection]:
 @patch
 def record_sample(
     self:LocalEmpiricalResourceStore,
-    instance_id: str,  # PluginInstance.instance_id
-    plugin_name: str,  # PluginInstance.plugin_name (denormalized for filtering)
+    instance_id: str,  # CapabilityInstance.instance_id
+    plugin_name: str,  # CapabilityInstance.plugin_name (denormalized for filtering)
     config_hash: str,  # compute_config_hash(inst.config)
     sample: ResourceSample,  # One observation
 ) -> None:

@@ -75,7 +75,7 @@ def _get_stat_cache_path() -> Optional[Path]:
     except Exception:
         pass
     # Fallback: per-user default. Match the convention CR-2's
-    # LocalPluginConfigStore + CR-7's LocalEmpiricalResourceStore use.
+    # LocalCapabilityConfigStore + CR-7's LocalEmpiricalResourceStore use.
     home = Path.home()
     return home / ".cjm" / "input_hash_cache.db"
 
