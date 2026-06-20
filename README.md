@@ -12,7 +12,7 @@ pip install cjm_substrate
 ## Project Structure
 
     nbs/
-    ├── core/ (22)
+    ├── core/ (21)
     │   ├── adapter.ipynb            # The typed-task half of the capability-unit fracture (pass-2 Thread 3) —
     │   ├── adapter_manifest.ipynb   # The ADAPTER unit's registration manifest + the surface-based compatibility matcher (CR-17 pt 2, stage 4). Pass-2 Thread 3: registration/discovery = per-unit manifests generated in-env and found by `discover_manifests()`; compatibility is DERIVED, not declared — the capability records only its structural surface, the adapter declares its protocol (recorded here as member names + parameter lists), and the substrate matches manifest-vs-manifest. Works against UNLOADED capabilities with zero protocol imports host-side.
     │   ├── capability.ipynb         # The tool-capability interface — the manage-the-tool half of the capability-unit fracture (pass-2 Thread 3)
@@ -21,7 +21,6 @@ pip install cjm_substrate
     │   ├── diagnostics_store.ipynb  # CR-14 (stage 7): the disposable diagnostic-narrative class. Worker-written structured log records (substrate handler stamps contextvars identity — authors never supply attribution) + the host-pumped raw stream chunks (the zero-cooperation death-rattle floor). Retention is a QUERY, not file mechanics. Design ledger: `claude-docs/stage-7-evidence.md`.
     │   ├── empirical_store.ipynb    # Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — `record_sample` is called from `CapabilityManager.execute_capability*` finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
     │   ├── errors.ipynb             # Typed exception hierarchy + JobError dataclass + default classification of bare Python exceptions. The substrate's CR-5 implementation per the 2026-05-19 substrate audit.
-    │   ├── interface.ipynb          # REMOVE-AFTER-OVERHAUL(option-c-cascade): class-identical legacy import
     │   ├── journal_store.ipynb      # CR-14 (stage 7): the durable account-of-action. One substrate-derived, host-written, never-auto-deleted SQLite store of typed observability events — the operational half of the attempted-vs-happened asymmetry (the graph records what HAPPENED; the journal records what was ATTEMPTED, including everything the graph by design refuses to contain: failures, refusals, retries, admission decisions, worker lifecycle). Design ledger: `claude-docs/stage-7-evidence.md`.
     │   ├── manager.ipynb            # Capability discovery, loading, and lifecycle management system
     │   ├── manifest_format.ipynb    # Typed parser + writer for the nested v2.0 manifest layout per the 2026-05-19 substrate audit's CR-8. Substrate manifests transitioned from a flat top-level JSON object to a four-section nested layout: `install` (deployment-specific facts populated at install time), `code` (code-derived facts refreshed by `cjm-ctl regenerate-manifest`), `drift_tracking` (a config_schema hash that records the witness shape so live-vs-stored comparisons can detect drift), and `overrides` (an operator-supplied overlay placeholder).
@@ -42,7 +41,7 @@ pip install cjm_substrate
     ├── bootstrap.ipynb  # One-call factory that assembles a CapabilityManager + JobQueue + capability bindings — closes the demo-app boilerplate duplication audited across 5 substrate consumers.
     └── cli.ipynb        # CLI tool for declarative capability management
 
-Total: 27 notebooks across 2 directories
+Total: 26 notebooks across 2 directories
 
 ## Module Dependencies
 
@@ -58,7 +57,6 @@ graph LR
     core_diagnostics_store["core.diagnostics_store<br/>Diagnostics Store"]
     core_empirical_store["core.empirical_store<br/>Empirical Resource Tracking"]
     core_errors["core.errors<br/>Capability Error Taxonomy"]
-    core_interface["core.interface<br/>Plugin Interface (compat shim)"]
     core_journal_store["core.journal_store<br/>Journal Store"]
     core_manager["core.manager<br/>Capability Manager"]
     core_manifest_format["core.manifest_format<br/>Manifest Format (v2.0)"]
@@ -77,64 +75,60 @@ graph LR
     utils_validation["utils.validation<br/>Configuration Validation"]
 
     bootstrap --> core_scheduling
-    bootstrap --> core_queue
     bootstrap --> core_manager
-    cli --> core_platform
-    cli --> core_metadata
+    bootstrap --> core_queue
     cli --> core_manifest_format
+    cli --> core_platform
     cli --> core_config
+    cli --> core_metadata
     core_capability --> core_errors
     core_diagnostics_store --> core_wire
     core_empirical_store --> utils_hashing
-    core_interface --> core
-    core_interface --> core_interface
-    core_interface --> core_capability
-    core_interface --> core_wire
-    core_manager --> core_adapter_manifest
-    core_manager --> utils_validation
-    core_manager --> core_metadata
-    core_manager --> core_empirical_store
-    core_manager --> core_proxy
-    core_manager --> core_manifest_format
-    core_manager --> core_capability
-    core_manager --> core_journal_store
-    core_manager --> core_scheduling
     core_manager --> core__telemetry
-    core_manager --> core_diagnostics_store
+    core_manager --> core_scheduling
     core_manager --> core_errors
-    core_manager --> core_secret_store
-    core_manager --> core_config
     core_manager --> core_config_store
-    core_manifest_format --> core_metadata
+    core_manager --> utils_validation
+    core_manager --> core_diagnostics_store
+    core_manager --> core_secret_store
+    core_manager --> core_empirical_store
+    core_manager --> core_adapter_manifest
+    core_manager --> core_metadata
+    core_manager --> core_manifest_format
+    core_manager --> core_proxy
+    core_manager --> core_journal_store
+    core_manager --> core_capability
+    core_manager --> core_config
     core_manifest_format --> utils_hashing
+    core_manifest_format --> core_metadata
     core_platform --> core_config
     core_ports --> core_errors
+    core_proxy --> core_diagnostics_store
+    core_proxy --> core_platform
     core_proxy --> core_errors
     core_proxy --> core_wire
-    core_proxy --> core_capability
     core_proxy --> core_journal_store
-    core_proxy --> core_platform
-    core_proxy --> core_diagnostics_store
+    core_proxy --> core_capability
     core_proxy --> core_config
-    core_queue --> core_errors
     core_queue --> core__telemetry
-    core_queue --> core_journal_store
-    core_queue --> core_wire
     core_queue --> core_ports
+    core_queue --> core_journal_store
     core_queue --> core_diagnostics_store
+    core_queue --> core_errors
+    core_queue --> core_wire
     core_scheduling --> core_metadata
     core_worker --> core_wire
-    core_worker --> core_diagnostics_store
-    core_worker --> core_journal_store
-    core_worker --> core_capability
-    core_worker --> core_platform
     core_worker --> core_errors
+    core_worker --> core_capability
+    core_worker --> core_diagnostics_store
+    core_worker --> core_platform
+    core_worker --> core_journal_store
     utils_cache_paths --> core_empirical_store
     utils_cache_paths --> utils_hashing
     utils_validation --> core_errors
 ```
 
-*56 cross-module dependencies detected*
+*52 cross-module dependencies detected*
 
 ## CLI Reference
 
@@ -864,9 +858,9 @@ class ToolCapability(ABC):
     adapters. Typed task contracts live on adapters (`core.adapter` + the
     per-task `cjm-<task>-adapter-interface` libraries). Fused-era capabilities (the
     pre-Option-C 12) still define `execute` themselves and their domain ABCs
-    still declare it abstract — they keep working unchanged through the
+    still declare it abstract — they kept working unchanged through the
     class-identical `ToolCapability` alias in `core.interface` until the
-    Option C migration cascade splits them.
+    Option C migration cascade split them (the alias was REMOVED at SG-48).
     
     CR-4 extended this surface with: prefetch hook (SG-19), made cleanup optional
     (SG-43), reconfigure split + RELOAD_TRIGGER declarative-helper (lifecycle
