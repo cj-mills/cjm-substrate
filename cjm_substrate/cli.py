@@ -1965,8 +1965,8 @@ def _open_secret_store():
 
 @app.command("set-secret")
 def set_secret(
-    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. cjm-transcription-plugin-gemini)"),
-    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. GEMINI_API_KEY)"),
+    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. my-api-capability)"),
+    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. MY_API_KEY)"),
     value: Optional[str] = typer.Option(None, "--value", help="Secret value (omit to be prompted with hidden input)"),
     scope: Optional[str] = typer.Option(None, "--scope", help="Reserved multi-user scope (default: single-user)"),
 ):

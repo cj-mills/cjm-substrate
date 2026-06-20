@@ -74,55 +74,55 @@ graph LR
     utils_hashing["utils.hashing<br/>Content Hashing Utilities"]
     utils_validation["utils.validation<br/>Configuration Validation"]
 
+    bootstrap --> core_queue
     bootstrap --> core_manager
     bootstrap --> core_scheduling
-    bootstrap --> core_queue
-    cli --> core_config
     cli --> core_manifest_format
+    cli --> core_config
     cli --> core_platform
     cli --> core_metadata
     core_capability --> core_errors
     core_diagnostics_store --> core_wire
     core_empirical_store --> utils_hashing
-    core_manager --> core_errors
-    core_manager --> core_empirical_store
-    core_manager --> core_proxy
-    core_manager --> core_metadata
-    core_manager --> utils_validation
-    core_manager --> core_adapter_manifest
-    core_manager --> core_journal_store
     core_manager --> core_diagnostics_store
-    core_manager --> core_config_store
+    core_manager --> core_errors
     core_manager --> core_manifest_format
+    core_manager --> core_config
+    core_manager --> core_adapter_manifest
+    core_manager --> core_capability
+    core_manager --> core_journal_store
     core_manager --> core_secret_store
     core_manager --> core_scheduling
-    core_manager --> core_capability
-    core_manager --> core_config
+    core_manager --> core_metadata
+    core_manager --> core_empirical_store
+    core_manager --> core_config_store
+    core_manager --> utils_validation
+    core_manager --> core_proxy
     core_manager --> core__telemetry
-    core_manifest_format --> core_metadata
     core_manifest_format --> utils_hashing
+    core_manifest_format --> core_metadata
     core_platform --> core_config
     core_ports --> core_errors
     core_proxy --> core_diagnostics_store
     core_proxy --> core_wire
-    core_proxy --> core_platform
-    core_proxy --> core_errors
-    core_proxy --> core_journal_store
-    core_proxy --> core_capability
     core_proxy --> core_config
-    core_queue --> core_ports
+    core_proxy --> core_capability
+    core_proxy --> core_journal_store
+    core_proxy --> core_errors
+    core_proxy --> core_platform
+    core_queue --> core_diagnostics_store
     core_queue --> core_wire
     core_queue --> core_journal_store
-    core_queue --> core_diagnostics_store
     core_queue --> core_errors
+    core_queue --> core_ports
     core_queue --> core__telemetry
     core_scheduling --> core_metadata
     core_worker --> core_wire
-    core_worker --> core_platform
+    core_worker --> core_errors
     core_worker --> core_journal_store
     core_worker --> core_diagnostics_store
+    core_worker --> core_platform
     core_worker --> core_capability
-    core_worker --> core_errors
     utils_cache_paths --> utils_hashing
     utils_cache_paths --> core_empirical_store
     utils_validation --> core_errors
@@ -1758,8 +1758,8 @@ def _open_secret_store():
 
 @app.command("set-secret")
 def set_secret(
-    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. cjm-transcription-plugin-gemini)"),
-    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. GEMINI_API_KEY)"),
+    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. my-api-capability)"),
+    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. MY_API_KEY)"),
     value: Optional[str] = typer.Option(None, "--value", help="Secret value (omit to be prompted with hidden input)"),
     scope: Optional[str] = typer.Option(None, "--scope", help="Reserved multi-user scope (default: single-user)"),
 )
@@ -1768,8 +1768,8 @@ def set_secret(
 
 ``` python
 def set_secret(
-    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. cjm-transcription-plugin-gemini)"),
-    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. GEMINI_API_KEY)"),
+    capability_name: str = typer.Argument(..., help="Capability name (manifest 'name', e.g. my-api-capability)"),
+    key: str = typer.Argument(..., help="Secret key = the env-var name the worker reads (e.g. MY_API_KEY)"),
     value: Optional[str] = typer.Option(None, "--value", help="Secret value (omit to be prompted with hidden input)"),
     scope: Optional[str] = typer.Option(None, "--scope", help="Reserved multi-user scope (default: single-user)"),
 )
