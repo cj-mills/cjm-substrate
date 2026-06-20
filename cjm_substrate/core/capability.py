@@ -238,7 +238,7 @@ class ToolCapability(ABC):
     per-task `cjm-<task>-adapter-interface` libraries). Fused-era capabilities (the
     pre-Option-C 12) still define `execute` themselves and their domain ABCs
     still declare it abstract — they kept working unchanged through the
-    class-identical `ToolCapability` alias in `core.interface` until the
+    class-identical `ToolCapability` alias (later REMOVED at SG-48) until the
     Option C migration cascade split them (the alias was REMOVED at SG-48).
 
     CR-4 extended this surface with: prefetch hook (SG-19), made cleanup optional
