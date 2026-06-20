@@ -279,7 +279,7 @@ def _get_global_stats(self) -> Dict[str, Any]: # Current system telemetry
     CR-3: prefer typed `get_system_status()` over magic-string dispatcher.
     Duck-types because the substrate references `system_monitor` as a
     generic `ToolCapability` — CR-1's host-no-imports rule means substrate
-    does not import `cjm-infra-plugin-system` to type-narrow the reference.
+    does not import the monitor capability to type-narrow the reference.
     Proxies after CR-3 expose `get_system_status` as a bound method that
     POSTs to `/get_system_status` and returns `Optional[Dict[str, Any]]`.
     """

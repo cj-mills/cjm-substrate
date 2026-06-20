@@ -74,57 +74,57 @@ graph LR
     utils_hashing["utils.hashing<br/>Content Hashing Utilities"]
     utils_validation["utils.validation<br/>Configuration Validation"]
 
-    bootstrap --> core_scheduling
     bootstrap --> core_manager
+    bootstrap --> core_scheduling
     bootstrap --> core_queue
+    cli --> core_config
     cli --> core_manifest_format
     cli --> core_platform
-    cli --> core_config
     cli --> core_metadata
     core_capability --> core_errors
     core_diagnostics_store --> core_wire
     core_empirical_store --> utils_hashing
-    core_manager --> core__telemetry
-    core_manager --> core_scheduling
     core_manager --> core_errors
-    core_manager --> core_config_store
-    core_manager --> utils_validation
-    core_manager --> core_diagnostics_store
-    core_manager --> core_secret_store
     core_manager --> core_empirical_store
-    core_manager --> core_adapter_manifest
-    core_manager --> core_metadata
-    core_manager --> core_manifest_format
     core_manager --> core_proxy
+    core_manager --> core_metadata
+    core_manager --> utils_validation
+    core_manager --> core_adapter_manifest
     core_manager --> core_journal_store
+    core_manager --> core_diagnostics_store
+    core_manager --> core_config_store
+    core_manager --> core_manifest_format
+    core_manager --> core_secret_store
+    core_manager --> core_scheduling
     core_manager --> core_capability
     core_manager --> core_config
-    core_manifest_format --> utils_hashing
+    core_manager --> core__telemetry
     core_manifest_format --> core_metadata
+    core_manifest_format --> utils_hashing
     core_platform --> core_config
     core_ports --> core_errors
     core_proxy --> core_diagnostics_store
+    core_proxy --> core_wire
     core_proxy --> core_platform
     core_proxy --> core_errors
-    core_proxy --> core_wire
     core_proxy --> core_journal_store
     core_proxy --> core_capability
     core_proxy --> core_config
-    core_queue --> core__telemetry
     core_queue --> core_ports
+    core_queue --> core_wire
     core_queue --> core_journal_store
     core_queue --> core_diagnostics_store
     core_queue --> core_errors
-    core_queue --> core_wire
+    core_queue --> core__telemetry
     core_scheduling --> core_metadata
     core_worker --> core_wire
-    core_worker --> core_errors
-    core_worker --> core_capability
-    core_worker --> core_diagnostics_store
     core_worker --> core_platform
     core_worker --> core_journal_store
-    utils_cache_paths --> core_empirical_store
+    core_worker --> core_diagnostics_store
+    core_worker --> core_capability
+    core_worker --> core_errors
     utils_cache_paths --> utils_hashing
+    utils_cache_paths --> core_empirical_store
     utils_validation --> core_errors
 ```
 
@@ -859,7 +859,7 @@ class ToolCapability(ABC):
     per-task `cjm-<task>-adapter-interface` libraries). Fused-era capabilities (the
     pre-Option-C 12) still define `execute` themselves and their domain ABCs
     still declare it abstract — they kept working unchanged through the
-    class-identical `ToolCapability` alias in `core.interface` until the
+    class-identical `ToolCapability` alias (later REMOVED at SG-48) until the
     Option C migration cascade split them (the alias was REMOVED at SG-48).
     
     CR-4 extended this surface with: prefetch hook (SG-19), made cleanup optional
@@ -3361,7 +3361,7 @@ def _get_global_stats(self) -> Dict[str, Any]: # Current system telemetry
     CR-3: prefer typed `get_system_status()` over magic-string dispatcher.
     Duck-types because the substrate references `system_monitor` as a
     generic `ToolCapability` — CR-1's host-no-imports rule means substrate
-    does not import `cjm-infra-plugin-system` to type-narrow the reference.
+    does not import the monitor capability to type-narrow the reference.
     Proxies after CR-3 expose `get_system_status` as a bound method that
     POSTs to `/get_system_status` and returns `Optional[Dict[str, Any]]`.
     """
@@ -3373,7 +3373,7 @@ def _get_global_stats(self) -> Dict[str, Any]: # Current system telemetry
     CR-3: prefer typed `get_system_status()` over magic-string dispatcher.
     Duck-types because the substrate references `system_monitor` as a
     generic `ToolCapability` — CR-1's host-no-imports rule means substrate
-    does not import `cjm-infra-plugin-system` to type-narrow the reference.
+    does not import the monitor capability to type-narrow the reference.
     Proxies after CR-3 expose `get_system_status` as a bound method that
     POSTs to `/get_system_status` and returns `Optional[Dict[str, Any]]`.
     """

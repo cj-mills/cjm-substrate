@@ -74,21 +74,21 @@ class _FastDeps:
     def __init__(self, instances):
         self._instances = set(instances)
 
-    def get_plugin_meta(self, name_or_id):
+    def get_capability_meta(self, name_or_id):
         return _Meta()
 
-    def get_plugin(self, name_or_id):
+    def get_capability(self, name_or_id):
         return object()  # no get_progress/get_stats → no liveness polling
 
-    async def execute_plugin_async(self, name_or_id, *args, **kwargs):
+    async def execute_capability_async(self, name_or_id, *args, **kwargs):
         await asyncio.sleep(0)
         return {"ok": True}
 
-    async def execute_plugin_task_async(self, name_or_id, task, method, **kwargs):
+    async def execute_capability_task_async(self, name_or_id, task, method, **kwargs):
         await asyncio.sleep(0)
         return {"ok": True}
 
-    def reload_plugin(self, name_or_id):
+    def reload_capability(self, name_or_id):
         return None
 
     def get_admission_profile(self, name_or_id):

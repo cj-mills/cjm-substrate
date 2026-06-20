@@ -14,7 +14,7 @@ Two scan modes:
 2. **Ecosystem** (`--scan-cjm-base <PATH>`): walks every `cjm-*/` directory
    under `PATH`, parses each project's `cjm.yaml` to derive its per-project
    `manifests_dir`, and cascades across the union. Projects without
-   `cjm.yaml` are skipped — that's the seam for plugin libraries that haven't
+   `cjm.yaml` are skipped — that's the seam for capability libraries that haven't
    yet migrated to per-project `data_dir`. Mirrors the ecosystem-walking
    pattern in `cascade_pins.py`.
 
@@ -42,13 +42,13 @@ USAGE
     # Override the scan directory directly (skips cjm.yaml resolution)
     cascade_manifests.py --manifests-dir /path/to/manifests
 
-    # Use plugins.yaml as the package_source fallback for legacy manifests
-    cascade_manifests.py --apply --plugins plugins.yaml
+    # Use capabilities.yaml as the package_source fallback for legacy manifests
+    cascade_manifests.py --apply --capabilities capabilities.yaml
 
     # Cheap format-only upgrade: load+write, no introspection. Doesn't
-    # refresh the code section or drift hash. Useful when plugin envs
+    # refresh the code section or drift hash. Useful when capability envs
     # aren't available (e.g., reading manifests on a machine without
-    # the plugin installed).
+    # the capability installed).
     cascade_manifests.py --apply --format-only
 
 EXIT CODES
@@ -135,7 +135,7 @@ def discover_ecosystem(
 
     For each `cjm-*/` directory containing a `cjm.yaml`, parse the yaml and
     derive its manifests_dir. Projects without cjm.yaml are skipped (with a
-    one-line note) — that's the seam for older plugin libraries that haven't
+    one-line note) — that's the seam for older capability libraries that haven't
     migrated to per-project `data_dir` yet.
 
     Mirrors `cascade_pins.py`'s discovery pattern but produces scopes instead
@@ -228,11 +228,11 @@ def format_only_upgrade(path: Path) -> Optional[str]:
 
 
 def run_regenerate(
-    plugin_name: str,
+    capability_name: str,
     cjm_yaml: Optional[Path],
-    plugins_yaml: Optional[Path],
+    capabilities_yaml: Optional[Path],
 ) -> Tuple[int, str]:
-    """Invoke `cjm-ctl regenerate-manifest <plugin_name>` as a subprocess.
+    """Invoke `cjm-ctl regenerate-manifest <capability_name>` as a subprocess.
 
     Passes `--cjm-config <cjm_yaml>` when set so cjm-ctl resolves the right
     project-scoped runtime + manifests_dir. Captures stdout+stderr so callers
@@ -241,9 +241,9 @@ def run_regenerate(
     cmd = ["cjm-ctl"]
     if cjm_yaml is not None:
         cmd.extend(["--cjm-config", str(cjm_yaml)])
-    cmd.extend(["regenerate-manifest", plugin_name])
-    if plugins_yaml:
-        cmd.extend(["--plugins", str(plugins_yaml)])
+    cmd.extend(["regenerate-manifest", capability_name])
+    if capabilities_yaml:
+        cmd.extend(["--capabilities", str(capabilities_yaml)])
     proc = subprocess.run(cmd, capture_output=True, text=True)
     combined = (proc.stdout or "") + (proc.stderr or "")
     return (proc.returncode, combined.strip())
@@ -268,8 +268,8 @@ def main() -> int:
              "with a cjm.yaml. Mirrors cascade_pins.py's discovery pattern.",
     )
     parser.add_argument(
-        "--plugins", type=Path, default=None,
-        help="Path to plugins.yaml for package_source recovery on legacy "
+        "--capabilities", type=Path, default=None,
+        help="Path to capabilities.yaml for package_source recovery on legacy "
              "manifests (passed through to cjm-ctl regenerate-manifest).",
     )
     parser.add_argument(
@@ -296,7 +296,7 @@ def main() -> int:
         return 2
 
     # Classify every manifest in every scope
-    # Rows: (scope, plugin_name, status, reason, path)
+    # Rows: (scope, capability_name, status, reason, path)
     rows: List[Tuple[ProjectScope, str, str, str, Path]] = []
     empty_scopes: List[ProjectScope] = []
     for scope in scopes:
@@ -309,8 +309,8 @@ def main() -> int:
             continue
         for path in manifest_files:
             status, reason = classify_manifest(path)
-            plugin_name = path.stem
-            rows.append((scope, plugin_name, status, reason, path))
+            capability_name = path.stem
+            rows.append((scope, capability_name, status, reason, path))
 
     # Render header + per-scope plan
     print(f"=== Manifest Cascade Plan ===")
@@ -353,7 +353,7 @@ def main() -> int:
         return 0
 
     # Group todo by scope for the plan render
-    print(f"Plugins flagged for regeneration ({len(todo)}):")
+    print(f"Capabilities flagged for regeneration ({len(todo)}):")
     last_scope_label: Optional[str] = None
     for scope, name, status, reason, _ in todo:
         if scope.label != last_scope_label:
@@ -386,7 +386,7 @@ def main() -> int:
                 print(f"    ✗ {err}")
                 failures.append((scope, name, err))
         else:
-            rc, output = run_regenerate(name, scope.cjm_yaml, args.plugins)
+            rc, output = run_regenerate(name, scope.cjm_yaml, args.capabilities)
             if rc == 0:
                 print(f"    ✓ regenerated")
                 if output:
