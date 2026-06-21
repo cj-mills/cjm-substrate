@@ -83,10 +83,7 @@ class DriftTracking:
 class ManifestV2:
     """Top-level v2.0 manifest with four named sections plus `format_version`.
     
-    Loaded from a v2.0 nested JSON file as-is, or from a v1.0 flat file via
-    `_from_v1_flat_dict` (REMOVE-AFTER-OVERHAUL shim). When the v1.0 shim
-    fires, `format_version` is set to `"1.0"` so substrate code can distinguish
-    legacy loads from fresh writes; otherwise `format_version` is always
+    Loaded from a v2.0 nested JSON file as-is; `format_version` is always
     `CURRENT_FORMAT_VERSION`.
     """
     install: InstallSection = field(default_factory=InstallSection)
@@ -174,48 +171,6 @@ def _from_v2_dict(
         format_version=data.get("format_version", CURRENT_FORMAT_VERSION) or CURRENT_FORMAT_VERSION,
     )
 
-# %% ../../nbs/core/manifest_format.ipynb #from-v1
-def _from_v1_flat_dict(
-    data: Dict[str, Any],  # Legacy flat manifest dict (no `format_version`)
-) -> ManifestV2:
-    """REMOVE-AFTER-OVERHAUL: legacy flat-manifest reader shim.
-    
-    Maps top-level fields into the nested ManifestV2 shape so substrate code
-    paths only see v2.0 after this point. Returns a ManifestV2 with
-    `format_version == "1.0"` and `drift_tracking.config_schema_hash == None`
-    so callers can tell a legacy load apart from a fresh v2.0 write.
-    
-    Retires after `cascade_manifests.py` rewrites every production manifest
-    to v2.0; SG-48 sweep removes this function.
-    """
-    install = InstallSection(
-        python_path=data.get("python_path", "") or "",
-        conda_env=data.get("conda_env", "") or "",
-        db_path=data.get("db_path", "") or "",
-        env_vars=dict(data.get("env_vars", {}) or {}),
-        installed_at=data.get("installed_at", "") or "",
-        installer_version=data.get("installer_version", "") or "",
-        package_source=data.get("package_source", "") or "",
-    )
-    code = CodeSection(
-        name=data.get("name", "") or "",
-        version=data.get("version", "") or "",
-        description=data.get("description", "") or "",
-        module=data.get("module", "") or "",
-        class_name=data.get("class", "") or "",
-        resources=_parse_resources_dict(data.get("resources")),
-        config_schema=data.get("config_schema"),
-        regenerated_at=None,
-        worker_env=data.get("worker_env"),
-    )
-    return ManifestV2(
-        install=install,
-        code=code,
-        drift_tracking=DriftTracking(config_schema_hash=None),
-        overrides={},
-        format_version="1.0",
-    )
-
 # %% ../../nbs/core/manifest_format.ipynb #load-manifest
 def load_manifest(
     path: Union[str, Path],  # Path to manifest JSON file on disk
@@ -224,8 +179,7 @@ def load_manifest(
     
     Format detection by top-level `format_version` key:
     - `"2.0"` → nested layout, parse directly.
-    - missing → legacy flat layout, pass through v1.0 shim.
-    - anything else → ValueError.
+    - anything else (including missing) → ValueError (fail loud).
     """
     path = Path(path)
     with open(path) as f:
@@ -237,12 +191,9 @@ def load_manifest(
     fmt = data.get("format_version")
     if fmt == CURRENT_FORMAT_VERSION:
         return _from_v2_dict(data)
-    if fmt is None:
-        # Legacy flat manifest — every pre-CR-8 manifest lacks format_version.
-        return _from_v1_flat_dict(data)
     raise ValueError(
         f"Manifest at {path}: unrecognized format_version {fmt!r}. "
-        f"Substrate supports {CURRENT_FORMAT_VERSION!r} or legacy (no field)."
+        f"Substrate supports {CURRENT_FORMAT_VERSION!r}."
     )
 
 # %% ../../nbs/core/manifest_format.ipynb #to-dict-helpers
@@ -285,9 +236,7 @@ def manifest_to_dict(
 ) -> Dict[str, Any]:  # v2.0 nested dict ready for `json.dumps`
     """Serialize a `ManifestV2` to a v2.0 dict.
     
-    Always emits `format_version == CURRENT_FORMAT_VERSION` — even if the
-    manifest was loaded from a legacy v1.0 file. This is the upgrade seam:
-    load-then-write transparently rewrites flat manifests as nested.
+    Always emits `format_version == CURRENT_FORMAT_VERSION`.
     """
     return {
         "format_version": CURRENT_FORMAT_VERSION,

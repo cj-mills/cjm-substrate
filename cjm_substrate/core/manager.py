@@ -440,8 +440,8 @@ CapabilityManager._parse_resources = _parse_resources
 def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered capability metadata
     """Discover capabilities via JSON manifests in search paths.
     
-    CR-8: reads each manifest via `load_manifest`, which transparently parses
-    both v2.0 nested + legacy v1.0 flat layouts into a typed `ManifestV2`.
+    CR-8: reads each manifest via `load_manifest`, which parses the v2.0
+    nested layout into a typed `ManifestV2`.
     `meta.manifest` is set to a flat-shaped dict view so existing consumers
     (proxy, scheduling, execute path) continue working unchanged; the typed
     `ManifestV2` is also attached as `meta.manifest_v2` so drift detection
@@ -473,8 +473,7 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered capab
                             f"Discovered adapter manifest: {am.name} "
                             f"(task {am.task_name!r}) from {manifest_file}")
                     continue
-                # CR-8: parse via load_manifest. Returns typed ManifestV2
-                # regardless of on-disk format (nested v2.0 or legacy flat).
+                # CR-8: parse via load_manifest → typed ManifestV2.
                 v2 = load_manifest(manifest_file)
                 
                 name = v2.code.name

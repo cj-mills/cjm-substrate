@@ -501,12 +501,11 @@ def regenerate_manifest(
 ) -> None:
     """Re-run introspection for an installed capability and rewrite its manifest.
     
-    Reads the existing manifest via `load_manifest` (handles both v2.0 nested
-    + legacy v1.0 flat layouts), recovers `env_name` + `package_source` from
-    the install section, runs `_generate_manifest` to refresh the code section,
-    then post-writes to preserve the original `installed_at` so the regenerate
-    only updates `regenerated_at` semantically. Always emits v2.0 layout —
-    regenerating a v1.0 manifest transparently upgrades it.
+    Reads the existing manifest via `load_manifest`, recovers `env_name` +
+    `package_source` from the install section, runs `_generate_manifest` to
+    refresh the code section, then post-writes to preserve the original
+    `installed_at` so the regenerate only updates `regenerated_at` semantically.
+    Always emits v2.0 layout.
     """
     cfg = get_config()
     manifest_path = cfg.manifests_dir / f"{capability_name}.json"
@@ -1625,62 +1624,16 @@ def _validate_manifest_v2_dict(
     
     return errors
 
-# %% ../nbs/cli.ipynb #fn-validate-manifest-v1-dict
-def _validate_manifest_v1_dict(
-    data: Dict[str, Any]  # Legacy flat manifest dict (no format_version)
-) -> List[str]:  # Empty list = valid
-    """REMOVE-AFTER-OVERHAUL: validate the legacy v1.0 flat manifest layout.
-    
-    Retires when `cascade_manifests.py` rewrites every production manifest to
-    v2.0. Keeps the SG-6 validator working against pre-CR-8 manifests during
-    the transition window.
-    """
-    errors: List[str] = []
-    
-    # Required string fields. `description` is required per OQ-3 — it's the
-    # one human-readable label the substrate genuinely owns + has consumers
-    # for; making it dead-letter optional is what SG-6 explicitly fixes.
-    for key in ("name", "version", "description", "module", "class", "python_path"):
-        val = data.get(key)
-        if val is None or (isinstance(val, str) and not val.strip()):
-            errors.append(f"manifest: required field {key!r} is missing or empty")
-        elif not isinstance(val, str):
-            errors.append(f"manifest: field {key!r} must be a string, got {type(val).__name__}")
-    
-    # Optional fields — type-check only
-    for key in (
-        "conda_env", "db_path",
-        "package_source", "installer_version", "installed_at",
-    ):
-        if key in data and not isinstance(data[key], str):
-            errors.append(f"manifest: field {key!r} must be a string when present")
-    
-    if "env_vars" in data and not isinstance(data["env_vars"], dict):
-        errors.append("manifest: field 'env_vars' must be an object when present")
-    
-    if "config_schema" in data and data["config_schema"] is not None:
-        cs = data["config_schema"]
-        if not isinstance(cs, dict):
-            errors.append("manifest: field 'config_schema' must be an object when present")
-        elif "properties" in cs and not isinstance(cs["properties"], dict):
-            errors.append("manifest: 'config_schema.properties' must be an object when present")
-    
-    # Shared helper for resources (flat-layout path prefix)
-    errors.extend(_validate_resources_block(data.get("resources"), path_prefix="manifest"))
-    
-    return errors
-
 # %% ../nbs/cli.ipynb #fn-validate-manifest-dict
 def _validate_manifest_dict(
     data: Any  # Loaded manifest JSON
 ) -> List[str]:  # List of human-readable error messages (empty == valid)
     """SG-6 + CR-8: structural validation, dispatching on `format_version`.
     
-    `format_version == "2.0"` validates the nested v2.0 layout.
-    Absent `format_version` validates the legacy flat v1.0 layout
-    (REMOVE-AFTER-OVERHAUL — retires after cascade_manifests.py).
-    Any other value rejects with a single error so unknown future formats
-    fail loud rather than silently degrading.
+    `format_version == "2.0"` validates the nested v2.0 layout. Any other
+    value (including a missing field — the legacy v1.0 flat shim was removed
+    at SG-48) rejects with a single error so unknown formats fail loud rather
+    than silently degrading.
     """
     if not isinstance(data, dict):
         return [f"manifest must be a JSON object, got {type(data).__name__}"]
@@ -1688,11 +1641,8 @@ def _validate_manifest_dict(
     fmt = data.get("format_version")
     if fmt == "2.0":
         return _validate_manifest_v2_dict(data)
-    if fmt is None:
-        return _validate_manifest_v1_dict(data)
     return [
-        f"manifest: unrecognized format_version {fmt!r}; "
-        f"expected '2.0' or legacy (no format_version field)"
+        f"manifest: unrecognized format_version {fmt!r}; expected '2.0'"
     ]
 
 # %% ../nbs/cli.ipynb #fn-validate-capabilities-yaml-dict
