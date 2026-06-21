@@ -304,15 +304,12 @@ def _get_global_stats(self) -> Dict[str, Any]: # Current system telemetry
         except Exception as e:
             self.logger.warning(f"Typed get_system_status failed: {e}")
             return {}
-    # REMOVE-AFTER-OVERHAUL: pre-CR-3 dispatcher fallback. Only fires when
-    # the configured system_monitor lacks get_system_status attribute
-    # (e.g., an in-process non-monitor object — configuration error).
-    # SG-47 cascade ensures all real monitors expose the typed surface;
-    # SG-48 sweep drops this branch entirely.
-    try:
-        return monitor.execute("get_system_status")
-    except Exception as e:
-        self.logger.warning(f"Failed to fetch system stats (dispatcher fallback): {e}")
+    # A configured monitor without the typed get_system_status surface is a
+    # configuration error (every migrated monitor exposes it post-CR-3); yield
+    # empty stats so admission degrades conservatively rather than crashing.
+    self.logger.warning(
+        f"system_monitor {type(monitor).__name__} lacks get_system_status; returning empty stats"
+    )
     return {}
 
 CapabilityManager._get_global_stats = _get_global_stats
@@ -346,11 +343,11 @@ async def _get_global_stats_async(self) -> Dict[str, Any]: # Current system tele
         except Exception as e:
             self.logger.warning(f"Typed get_system_status_async failed: {e}")
             return {}
-    # REMOVE-AFTER-OVERHAUL: pre-CR-3 dispatcher fallback (see sync variant)
-    try:
-        return await monitor.execute_async("get_system_status")
-    except Exception as e:
-        self.logger.warning(f"Failed to fetch system stats (dispatcher fallback): {e}")
+    # See the sync variant: a monitor lacking the typed async surface is a
+    # configuration error; yield empty stats so admission degrades conservatively.
+    self.logger.warning(
+        f"system_monitor {type(monitor).__name__} lacks get_system_status_async; returning empty stats"
+    )
     return {}
 
 CapabilityManager._get_global_stats_async = _get_global_stats_async
