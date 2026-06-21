@@ -30,18 +30,13 @@ class CapabilityError(Exception):
     default_retriable: ClassVar[bool]
 
 
-# REMOVE-AFTER-OVERHAUL: drop the ValueError base after SG-47 capability cascade
-# completes; nothing internal will need `except ValueError:` to catch input
-# errors at that point. Tagged per feedback_backward_compat_cleanup_pairing.
-class CapabilityInputError(CapabilityError, ValueError):
+class CapabilityInputError(CapabilityError):
     """User-fixable error: bad config, invalid argument, missing file.
     
-    Multi-inherits `ValueError` so SG-8-era `except ValueError:` catch sites that
-    legitimately want input errors keep working through the SG-47 migration
-    window. The MRO is `CapabilityInputError \u2192 CapabilityError \u2192 ValueError \u2192 Exception`;
-    other category bases (`CapabilityTransientError`, `CapabilityResourceError`,
-    `CapabilityFatalError`) deliberately do NOT extend `ValueError` because their
-    failure modes are not semantically value errors.
+    Like the other category bases (`CapabilityTransientError`,
+    `CapabilityResourceError`, `CapabilityFatalError`), it extends only
+    `CapabilityError`; the right reader intent is `except CapabilityInputError:`
+    (or the broader `except CapabilityError:`).
     """
     category: ClassVar[Literal['user_input']] = 'user_input'
     default_retriable: ClassVar[bool] = True
@@ -108,9 +103,8 @@ class CapabilityFatalError(CapabilityError):
 class CapabilityDisabledError(CapabilityInputError):
     """JobQueue / execute_capability rejected: the capability is currently disabled.
     
-    User-fixable (re-enable the capability). Inherits `CapabilityInputError`'s ValueError
-    MRO so existing `except ValueError:` callers see it as an input error.
-    Raised by CR-2's enable/disable wiring once that lands.
+    User-fixable (re-enable the capability). Raised by CR-2's enable/disable
+    wiring once that lands.
     """
     
     def __init__(self, capability_name: str):
@@ -122,9 +116,8 @@ class CapabilityNotLoadedError(CapabilityFatalError):
     """Caller submitted to a capability that was never loaded.
     
     Fatal category because this is a programmer / orchestration bug, not a
-    user-fixable condition. NOT a ValueError — the right reader intent is
-    `except CapabilityNotLoadedError:` (or the broader `except CapabilityError:`), not
-    a blanket `except ValueError:`.
+    user-fixable condition. The right reader intent is
+    `except CapabilityNotLoadedError:` (or the broader `except CapabilityError:`).
     """
     
     def __init__(self, capability_name: str):
