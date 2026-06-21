@@ -37,6 +37,7 @@ from cjm_substrate.core.manifest_format import (
     load_manifest, write_manifest, manifest_to_dict, compute_config_schema_hash,
     compute_structural_surface_hash,
 )
+from .core.adapter_manifest import is_adapter_manifest
 
 app = typer.Typer(help="cjm-substrate CLI", no_args_is_help=True)
 
@@ -1104,59 +1105,33 @@ def _get_conda_envs() -> set[str]: # Set of existing conda environment names
         pass
     return set()
 
-# %% ../nbs/cli.ipynb #fn-v2-to-legacy-flat-view
-def _v2_to_legacy_flat_view(
-    raw: Dict[str, Any]  # Manifest JSON dict as read from disk
-) -> Dict[str, Any]:  # Flat-shaped dict (install + code merged at top level)
-    """REMOVE-AFTER-OVERHAUL: produce a legacy flat-shaped view of a manifest.
-    
-    Consumer code in `list_capabilities` + `remove_capability` still reads manifests as
-    flat dicts (`manifest.get('python_path')`, etc.). When the on-disk manifest
-    is v2.0 nested, we flatten install + code sections to the top level so
-    those consumers don't need migration in the same PR. The shim retires when
-    consumers migrate to `load_manifest` for typed access.
-    
-    v1.0 manifests pass through unchanged.
-    """
-    if not isinstance(raw, dict) or raw.get("format_version") != CURRENT_FORMAT_VERSION:
-        return raw
-    install = raw.get("install", {}) or {}
-    code = raw.get("code", {}) or {}
-    flat: Dict[str, Any] = {}
-    flat.update(install)
-    flat.update(code)
-    flat["format_version"] = raw.get("format_version", CURRENT_FORMAT_VERSION)
-    return flat
-
 # %% ../nbs/cli.ipynb #fn-get-installed-manifests
 def _get_installed_manifests(
     manifest_dir:Optional[Path]=None # Directory to scan (uses config default if None)
-) -> list[dict]: # List of manifest dictionaries
-    """Load all manifest JSON files from the manifest directory.
-    
-    Returns flat-shaped dicts regardless of on-disk format (v2.0 manifests are
-    flattened via `_v2_to_legacy_flat_view`). Consumers that want typed access
-    should use `load_manifest` from `cjm_substrate.core.manifest_format`
-    instead.
+) -> "list[ManifestV2]": # Typed capability manifests (adapter manifests skipped)
+    """Load installed capability manifests as typed `ManifestV2` objects.
+
+    Adapter manifests (routed by the `unit` discriminator) are skipped;
+    unreadable or unrecognized-format files are silently ignored.
     """
     if manifest_dir is None:
         manifest_dir = get_config().manifests_dir
-    
-    manifests = []
-    
+
+    manifests: "list[ManifestV2]" = []
+
     if not manifest_dir.exists():
         return manifests
-    
+
     for manifest_file in manifest_dir.glob("*.json"):
         try:
             with open(manifest_file) as f:
                 raw = json.load(f)
-            manifest = _v2_to_legacy_flat_view(raw)
-            manifest['_manifest_path'] = str(manifest_file)
-            manifests.append(manifest)
-        except (json.JSONDecodeError, IOError):
+            if is_adapter_manifest(raw):
+                continue
+            manifests.append(load_manifest(manifest_file))
+        except (json.JSONDecodeError, IOError, ValueError):
             pass
-    
+
     return manifests
 
 # %% ../nbs/cli.ipynb #fn-extract-env-from-python-path
@@ -1202,14 +1177,14 @@ def list_capabilities(
     
     typer.echo(f"=== Installed Capabilities ({len(manifests)}) ===\n")
     
-    for manifest in sorted(manifests, key=lambda m: m.get('name', '')):
-        name = manifest.get('name', 'unknown')
-        version = manifest.get('version', '?')
+    for m in sorted(manifests, key=lambda m: m.code.name or ''):
+        name = m.code.name or 'unknown'
+        version = m.code.version or '?'
         
         # Get env name from manifest or extract from python_path
-        env_name = manifest.get('conda_env', '')
+        env_name = m.install.conda_env or ''
         if not env_name:
-            env_name = _extract_env_from_python_path(manifest.get('python_path', ''))
+            env_name = _extract_env_from_python_path(m.install.python_path or '')
         
         # Basic info line
         typer.echo(f"{name} v{version}")
@@ -1404,15 +1379,12 @@ def remove_capability(
     manifest_dir = cfg.manifests_dir
     manifest_path = manifest_dir / f"{capability_name}.json"
     
-    # Find the manifest. CR-8: read via the legacy-flat-view shim so v2.0
-    # nested manifests work with the existing dict-access code below.
+    # Load the manifest (typed). Adapter / unreadable / bad-format files yield None.
     manifest = None
     if manifest_path.exists():
         try:
-            with open(manifest_path) as f:
-                raw = json.load(f)
-            manifest = _v2_to_legacy_flat_view(raw)
-        except (json.JSONDecodeError, IOError):
+            manifest = load_manifest(manifest_path)
+        except (json.JSONDecodeError, IOError, ValueError):
             pass
     
     if not manifest:
@@ -1421,11 +1393,11 @@ def remove_capability(
         raise typer.Exit(code=1)
     
     # Determine conda environment name (try multiple sources)
-    env_name = manifest.get('conda_env', '')
+    env_name = manifest.install.conda_env or ''
     
     # Fallback 1: Extract from python_path in manifest
     if not env_name:
-        env_name = _extract_env_from_python_path(manifest.get('python_path', ''))
+        env_name = _extract_env_from_python_path(manifest.install.python_path or '')
     
     # Fallback 2: Check capabilities file
     if not env_name and capabilities_path and os.path.exists(capabilities_path):
