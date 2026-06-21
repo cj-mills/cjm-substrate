@@ -14,20 +14,11 @@ import logging
 from dataclasses import fields, is_dataclass, asdict, MISSING
 from typing import Dict, Any, Tuple, Optional, Type, TypeVar, get_type_hints, get_origin, get_args, Union
 
+from ..core.errors import CapabilityConfigError  # raised by dict_to_config on unknown keys (SG-8)
+
 T = TypeVar('T')
 
 _logger = logging.getLogger(__name__)
-
-
-# CR-5: CapabilityConfigError moved to `cjm_substrate.core.errors` as part of
-# the typed error hierarchy (reparented under CapabilityInputError). The re-export
-# below preserves SG-8-era import paths
-# (`from cjm_substrate.utils.validation import CapabilityConfigError`) so
-# existing call sites continue to work without churn during the SG-47 capability
-# cascade.
-# REMOVE-AFTER-OVERHAUL: drop the re-export after SG-47 cascade migrates
-# capabilities to import directly from core.errors.
-from ..core.errors import CapabilityConfigError  # noqa: F401
 
 # %% ../../nbs/utils/validation.ipynb #qpdvkb9f5z
 SCHEMA_TITLE = "title"        # Display title for the field
