@@ -7,9 +7,9 @@ Docs: https://cj-mills.github.io/cjm-substratecore/queue.html.md"""
 # %% auto #0
 __all__ = ['JobStatus', 'JobEventType', 'CancelPhase', 'JobQueueDependencies', 'Job', 'JobEvent', 'QueueStats',
            'ResourceSnapshot', 'JobQueue', 'submit', 'cancel', 'reorder', 'get_job', 'wait_for_job', 'get_pending',
-           'get_running_jobs', 'get_running', 'get_history', 'get_stats', 'get_job_diagnostics',
-           'get_history_from_journal', 'events', 'events_for_composition', 'all_events', 'submit_composition',
-           'wait_for_composition', 'cancel_composition', 'get_composition', 'get_resource_snapshot', 'start', 'stop']
+           'get_running_jobs', 'get_history', 'get_stats', 'get_job_diagnostics', 'get_history_from_journal', 'events',
+           'events_for_composition', 'all_events', 'submit_composition', 'wait_for_composition', 'cancel_composition',
+           'get_composition', 'get_resource_snapshot', 'start', 'stop']
 
 # %% ../../nbs/core/queue.ipynb #exports
 import asyncio
@@ -184,18 +184,6 @@ class Job:
         submitted_at as tiebreaker (earlier first). datetime supports < natively.
         """
         return (-self.priority, self.submitted_at) < (-other.priority, other.submitted_at)
-
-    # REMOVE-AFTER-OVERHAUL: backward-compat aliases for the CR-6 rename
-    # cascade. External consumers (job-monitor library, decomp host) read
-    # `job.capability_name` and `job.created_at` today; these properties keep
-    # those call sites working until SG-47/SG-48 sweeps migrate them.
-    @property
-    def capability_name(self) -> str:
-        return self.capability_instance_id
-
-    @property
-    def created_at(self) -> float:
-        return self.submitted_at.timestamp()
 
 
 @dataclass
@@ -387,14 +375,6 @@ class JobQueue:
         """
         self.default_run_id = run_id
         self.default_actor = actor
-
-    # REMOVE-AFTER-OVERHAUL: backward-compat alias for `self.manager`. The
-    # SG-13 regression test + any host inspection still expects a `.manager`
-    # attribute. SG-48 sweep retires this after consumer cascade migrates
-    # to the new `deps`/`_deps` shape.
-    @property
-    def manager(self) -> JobQueueDependencies:
-        return self._deps
 
 # %% ../../nbs/core/queue.ipynb #submission
 async def _enqueue_job(
@@ -639,22 +619,7 @@ def get_running_jobs(self) -> List[Job]:  # All currently-executing jobs
     """All in-flight jobs (stage 3: the queue is multi-lane)."""
     return list(self._running.values())
 
-
-def get_running(self) -> Optional[Job]:  # Running job or None
-    """First currently-executing job (earliest started), or None if idle.
-
-    REMOVE-AFTER-OVERHAUL: pre-stage-3 single-lane affordance kept for the
-    legacy `get_state` shim + existing single-lane consumers; multi-lane
-    callers use `get_running_jobs()`. The stage-9 consumer cascade migrates
-    the remaining call sites.
-    """
-    if not self._running:
-        return None
-    return min(self._running.values(),
-               key=lambda j: j.started_at or j.submitted_at)
-
 JobQueue.get_running_jobs = get_running_jobs
-JobQueue.get_running = get_running
 
 # %% ../../nbs/core/queue.ipynb #fn-get-history
 def get_history(
