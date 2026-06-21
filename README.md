@@ -74,61 +74,62 @@ graph LR
     utils_hashing["utils.hashing<br/>Content Hashing Utilities"]
     utils_validation["utils.validation<br/>Configuration Validation"]
 
-    bootstrap --> core_queue
     bootstrap --> core_manager
     bootstrap --> core_scheduling
-    cli --> core_manifest_format
+    bootstrap --> core_queue
     cli --> core_config
     cli --> core_platform
+    cli --> core_manifest_format
+    cli --> core_adapter_manifest
     cli --> core_metadata
     core_capability --> core_errors
     core_diagnostics_store --> core_wire
     core_empirical_store --> utils_hashing
     core_manager --> core_diagnostics_store
-    core_manager --> core_errors
-    core_manager --> core_manifest_format
     core_manager --> core_config
-    core_manager --> core_adapter_manifest
-    core_manager --> core_capability
-    core_manager --> core_journal_store
-    core_manager --> core_secret_store
-    core_manager --> core_scheduling
+    core_manager --> core_errors
     core_manager --> core_metadata
-    core_manager --> core_empirical_store
     core_manager --> core_config_store
-    core_manager --> utils_validation
-    core_manager --> core_proxy
+    core_manager --> core_capability
     core_manager --> core__telemetry
-    core_manifest_format --> utils_hashing
+    core_manager --> core_empirical_store
+    core_manager --> core_manifest_format
+    core_manager --> core_adapter_manifest
+    core_manager --> core_journal_store
+    core_manager --> utils_validation
+    core_manager --> core_scheduling
+    core_manager --> core_secret_store
+    core_manager --> core_proxy
     core_manifest_format --> core_metadata
+    core_manifest_format --> utils_hashing
     core_platform --> core_config
     core_ports --> core_errors
     core_proxy --> core_diagnostics_store
-    core_proxy --> core_wire
     core_proxy --> core_config
+    core_proxy --> core_errors
+    core_proxy --> core_wire
     core_proxy --> core_capability
     core_proxy --> core_journal_store
-    core_proxy --> core_errors
     core_proxy --> core_platform
     core_queue --> core_diagnostics_store
+    core_queue --> core_ports
     core_queue --> core_wire
+    core_queue --> core__telemetry
     core_queue --> core_journal_store
     core_queue --> core_errors
-    core_queue --> core_ports
-    core_queue --> core__telemetry
     core_scheduling --> core_metadata
     core_worker --> core_wire
-    core_worker --> core_errors
-    core_worker --> core_journal_store
-    core_worker --> core_diagnostics_store
     core_worker --> core_platform
+    core_worker --> core_errors
+    core_worker --> core_diagnostics_store
+    core_worker --> core_journal_store
     core_worker --> core_capability
-    utils_cache_paths --> utils_hashing
     utils_cache_paths --> core_empirical_store
+    utils_cache_paths --> utils_hashing
     utils_validation --> core_errors
 ```
 
-*52 cross-module dependencies detected*
+*53 cross-module dependencies detected*
 
 ## CLI Reference
 
@@ -1385,12 +1386,11 @@ def regenerate_manifest(
     """
     Re-run introspection for an installed capability and rewrite its manifest.
     
-    Reads the existing manifest via `load_manifest` (handles both v2.0 nested
-    + legacy v1.0 flat layouts), recovers `env_name` + `package_source` from
-    the install section, runs `_generate_manifest` to refresh the code section,
-    then post-writes to preserve the original `installed_at` so the regenerate
-    only updates `regenerated_at` semantically. Always emits v2.0 layout —
-    regenerating a v1.0 manifest transparently upgrades it.
+    Reads the existing manifest via `load_manifest`, recovers `env_name` +
+    `package_source` from the install section, runs `_generate_manifest` to
+    refresh the code section, then post-writes to preserve the original
+    `installed_at` so the regenerate only updates `regenerated_at` semantically.
+    Always emits v2.0 layout.
     """
 ```
 
@@ -1508,33 +1508,14 @@ def _get_conda_envs() -> set[str]: # Set of existing conda environment names
 ```
 
 ``` python
-def _v2_to_legacy_flat_view(
-    raw: Dict[str, Any]  # Manifest JSON dict as read from disk
-) -> Dict[str, Any]:  # Flat-shaped dict (install + code merged at top level)
-    """
-    REMOVE-AFTER-OVERHAUL: produce a legacy flat-shaped view of a manifest.
-    
-    Consumer code in `list_capabilities` + `remove_capability` still reads manifests as
-    flat dicts (`manifest.get('python_path')`, etc.). When the on-disk manifest
-    is v2.0 nested, we flatten install + code sections to the top level so
-    those consumers don't need migration in the same PR. The shim retires when
-    consumers migrate to `load_manifest` for typed access.
-    
-    v1.0 manifests pass through unchanged.
-    """
-```
-
-``` python
 def _get_installed_manifests(
     manifest_dir:Optional[Path]=None # Directory to scan (uses config default if None)
-) -> list[dict]: # List of manifest dictionaries
+) -> "list[ManifestV2]": # Typed capability manifests (adapter manifests skipped)
     """
-    Load all manifest JSON files from the manifest directory.
+    Load installed capability manifests as typed `ManifestV2` objects.
     
-    Returns flat-shaped dicts regardless of on-disk format (v2.0 manifests are
-    flattened via `_v2_to_legacy_flat_view`). Consumers that want typed access
-    should use `load_manifest` from `cjm_substrate.core.manifest_format`
-    instead.
+    Adapter manifests (routed by the `unit` discriminator) are skipped;
+    unreadable or unrecognized-format files are silently ignored.
     """
 ```
 
@@ -1644,30 +1625,16 @@ def _validate_manifest_v2_dict(
 ```
 
 ``` python
-def _validate_manifest_v1_dict(
-    data: Dict[str, Any]  # Legacy flat manifest dict (no format_version)
-) -> List[str]:  # Empty list = valid
-    """
-    REMOVE-AFTER-OVERHAUL: validate the legacy v1.0 flat manifest layout.
-    
-    Retires when `cascade_manifests.py` rewrites every production manifest to
-    v2.0. Keeps the SG-6 validator working against pre-CR-8 manifests during
-    the transition window.
-    """
-```
-
-``` python
 def _validate_manifest_dict(
     data: Any  # Loaded manifest JSON
 ) -> List[str]:  # List of human-readable error messages (empty == valid)
     """
     SG-6 + CR-8: structural validation, dispatching on `format_version`.
     
-    `format_version == "2.0"` validates the nested v2.0 layout.
-    Absent `format_version` validates the legacy flat v1.0 layout
-    (REMOVE-AFTER-OVERHAUL — retires after cascade_manifests.py).
-    Any other value rejects with a single error so unknown future formats
-    fail loud rather than silently degrading.
+    `format_version == "2.0"` validates the nested v2.0 layout. Any other
+    value (including a missing field — the legacy v1.0 flat shim was removed
+    at SG-48) rejects with a single error so unknown formats fail loud rather
+    than silently degrading.
     """
 ```
 
@@ -2724,12 +2691,10 @@ class CapabilityInputError:
     """
     User-fixable error: bad config, invalid argument, missing file.
     
-    Multi-inherits `ValueError` so SG-8-era `except ValueError:` catch sites that
-    legitimately want input errors keep working through the SG-47 migration
-    window. The MRO is `CapabilityInputError → CapabilityError → ValueError → Exception`;
-    other category bases (`CapabilityTransientError`, `CapabilityResourceError`,
-    `CapabilityFatalError`) deliberately do NOT extend `ValueError` because their
-    failure modes are not semantically value errors.
+    Like the other category bases (`CapabilityTransientError`,
+    `CapabilityResourceError`, `CapabilityFatalError`), it extends only
+    `CapabilityError`; the right reader intent is `except CapabilityInputError:`
+    (or the broader `except CapabilityError:`).
     """
     
     def __init__(
@@ -2803,9 +2768,8 @@ class CapabilityDisabledError:
     """
     JobQueue / execute_capability rejected: the capability is currently disabled.
     
-    User-fixable (re-enable the capability). Inherits `CapabilityInputError`'s ValueError
-    MRO so existing `except ValueError:` callers see it as an input error.
-    Raised by CR-2's enable/disable wiring once that lands.
+    User-fixable (re-enable the capability). Raised by CR-2's enable/disable
+    wiring once that lands.
     """
     
     def __init__(self, capability_name: str)
@@ -2818,9 +2782,8 @@ class CapabilityNotLoadedError:
     Caller submitted to a capability that was never loaded.
     
     Fatal category because this is a programmer / orchestration bug, not a
-    user-fixable condition. NOT a ValueError — the right reader intent is
-    `except CapabilityNotLoadedError:` (or the broader `except CapabilityError:`), not
-    a blanket `except ValueError:`.
+    user-fixable condition. The right reader intent is
+    `except CapabilityNotLoadedError:` (or the broader `except CapabilityError:`).
     """
     
     def __init__(self, capability_name: str)
@@ -3459,8 +3422,8 @@ def _parse_resources(
 def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered capability metadata
     """Discover capabilities via JSON manifests in search paths.
     
-    CR-8: reads each manifest via `load_manifest`, which transparently parses
-    both v2.0 nested + legacy v1.0 flat layouts into a typed `ManifestV2`.
+    CR-8: reads each manifest via `load_manifest`, which parses the v2.0
+    nested layout into a typed `ManifestV2`.
     `meta.manifest` is set to a flat-shaped dict view so existing consumers
     (proxy, scheduling, execute path) continue working unchanged; the typed
     `ManifestV2` is also attached as `meta.manifest_v2` so drift detection
@@ -3472,8 +3435,8 @@ def discover_manifests(self) -> List[CapabilityMeta]: # List of discovered capab
     """
     Discover capabilities via JSON manifests in search paths.
     
-    CR-8: reads each manifest via `load_manifest`, which transparently parses
-    both v2.0 nested + legacy v1.0 flat layouts into a typed `ManifestV2`.
+    CR-8: reads each manifest via `load_manifest`, which parses the v2.0
+    nested layout into a typed `ManifestV2`.
     `meta.manifest` is set to a flat-shaped dict view so existing consumers
     (proxy, scheduling, execute path) continue working unchanged; the typed
     `ManifestV2` is also attached as `meta.manifest_v2` so drift detection
@@ -4646,23 +4609,6 @@ def _from_v2_dict(
 ```
 
 ``` python
-def _from_v1_flat_dict(
-    data: Dict[str, Any],  # Legacy flat manifest dict (no `format_version`)
-) -> ManifestV2
-    """
-    REMOVE-AFTER-OVERHAUL: legacy flat-manifest reader shim.
-    
-    Maps top-level fields into the nested ManifestV2 shape so substrate code
-    paths only see v2.0 after this point. Returns a ManifestV2 with
-    `format_version == "1.0"` and `drift_tracking.config_schema_hash == None`
-    so callers can tell a legacy load apart from a fresh v2.0 write.
-    
-    Retires after `cascade_manifests.py` rewrites every production manifest
-    to v2.0; SG-48 sweep removes this function.
-    """
-```
-
-``` python
 def load_manifest(
     path: Union[str, Path],  # Path to manifest JSON file on disk
 ) -> ManifestV2:             # Parsed manifest in v2.0 typed shape
@@ -4671,8 +4617,7 @@ def load_manifest(
     
     Format detection by top-level `format_version` key:
     - `"2.0"` → nested layout, parse directly.
-    - missing → legacy flat layout, pass through v1.0 shim.
-    - anything else → ValueError.
+    - anything else (including missing) → ValueError (fail loud).
     """
 ```
 
@@ -4697,9 +4642,7 @@ def manifest_to_dict(
     """
     Serialize a `ManifestV2` to a v2.0 dict.
     
-    Always emits `format_version == CURRENT_FORMAT_VERSION` — even if the
-    manifest was loaded from a legacy v1.0 file. This is the upgrade seam:
-    load-then-write transparently rewrites flat manifests as nested.
+    Always emits `format_version == CURRENT_FORMAT_VERSION`.
     """
 ```
 
@@ -4786,10 +4729,7 @@ class ManifestV2:
     """
     Top-level v2.0 manifest with four named sections plus `format_version`.
     
-    Loaded from a v2.0 nested JSON file as-is, or from a v1.0 flat file via
-    `_from_v1_flat_dict` (REMOVE-AFTER-OVERHAUL shim). When the v1.0 shim
-    fires, `format_version` is set to `"1.0"` so substrate code can distinguish
-    legacy loads from fresh writes; otherwise `format_version` is always
+    Loaded from a v2.0 nested JSON file as-is; `format_version` is always
     `CURRENT_FORMAT_VERSION`.
     """
     
@@ -6346,32 +6286,7 @@ def get_pending(self) -> List[Job]:  # Pending jobs, priority-sorted
 
 ``` python
 def get_running_jobs(self) -> List[Job]:  # All currently-executing jobs
-    """All in-flight jobs (stage 3: the queue is multi-lane)."""
-    return list(self._running.values())
-
-
-def get_running(self) -> Optional[Job]:  # Running job or None
     "All in-flight jobs (stage 3: the queue is multi-lane)."
-```
-
-``` python
-def get_running(self) -> Optional[Job]:  # Running job or None
-    """First currently-executing job (earliest started), or None if idle.
-
-    REMOVE-AFTER-OVERHAUL: pre-stage-3 single-lane affordance kept for the
-    legacy `get_state` shim + existing single-lane consumers; multi-lane
-    callers use `get_running_jobs()`. The stage-9 consumer cascade migrates
-    the remaining call sites.
-    """
-    if not self._running
-    """
-    First currently-executing job (earliest started), or None if idle.
-    
-    REMOVE-AFTER-OVERHAUL: pre-stage-3 single-lane affordance kept for the
-    legacy `get_state` shim + existing single-lane consumers; multi-lane
-    callers use `get_running_jobs()`. The stage-9 consumer cascade migrates
-    the remaining call sites.
-    """
 ```
 
 ``` python
@@ -7181,18 +7096,6 @@ class Job:
     retry_count: int = 0  # Reactive retries attempted (CR-7 + Stage 4)
     last_resource_snapshot: Optional[Any]  # Stage 3 wires this (ResourceSnapshot)
     
-    def capability_name(self) -> str:
-            return self.capability_instance_id
-    
-        @property
-        def created_at(self) -> float
-    
-    def created_at(self) -> float:
-            return self.submitted_at.timestamp()
-    
-    
-    @dataclass
-    class JobEvent
 ```
 
 ``` python
@@ -7312,8 +7215,6 @@ Every subsequent submit without explicit `run_id`/`actor` inherits
 these — the one-queue-per-run CLI cores call this once after
 generating their run-manifest id, and every journal row for the run
 links back to it. Call again (or with None) to change/clear."
-    
-    def manager(self) -> JobQueueDependencies
 ```
 
 ### Scheduling (`scheduling.ipynb`)
