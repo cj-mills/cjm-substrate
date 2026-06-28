@@ -167,3 +167,4 @@ checklink/cookies.txt
 /.cjm/
 /runtime/
 /models/
+/.claude/settings.local.json
