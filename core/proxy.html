@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Bridge between Host application and isolated Worker processes">
+
+<title>Remote Capability Proxy – cjm-substrate</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-3d242d70d41cd9edc5ebe4da1d712dc5.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<meta property="og:title" content="Remote Capability Proxy – cjm-substrate">
+<meta property="og:description" content="Bridge between Host application and isolated Worker processes">
+<meta property="og:site_name" content="cjm-substrate">
+<meta name="twitter:title" content="Remote Capability Proxy – cjm-substrate">
+<meta name="twitter:description" content="Bridge between Host application and isolated Worker processes">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">cjm-substrate</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/proxy.html">Remote Capability Proxy</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cjm-substrate</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../bootstrap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bootstrap</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">core</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Task Adapter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter_manifest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core.adapter_manifest</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/capability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tool Capability</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Config Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/diagnostics_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Diagnostics Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/empirical_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Empirical Resource Tracking</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/errors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Error Taxonomy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/journal_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Journal Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Manager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manifest_format.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Manifest Format (v2.0)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/metadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Metadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/platform.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Platform Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/ports.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Composition Ports</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/proxy.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Remote Capability Proxy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/queue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Job Queue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/scheduling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scheduling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/secret_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Secret Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/telemetry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Substrate Telemetry Helpers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/wire.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Typed Wire Layer</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/worker.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Universal Worker</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">utils</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/cache_paths.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cache Paths</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/hashing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Content Hashing Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration Validation</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#remotecapabilityproxy" id="toc-remotecapabilityproxy" class="nav-link active" data-scroll-target="#remotecapabilityproxy">RemoteCapabilityProxy</a>
+  <ul class="collapse">
+  <li><a href="#remotecapabilityproxy-1" id="toc-remotecapabilityproxy-1" class="nav-link" data-scroll-target="#remotecapabilityproxy-1">RemoteCapabilityProxy</a></li>
+  <li><a href="#remotecapabilityproxy.config_options" id="toc-remotecapabilityproxy.config_options" class="nav-link" data-scroll-target="#remotecapabilityproxy.config_options">RemoteCapabilityProxy.config_options</a></li>
+  <li><a href="#remotecapabilityproxy.cleanup" id="toc-remotecapabilityproxy.cleanup" class="nav-link" data-scroll-target="#remotecapabilityproxy.cleanup">RemoteCapabilityProxy.cleanup</a></li>
+  <li><a href="#input-serialization" id="toc-input-serialization" class="nav-link" data-scroll-target="#input-serialization">Input Serialization</a></li>
+  <li><a href="#asynchronous-interface" id="toc-asynchronous-interface" class="nav-link" data-scroll-target="#asynchronous-interface">Asynchronous Interface</a></li>
+  <li><a href="#execute_async" id="toc-execute_async" class="nav-link" data-scroll-target="#execute_async">execute_async</a></li>
+  <li><a href="#execute_stream_sync" id="toc-execute_stream_sync" class="nav-link" data-scroll-target="#execute_stream_sync">execute_stream_sync</a></li>
+  <li><a href="#execute_stream" id="toc-execute_stream" class="nav-link" data-scroll-target="#execute_stream">execute_stream</a></li>
+  <li><a href="#cr-7-track-a-worker-death-classification" id="toc-cr-7-track-a-worker-death-classification" class="nav-link" data-scroll-target="#cr-7-track-a-worker-death-classification">CR-7 Track A: Worker-death classification</a></li>
+  <li><a href="#execute_async_with_oom_check" id="toc-execute_async_with_oom_check" class="nav-link" data-scroll-target="#execute_async_with_oom_check">execute_async_with_oom_check</a></li>
+  <li><a href="#execute_with_oom_check" id="toc-execute_with_oom_check" class="nav-link" data-scroll-target="#execute_with_oom_check">execute_with_oom_check</a></li>
+  <li><a href="#execute_task_async" id="toc-execute_task_async" class="nav-link" data-scroll-target="#execute_task_async">execute_task_async</a></li>
+  <li><a href="#execute_task" id="toc-execute_task" class="nav-link" data-scroll-target="#execute_task">execute_task</a></li>
+  <li><a href="#lifecycle-management" id="toc-lifecycle-management" class="nav-link" data-scroll-target="#lifecycle-management">Lifecycle Management</a></li>
+  <li><a href="#is_alive" id="toc-is_alive" class="nav-link" data-scroll-target="#is_alive">is_alive</a></li>
+  <li><a href="#get_stats" id="toc-get_stats" class="nav-link" data-scroll-target="#get_stats">get_stats</a></li>
+  <li><a href="#get_structural_surface" id="toc-get_structural_surface" class="nav-link" data-scroll-target="#get_structural_surface">get_structural_surface</a></li>
+  <li><a href="#cancellation-and-progress" id="toc-cancellation-and-progress" class="nav-link" data-scroll-target="#cancellation-and-progress">Cancellation and Progress</a></li>
+  <li><a href="#get_progress_async" id="toc-get_progress_async" class="nav-link" data-scroll-target="#get_progress_async">get_progress_async</a></li>
+  <li><a href="#get_progress" id="toc-get_progress" class="nav-link" data-scroll-target="#get_progress">get_progress</a></li>
+  <li><a href="#cancel_async" id="toc-cancel_async" class="nav-link" data-scroll-target="#cancel_async">cancel_async</a></li>
+  <li><a href="#cancel" id="toc-cancel" class="nav-link" data-scroll-target="#cancel">cancel</a></li>
+  <li><a href="#on_enable" id="toc-on_enable" class="nav-link" data-scroll-target="#on_enable">on_enable</a></li>
+  <li><a href="#on_disable" id="toc-on_disable" class="nav-link" data-scroll-target="#on_disable">on_disable</a></li>
+  <li><a href="#cr-3-typed-monitortoolprotocol-accessors" id="toc-cr-3-typed-monitortoolprotocol-accessors" class="nav-link" data-scroll-target="#cr-3-typed-monitortoolprotocol-accessors">CR-3: Typed MonitorToolProtocol accessors</a></li>
+  <li><a href="#get_system_status" id="toc-get_system_status" class="nav-link" data-scroll-target="#get_system_status">get_system_status</a></li>
+  <li><a href="#get_system_status_async" id="toc-get_system_status_async" class="nav-link" data-scroll-target="#get_system_status_async">get_system_status_async</a></li>
+  <li><a href="#list_processes" id="toc-list_processes" class="nav-link" data-scroll-target="#list_processes">list_processes</a></li>
+  <li><a href="#list_processes_async" id="toc-list_processes_async" class="nav-link" data-scroll-target="#list_processes_async">list_processes_async</a></li>
+  <li><a href="#cr-4-lifecycle-hook-proxies-prefetch-reconfigure" id="toc-cr-4-lifecycle-hook-proxies-prefetch-reconfigure" class="nav-link" data-scroll-target="#cr-4-lifecycle-hook-proxies-prefetch-reconfigure">CR-4: Lifecycle hook proxies (prefetch + reconfigure)</a></li>
+  <li><a href="#prefetch" id="toc-prefetch" class="nav-link" data-scroll-target="#prefetch">prefetch</a></li>
+  <li><a href="#prefetch_async" id="toc-prefetch_async" class="nav-link" data-scroll-target="#prefetch_async">prefetch_async</a></li>
+  <li><a href="#reconfigure" id="toc-reconfigure" class="nav-link" data-scroll-target="#reconfigure">reconfigure</a></li>
+  <li><a href="#reconfigure_async" id="toc-reconfigure_async" class="nav-link" data-scroll-target="#reconfigure_async">reconfigure_async</a></li>
+  <li><a href="#context-manager-support" id="toc-context-manager-support" class="nav-link" data-scroll-target="#context-manager-support">Context Manager Support</a></li>
+  <li><a href="#aexit" id="toc-aexit" class="nav-link" data-scroll-target="#aexit"><strong>aexit</strong></a></li>
+  <li><a href="#aenter" id="toc-aenter" class="nav-link" data-scroll-target="#aenter"><strong>aenter</strong></a></li>
+  <li><a href="#exit" id="toc-exit" class="nav-link" data-scroll-target="#exit"><strong>exit</strong></a></li>
+  <li><a href="#enter" id="toc-enter" class="nav-link" data-scroll-target="#enter"><strong>enter</strong></a></li>
+  </ul></li>
+  <li><a href="#usage-examples" id="toc-usage-examples" class="nav-link" data-scroll-target="#usage-examples">Usage Examples</a>
+  <ul class="collapse">
+  <li><a href="#basic-usage-sync" id="toc-basic-usage-sync" class="nav-link" data-scroll-target="#basic-usage-sync">Basic Usage (Sync)</a></li>
+  <li><a href="#with-context-manager" id="toc-with-context-manager" class="nav-link" data-scroll-target="#with-context-manager">With Context Manager</a></li>
+  <li><a href="#async-with-streaming-fasthtml" id="toc-async-with-streaming-fasthtml" class="nav-link" data-scroll-target="#async-with-streaming-fasthtml">Async with Streaming (FastHTML)</a></li>
+  </ul></li>
+  <li><a href="#manifest-format" id="toc-manifest-format" class="nav-link" data-scroll-target="#manifest-format">Manifest Format</a></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="proxy.html.md"><i class="bi bi-file-code"></i>CommonMark</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/proxy.html">Remote Capability Proxy</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Remote Capability Proxy</h1>
+</div>
+
+<div>
+  <div class="description">
+    Bridge between Host application and isolated Worker processes
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<p>The <code>RemoteCapabilityProxy</code> implements <code>ToolCapability</code> but forwards all calls over HTTP to a Worker process running in an isolated environment.</p>
+<pre><code>Host Application                        Isolated Environment
+┌────────────────────┐                 ┌─────────────────────┐
+│  CapabilityManager     │                 │  Conda Env (GPU)    │
+│    │               │                 │    │                │
+│    ▼               │     HTTP        │    ▼                │
+│  RemoteCapabilityProxy │◄───────────────▶│  Universal Worker   │
+│  (implements       │   localhost     │    │                │
+│   ToolCapability) │                 │    ▼                │
+│                    │                 │  Actual Capability      │
+└────────────────────┘                 └─────────────────────┘</code></pre>
+<p>Key responsibilities:</p>
+<ol type="1">
+<li><strong>Process Management</strong>: Launch worker subprocess with correct Python interpreter</li>
+<li><strong>Port Allocation</strong>: Find free port, pass to worker via CLI</li>
+<li><strong>Zero-Copy Transfer</strong>: Detect <code>FileBackedDTO</code> objects and serialize to temp files</li>
+<li><strong>Dual Interface</strong>: Sync methods for scripts, async methods for FastHTML</li>
+</ol>
+<section id="remotecapabilityproxy" class="level2">
+<h2 class="anchored" data-anchor-id="remotecapabilityproxy">RemoteCapabilityProxy</h2>
+<hr>
+<section id="remotecapabilityproxy-1" class="level3">
+<h3 class="anchored" data-anchor-id="remotecapabilityproxy-1">RemoteCapabilityProxy</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> RemoteCapabilityProxy(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    manifest:Dict, <span class="co"># Capability manifest with python_path, module, class, etc.</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    extra_env:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-12: resolved worker-env overlay (secrets + visible overrides) injected at spawn</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    adapter_specs:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: host-matched adapter impl specs ("module:ClassName") bound in-worker at spawn</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    journal:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-14: journal sink for worker-lifecycle events; lazy LocalJournalStore at cfg.journal_db_path when None</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    diagnostics:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-14: diagnostics sink (raw-stream pump + worker env contract); lazy LocalDiagnosticsStore when None</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Proxy that forwards capability calls to an isolated Worker subprocess.</em></p>
+<hr>
+</section>
+<section id="remotecapabilityproxy.config_options" class="level3">
+<h3 class="anchored" data-anchor-id="remotecapabilityproxy.config_options">RemoteCapabilityProxy.config_options</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> config_options(</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># CR-11: live config option domains</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get the capability’s runtime config option providers (CR-11).</em></p>
+<p>Returns the worker’s get_config_options() output (FieldOptions per dynamic field, JSON-serialized to dicts). Empty dict when the capability exposes no dynamic options.</p>
+<hr>
+</section>
+<section id="remotecapabilityproxy.cleanup" class="level3">
+<h3 class="anchored" data-anchor-id="remotecapabilityproxy.cleanup">RemoteCapabilityProxy.cleanup</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> cleanup(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Clean up capability resources and terminate worker process.</em></p>
+</section>
+<section id="input-serialization" class="level3">
+<h3 class="anchored" data-anchor-id="input-serialization">Input Serialization</h3>
+<p>The proxy detects <code>FileBackedDTO</code> objects and serializes them to temp files before transmission. This enables zero-copy transfer of large data (audio, images) between processes.</p>
+</section>
+<section id="asynchronous-interface" class="level3">
+<h3 class="anchored" data-anchor-id="asynchronous-interface">Asynchronous Interface</h3>
+<p>These methods are <code>async</code> for use with FastHTML and other async frameworks. Use <code>execute_stream</code> for real-time streaming results.</p>
+<hr>
+</section>
+<section id="execute_async" class="level3">
+<h3 class="anchored" data-anchor-id="execute_async">execute_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> execute_async(</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Capability result</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Execute the capability asynchronously.</em></p>
+<p>CR-4: HTTP 409 from the worker is mapped to a typed <code>CapabilityCancelledError</code>. Same 409/200/other semantics as the sync <code>execute()</code> variant.</p>
+<hr>
+</section>
+<section id="execute_stream_sync" class="level3">
+<h3 class="anchored" data-anchor-id="execute_stream_sync">execute_stream_sync</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_stream_sync(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Generator:</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Synchronous wrapper for streaming (blocking).</em></p>
+<hr>
+</section>
+<section id="execute_stream" class="level3">
+<h3 class="anchored" data-anchor-id="execute_stream">execute_stream</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_stream(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>AsyncGenerator: <span class="co"># Yields parsed JSON chunks</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Execute with streaming response (async generator).</em></p>
+<p>SG-52: detects the terminal <code>{"_job_error": &lt;JobError dict&gt;}</code> chunk and raises the corresponding typed exception client-side instead of yielding it to downstream consumers. Mirrors /execute’s HTTP 409 → typed-exception behavior at the streaming wire boundary. Normal capability output chunks pass through unchanged (they never carry the <code>_job_error</code> key).</p>
+</section>
+<section id="cr-7-track-a-worker-death-classification" class="level3">
+<h3 class="anchored" data-anchor-id="cr-7-track-a-worker-death-classification">CR-7 Track A: Worker-death classification</h3>
+<p>When the worker subprocess dies mid-call, the httpx client fault propagates up. The substrate needs to classify the death to dispatch CR-7’s reactive retry path correctly:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Worker state after httpx fault</th>
+<th>Classification</th>
+<th>Raised exception</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Still alive</td>
+<td>Network blip / timeout — not CR-7’s concern</td>
+<td>Re-raise original httpx error</td>
+</tr>
+<tr class="even">
+<td>Dead with <code>returncode == -SIGKILL</code> (-9 on POSIX)</td>
+<td>Kernel OOM-killer is the dominant cause</td>
+<td><code>WorkerOOMError</code></td>
+</tr>
+<tr class="odd">
+<td>Dead with any other non-zero returncode</td>
+<td>Generic crash (segfault, capability <strong>init</strong> panic, etc.)</td>
+<td><code>CapabilityTransientError</code></td>
+</tr>
+</tbody>
+</table>
+<p>This is Track A — the substrate-side view. Track B (capability-side, per SG-47’s sub-task) catches <code>torch.cuda.OutOfMemoryError</code> inside <code>execute()</code> and re-raises as <code>CapabilityResourceError</code> with a populated <code>ResourceShortfall</code> before the worker ever dies; that path doesn’t hit Track A at all. Both tracks converge at <code>except CapabilityResourceError</code> in CR-7’s reactive retry loop.</p>
+<p>The classification only applies to the <code>/execute</code> and <code>/execute_stream</code> paths — the long-running ones. Hook calls (<code>/on_disable</code>, <code>/prefetch</code>, etc.) already short-circuit on <code>httpx.ConnectError</code> and return False without classification, because their callers (CR-2 / CR-4 lifecycle bookkeeping) don’t need typed retry.</p>
+<hr>
+</section>
+<section id="execute_async_with_oom_check" class="level3">
+<h3 class="anchored" data-anchor-id="execute_async_with_oom_check">execute_async_with_oom_check</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> execute_async_with_oom_check(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any:</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-7 Track A wrapper around the async execute path. Same semantics.</em></p>
+<hr>
+</section>
+<section id="execute_with_oom_check" class="level3">
+<h3 class="anchored" data-anchor-id="execute_with_oom_check">execute_with_oom_check</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_with_oom_check(</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any:</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-7 Track A wrapper around the sync execute path.</em></p>
+<p>Catches httpx connection / protocol faults, calls <code>_check_worker_death</code>, and either raises a typed <code>WorkerOOMError</code> / <code>CapabilityTransientError</code> or re-raises the original httpx error (worker still alive — caller treats as a generic transient network issue).</p>
+<hr>
+</section>
+<section id="execute_task_async" class="level3">
+<h3 class="anchored" data-anchor-id="execute_task_async">execute_task_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> execute_task_async(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    task_name:<span class="bu">str</span>, method:<span class="bu">str</span>, kwargs:VAR_KEYWORD</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any:</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Invoke a typed task-adapter method in-worker (CR-17 pt 2; async). Same semantics.</em></p>
+<hr>
+</section>
+<section id="execute_task" class="level3">
+<h3 class="anchored" data-anchor-id="execute_task">execute_task</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_task(</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    task_name:<span class="bu">str</span>, method:<span class="bu">str</span>, kwargs:VAR_KEYWORD</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any:</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Invoke a typed task-adapter method in-worker (CR-17 pt 2; sync).</em></p>
+<p>The explicit task channel: <code>action=</code> stays the tool’s native in-worker dispatch; this addresses the TASK contract (adapter + method). Kwargs-only by design. Built ONCE with the CR-7 Track-A worker-death check inside — no later wrapper supersedes it (the G7a last-assignment-wins lesson).</p>
+</section>
+<section id="lifecycle-management" class="level3">
+<h3 class="anchored" data-anchor-id="lifecycle-management">Lifecycle Management</h3>
+<hr>
+</section>
+<section id="is_alive" class="level3">
+<h3 class="anchored" data-anchor-id="is_alive">is_alive</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> is_alive(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if worker is responsive</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Check if the worker process is still running and responsive.</em></p>
+<hr>
+</section>
+<section id="get_stats" class="level3">
+<h3 class="anchored" data-anchor-id="get_stats">get_stats</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_stats(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># Process telemetry</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get worker process resource usage.</em></p>
+<hr>
+</section>
+<section id="get_structural_surface" class="level3">
+<h3 class="anchored" data-anchor-id="get_structural_surface">get_structural_surface</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_structural_surface(</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Live-derived surface, or None</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Pass-2 Thread 3 live companion: fetch the worker’s runtime-derived</em> structural surface (<code>GET /structural_surface</code>).</p>
+<p>Returns None when the worker predates the endpoint (a pre-fracture substrate in a snapshot env → 404) or on transport failure — callers treat None as “skip the drift check”, never as an empty surface.</p>
+</section>
+<section id="cancellation-and-progress" class="level3">
+<h3 class="anchored" data-anchor-id="cancellation-and-progress">Cancellation and Progress</h3>
+<p>Methods for cancelling running executions and polling progress status.</p>
+<hr>
+</section>
+<section id="get_progress_async" class="level3">
+<h3 class="anchored" data-anchor-id="get_progress_async">get_progress_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> get_progress_async(</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># {progress: float, message: str}</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get current execution progress asynchronously.</em></p>
+<hr>
+</section>
+<section id="get_progress" class="level3">
+<h3 class="anchored" data-anchor-id="get_progress">get_progress</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_progress(</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># {progress: float, message: str}</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get current execution progress from worker.</em></p>
+<hr>
+</section>
+<section id="cancel_async" class="level3">
+<h3 class="anchored" data-anchor-id="cancel_async">cancel_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> cancel_async(</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if cancel request was sent</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Request cancellation asynchronously.</em></p>
+<hr>
+</section>
+<section id="cancel" class="level3">
+<h3 class="anchored" data-anchor-id="cancel">cancel</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> cancel(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if cancel request was sent</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Request cancellation of running execution.</em></p>
+<hr>
+</section>
+<section id="on_enable" class="level3">
+<h3 class="anchored" data-anchor-id="on_enable">on_enable</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> on_enable(</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if hook signal accepted by worker</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-2: forward the substrate’s on_enable signal to the worker process.</em></p>
+<p>Same delivery semantics as on_disable: best-effort, errors logged-and- swallowed. The capability’s hook (default no-op) decides whether to eagerly re-acquire resources or rely on lazy re-load at next execute().</p>
+<hr>
+</section>
+<section id="on_disable" class="level3">
+<h3 class="anchored" data-anchor-id="on_disable">on_disable</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> on_disable(</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if hook signal accepted by worker</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-2: forward the substrate’s on_disable signal to the worker process.</em></p>
+<p>Capability can opt in via ToolCapability.on_disable(); default implementation is a no-op so silent-pass-through is the norm. Failures to reach the worker (already terminated, network blip) are logged-and-swallowed — the substrate-side enable/disable bookkeeping doesn’t depend on the hook actually firing.</p>
+</section>
+<section id="cr-3-typed-monitortoolprotocol-accessors" class="level3">
+<h3 class="anchored" data-anchor-id="cr-3-typed-monitortoolprotocol-accessors">CR-3: Typed MonitorToolProtocol accessors</h3>
+<p><code>get_system_status</code> / <code>list_processes</code> POST to typed worker endpoints (<code>/get_system_status</code>, <code>/list_processes</code>) instead of the magic-string-dispatched <code>/execute("get_system_status")</code>. Both expose sync + async variants matching the existing CR-2 hook style.</p>
+<p><strong>Status code taxonomy</strong> (intentional, per CR-3 review):</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 29%">
+<col style="width: 51%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Meaning</th>
+<th>Proxy behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>200</td>
+<td>Typed call succeeded</td>
+<td>Return JSON body</td>
+</tr>
+<tr class="even">
+<td>404</td>
+<td>Capability is not a monitor</td>
+<td>Propagate <code>HTTPStatusError</code> (configuration error — substrate logs at WARN)</td>
+</tr>
+<tr class="odd">
+<td>500</td>
+<td>Real capability failure</td>
+<td>Propagate <code>HTTPStatusError</code> (don’t silently mask)</td>
+</tr>
+<tr class="even">
+<td>ConnectError</td>
+<td>Worker may have died</td>
+<td>Return <code>None</code> (substrate degrades to empty stats)</td>
+</tr>
+</tbody>
+</table>
+<p>The 404 path prevents masking the “wrong capability wired as <code>system_monitor</code>” misconfiguration (e.g.&nbsp;a non-monitor capability registered as the system monitor).</p>
+<hr>
+</section>
+<section id="get_system_status" class="level3">
+<h3 class="anchored" data-anchor-id="get_system_status">get_system_status</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_system_status(</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># SystemStats dict, or None on transport / config failure</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-3: typed MonitorToolProtocol accessor. POSTs to worker’s <code>/get_system_status</code>.</em></p>
+<p>Status code semantics (worker side raises HTTPException with these codes): - 200: SystemStats dict returned - 404: capability is not a monitor — logged at ERROR (configuration error; no amount of retry fixes it) and returns None. Loudly distinguished from the substrate’s WARN-level transient-failure degradation. - 500: real capability failure; propagates as HTTPStatusError - ConnectError: worker may have died; returns None silently (substrate degrades to empty stats)</p>
+<hr>
+</section>
+<section id="get_system_status_async" class="level3">
+<h3 class="anchored" data-anchor-id="get_system_status_async">get_system_status_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> get_system_status_async(</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># SystemStats dict, or None on transport / config failure</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>get_system_status</code>. Same 200/404/500/ConnectError semantics.</em></p>
+<hr>
+</section>
+<section id="list_processes" class="level3">
+<h3 class="anchored" data-anchor-id="list_processes">list_processes</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> list_processes(</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># ProcessStats dict list, or None on transport / config failure</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-3: typed MonitorToolProtocol accessor. POSTs to worker’s <code>/list_processes</code>.</em></p>
+<p>Same 200/404/500/ConnectError semantics as <code>get_system_status</code>. Note that <code>MonitorToolProtocol.list_processes()</code> defaults to returning <code>[]</code>, so monitors without per-process visibility yield a 200 with an empty list.</p>
+<hr>
+</section>
+<section id="list_processes_async" class="level3">
+<h3 class="anchored" data-anchor-id="list_processes_async">list_processes_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> list_processes_async(</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># ProcessStats dict list, or None on transport / config failure</span></span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>list_processes</code>. Same semantics.</em></p>
+</section>
+<section id="cr-4-lifecycle-hook-proxies-prefetch-reconfigure" class="level3">
+<h3 class="anchored" data-anchor-id="cr-4-lifecycle-hook-proxies-prefetch-reconfigure">CR-4: Lifecycle hook proxies (prefetch + reconfigure)</h3>
+<p><code>prefetch()</code> / <code>reconfigure()</code> POST to the worker’s <code>/prefetch</code> and <code>/reconfigure</code> endpoints. Both expose sync + async variants matching the existing CR-2/CR-3 hook style.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 29%">
+<col style="width: 41%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Endpoint</th>
+<th>Proxy method</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>/prefetch</code></td>
+<td><code>prefetch()</code> / <code>prefetch_async()</code></td>
+<td>Returns <code>True</code> on 200, <code>False</code> on transport failure. Errors raised by the capability’s <code>prefetch()</code> (worker 500) propagate as <code>RuntimeError</code> so callers can distinguish “capability can’t acquire resources” from “worker unreachable.”</td>
+</tr>
+<tr class="even">
+<td><code>/reconfigure</code></td>
+<td><code>reconfigure(old, new)</code> / <code>reconfigure_async(old, new)</code></td>
+<td>Returns <code>True</code> on 200, <code>False</code> on transport failure. Body shape: <code>{"old_config": ..., "new_config": ...}</code>. Capability’s default <code>reconfigure</code> body delegates to <code>reconfigure_with_triggers</code>, which walks <code>RELOAD_TRIGGER</code> metadata to fire <code>_release_&lt;trigger&gt;</code> methods.</td>
+</tr>
+</tbody>
+</table>
+<p>The substrate’s <code>CapabilityManager.update_capability_config</code> path (CR-2 onward) calls <code>reconfigure(old, new)</code> when the worker exposes the typed endpoint. Older workers fall back to <code>initialize(new_config)</code> — both paths converge on the same worker-side state after the call.</p>
+<hr>
+</section>
+<section id="prefetch" class="level3">
+<h3 class="anchored" data-anchor-id="prefetch">prefetch</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> prefetch(</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    stall_threshold_seconds:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Override SubstrateConfig.prefetch_stall_threshold_seconds; None = use config</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    poll_interval_seconds:<span class="bu">float</span><span class="op">=</span><span class="fl">1.0</span>, <span class="co"># How often to poll /progress for stall detection</span></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if worker accepted the prefetch hook</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-4 / Session A 2026-05-27: forward the substrate’s prefetch signal with</em> progress-based stall detection.</p>
+<p>Replaces wall-clock-timeout-based startup waiting (operators racing arbitrary timeouts vs.&nbsp;network speeds for model downloads). Approach:</p>
+<ol type="1">
+<li>POST /prefetch fires in a background thread with httpx timeout=None.</li>
+<li>Main thread polls /progress every poll_interval_seconds.</li>
+<li>Each (progress, message) change resets the stall counter.</li>
+<li>If no change in stall_threshold_seconds AND POST still pending → SIGTERM the worker subprocess + raise CapabilityTimeoutError.</li>
+</ol>
+<p>Capabilities opt in to fine-grained stall defeat by calling self.report_progress(…) periodically during long lifecycle operations (model download, server startup, etc.). Capabilities that don’t report progress are fine as long as the threshold accommodates their slowest plausible silent stretch.</p>
+<p>Errors raised by the capability (worker 500) propagate as RuntimeError; worker unreachable propagates as <code>False</code>; stall fires CapabilityTimeoutError.</p>
+<hr>
+</section>
+<section id="prefetch_async" class="level3">
+<h3 class="anchored" data-anchor-id="prefetch_async">prefetch_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> prefetch_async(</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    stall_threshold_seconds:Optional<span class="op">=</span><span class="va">None</span>, poll_interval_seconds:<span class="bu">float</span><span class="op">=</span><span class="fl">1.0</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if worker accepted the prefetch hook</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>prefetch</code>. Same stall-detection semantics.</em></p>
+<hr>
+</section>
+<section id="reconfigure" class="level3">
+<h3 class="anchored" data-anchor-id="reconfigure">reconfigure</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> reconfigure(</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    old_config:Optional, <span class="co"># Previous config snapshot</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    new_config:Optional, <span class="co"># Config being applied</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if worker accepted the reconfigure call</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-4: forward a reconfigure(old, new) call to the worker process.</em></p>
+<p>The capability’s default reconfigure() body delegates to reconfigure_with_triggers, which walks RELOAD_TRIGGER metadata on the capability’s config_class to fire <code>_release_&lt;trigger&gt;</code> methods for fields whose values changed. Capabilities not opting into the declarative pattern land in a silent no-op; the substrate’s CapabilityManager.update_capability_config then falls back to initialize(new_config) for the actual state change.</p>
+<hr>
+</section>
+<section id="reconfigure_async" class="level3">
+<h3 class="anchored" data-anchor-id="reconfigure_async">reconfigure_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> reconfigure_async(</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    old_config:Optional, <span class="co"># Previous config snapshot</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>    new_config:Optional, <span class="co"># Config being applied</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if worker accepted the reconfigure call</span></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>reconfigure</code>. Same semantics.</em></p>
+</section>
+<section id="context-manager-support" class="level3">
+<h3 class="anchored" data-anchor-id="context-manager-support">Context Manager Support</h3>
+<p>The proxy can be used as a context manager for automatic cleanup.</p>
+<hr>
+</section>
+<section id="aexit" class="level3">
+<h3 class="anchored" data-anchor-id="aexit"><strong>aexit</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> <span class="fu">__aexit__</span>(</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    exc_type, exc_val, exc_tb</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Exit async context manager and cleanup.</em></p>
+<hr>
+</section>
+<section id="aenter" class="level3">
+<h3 class="anchored" data-anchor-id="aenter"><strong>aenter</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> <span class="fu">__aenter__</span>(</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Enter async context manager.</em></p>
+<hr>
+</section>
+<section id="exit" class="level3">
+<h3 class="anchored" data-anchor-id="exit"><strong>exit</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> <span class="fu">__exit__</span>(</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    exc_type, exc_val, exc_tb</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Exit context manager and cleanup.</em></p>
+<hr>
+</section>
+<section id="enter" class="level3">
+<h3 class="anchored" data-anchor-id="enter"><strong>enter</strong></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> <span class="fu">__enter__</span>(</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Enter context manager.</em></p>
+</section>
+</section>
+<section id="usage-examples" class="level2">
+<h2 class="anchored" data-anchor-id="usage-examples">Usage Examples</h2>
+<section id="basic-usage-sync" class="level3">
+<h3 class="anchored" data-anchor-id="basic-usage-sync">Basic Usage (Sync)</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Load manifest from JSON file</span></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> <span class="bu">open</span>(<span class="st">"~/.cjm/manifests/whisper.json"</span>) <span class="im">as</span> f:</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    manifest <span class="op">=</span> json.load(f)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Create proxy (starts worker subprocess)</span></span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>capability <span class="op">=</span> RemoteCapabilityProxy(manifest)</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Use like a local capability</span></span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>capability.initialize({<span class="st">"model"</span>: <span class="st">"large-v3"</span>})</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> capability.execute(audio<span class="op">=</span><span class="st">"/path/to/audio.wav"</span>)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean up</span></span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>capability.cleanup()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="with-context-manager" class="level3">
+<h3 class="anchored" data-anchor-id="with-context-manager">With Context Manager</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> RemoteCapabilityProxy(manifest) <span class="im">as</span> capability:</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    capability.initialize({<span class="st">"model"</span>: <span class="st">"large-v3"</span>})</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    result <span class="op">=</span> capability.execute(audio<span class="op">=</span><span class="st">"/path/to/audio.wav"</span>)</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Worker automatically terminated</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="async-with-streaming-fasthtml" class="level3">
+<h3 class="anchored" data-anchor-id="async-with-streaming-fasthtml">Async with Streaming (FastHTML)</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> transcribe_stream(audio_path: <span class="bu">str</span>):</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">async</span> <span class="cf">with</span> RemoteCapabilityProxy(manifest) <span class="im">as</span> capability:</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">await</span> capability.initialize({<span class="st">"model"</span>: <span class="st">"large-v3"</span>})</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">async</span> <span class="cf">for</span> chunk <span class="kw">in</span> capability.execute_stream(audio<span class="op">=</span>audio_path):</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>            <span class="cf">yield</span> chunk  <span class="co"># Stream to client</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="manifest-format" class="level2">
+<h2 class="anchored" data-anchor-id="manifest-format">Manifest Format</h2>
+<p>The proxy expects a manifest dictionary with at minimum:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"name"</span><span class="fu">:</span> <span class="st">"whisper-local"</span><span class="fu">,</span></span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"version"</span><span class="fu">:</span> <span class="st">"1.0.0"</span><span class="fu">,</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"python_path"</span><span class="fu">:</span> <span class="st">"/home/user/anaconda3/envs/cjm-whisper/bin/python"</span><span class="fu">,</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"module"</span><span class="fu">:</span> <span class="st">"cjm_transcription_capability_whisper.capability"</span><span class="fu">,</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"class"</span><span class="fu">:</span> <span class="st">"WhisperLocalCapability"</span><span class="fu">,</span></span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"env_vars"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>        <span class="dt">"CUDA_VISIBLE_DEVICES"</span><span class="fu">:</span> <span class="st">"0"</span></span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/cj-mills\.github\.io\/cjm-substrate");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

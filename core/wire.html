@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Typed data transfer at the worker boundary — the zero-copy FileBackedDTO">
+
+<title>Typed Wire Layer – cjm-substrate</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-3d242d70d41cd9edc5ebe4da1d712dc5.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<meta property="og:title" content="Typed Wire Layer – cjm-substrate">
+<meta property="og:description" content="Typed data transfer at the worker boundary — the zero-copy FileBackedDTO">
+<meta property="og:site_name" content="cjm-substrate">
+<meta name="twitter:title" content="Typed Wire Layer – cjm-substrate">
+<meta name="twitter:description" content="Typed data transfer at the worker boundary — the zero-copy FileBackedDTO">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">cjm-substrate</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/wire.html">Typed Wire Layer</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cjm-substrate</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../bootstrap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bootstrap</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">core</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Task Adapter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter_manifest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core.adapter_manifest</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/capability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tool Capability</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Config Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/diagnostics_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Diagnostics Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/empirical_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Empirical Resource Tracking</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/errors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Error Taxonomy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/journal_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Journal Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Manager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manifest_format.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Manifest Format (v2.0)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/metadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Metadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/platform.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Platform Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/ports.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Composition Ports</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/proxy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Remote Capability Proxy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/queue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Job Queue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/scheduling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scheduling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/secret_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Secret Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/telemetry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Substrate Telemetry Helpers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/wire.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Typed Wire Layer</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/worker.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Universal Worker</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">utils</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/cache_paths.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cache Paths</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/hashing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Content Hashing Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration Validation</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#filebackeddto-protocol" id="toc-filebackeddto-protocol" class="nav-link active" data-scroll-target="#filebackeddto-protocol">FileBackedDTO Protocol</a>
+  <ul class="collapse">
+  <li><a href="#filebackeddto" id="toc-filebackeddto" class="nav-link" data-scroll-target="#filebackeddto">FileBackedDTO</a></li>
+  </ul></li>
+  <li><a href="#typed-result-envelope" id="toc-typed-result-envelope" class="nav-link" data-scroll-target="#typed-result-envelope">Typed result envelope</a>
+  <ul class="collapse">
+  <li><a href="#flat_from_dict" id="toc-flat_from_dict" class="nav-link" data-scroll-target="#flat_from_dict">flat_from_dict</a></li>
+  <li><a href="#wire_type" id="toc-wire_type" class="nav-link" data-scroll-target="#wire_type">wire_type</a></li>
+  <li><a href="#wire_encode" id="toc-wire_encode" class="nav-link" data-scroll-target="#wire_encode">wire_encode</a></li>
+  <li><a href="#wire_decode" id="toc-wire_decode" class="nav-link" data-scroll-target="#wire_decode">wire_decode</a></li>
+  </ul></li>
+  <li><a href="#per-call-envelope-cr-14-the-surviving-cr-15-control-channel" id="toc-per-call-envelope-cr-14-the-surviving-cr-15-control-channel" class="nav-link" data-scroll-target="#per-call-envelope-cr-14-the-surviving-cr-15-control-channel">Per-call envelope (CR-14 / the surviving CR-15 control channel)</a>
+  <ul class="collapse">
+  <li><a href="#get_call_envelope" id="toc-get_call_envelope" class="nav-link" data-scroll-target="#get_call_envelope">get_call_envelope</a></li>
+  <li><a href="#reset_call_envelope" id="toc-reset_call_envelope" class="nav-link" data-scroll-target="#reset_call_envelope">reset_call_envelope</a></li>
+  <li><a href="#set_call_envelope" id="toc-set_call_envelope" class="nav-link" data-scroll-target="#set_call_envelope">set_call_envelope</a></li>
+  <li><a href="#callenvelope" id="toc-callenvelope" class="nav-link" data-scroll-target="#callenvelope">CallEnvelope</a></li>
+  </ul></li>
+  <li><a href="#in-worker-accounts-cr-14-follow-up" id="toc-in-worker-accounts-cr-14-follow-up" class="nav-link" data-scroll-target="#in-worker-accounts-cr-14-follow-up">In-worker accounts (CR-14 follow-up)</a>
+  <ul class="collapse">
+  <li><a href="#drain_accounts" id="toc-drain_accounts" class="nav-link" data-scroll-target="#drain_accounts">drain_accounts</a></li>
+  <li><a href="#record_account" id="toc-record_account" class="nav-link" data-scroll-target="#record_account">record_account</a></li>
+  <li><a href="#begin_account_capture" id="toc-begin_account_capture" class="nav-link" data-scroll-target="#begin_account_capture">begin_account_capture</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="wire.html.md"><i class="bi bi-file-code"></i>CommonMark</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/wire.html">Typed Wire Layer</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Typed Wire Layer</h1>
+</div>
+
+<div>
+  <div class="description">
+    Typed data transfer at the worker boundary — the zero-copy <code>FileBackedDTO</code>
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="filebackeddto-protocol" class="level2">
+<h2 class="anchored" data-anchor-id="filebackeddto-protocol">FileBackedDTO Protocol</h2>
+<p>The <code>FileBackedDTO</code> protocol defines objects that can serialize themselves to disk for zero-copy transfer between Host and Worker processes. When the Proxy detects an argument implementing this protocol, it calls <code>to_temp_file()</code> and sends the file path instead of the data.</p>
+<hr>
+<section id="filebackeddto" class="level3">
+<h3 class="anchored" data-anchor-id="filebackeddto">FileBackedDTO</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> FileBackedDTO(</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Protocol for Data Transfer Objects that serialize to disk for zero-copy transfer.</em></p>
+<div id="c8a35529" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Test FileBackedDTO protocol detection</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> MockAudioData:</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Example class implementing FileBackedDTO."""</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, data: <span class="bu">bytes</span>):</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._data <span class="op">=</span> data</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> to_temp_file(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        <span class="co">"""Save to temp file and return path."""</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">with</span> tempfile.NamedTemporaryFile(delete<span class="op">=</span><span class="va">False</span>, suffix<span class="op">=</span><span class="st">".wav"</span>) <span class="im">as</span> f:</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>            f.write(<span class="va">self</span>._data)</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> f.name</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Check if it implements the protocol</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>audio <span class="op">=</span> MockAudioData(<span class="st">b"fake audio data"</span>)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"MockAudioData implements FileBackedDTO: </span><span class="sc">{</span><span class="bu">isinstance</span>(audio, FileBackedDTO)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Temp file path: </span><span class="sc">{</span>audio<span class="sc">.</span>to_temp_file()<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="co"># A regular string does not implement the protocol</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"str implements FileBackedDTO: </span><span class="sc">{</span><span class="bu">isinstance</span>(<span class="st">'hello'</span>, FileBackedDTO)<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>MockAudioData implements FileBackedDTO: True
+Temp file path: /tmp/tmpd8lz94gk.wav
+str implements FileBackedDTO: False</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="typed-result-envelope" class="level2">
+<h2 class="anchored" data-anchor-id="typed-result-envelope">Typed result envelope</h2>
+<p>The typed result envelope is how task results keep their type across the worker HTTP/JSON boundary. Today a worker serializes <code>execute()</code> results via <code>EnhancedJSONEncoder</code> (<code>dataclasses.asdict</code>) — the type information is destroyed at the boundary, every consumer re-extracts fields from anonymous dicts, and each workflow core re-pays the dict-or-object tolerance tax (<code>field_of</code>; evidence E5/D10/C7 + 10 inline e2e-script copies).</p>
+<p>Design (serialization precedent: the <code>cjm-context-graph-primitives</code> tagged-dict law, stage-1 ledger P5/P6):</p>
+<ul>
+<li><strong>Dict-primary, self-describing</strong>: <code>{"__wire__": "&lt;kind&gt;", "data": {...}}</code>.</li>
+<li><strong>Encode is exact-type</strong>: only DTO classes registered via <code>@wire_type</code> get the envelope; everything else (plain dicts from dispatcher capabilities, primitives, unregistered dataclasses) passes through to the <code>EnhancedJSONEncoder</code> path exactly as before — adoption is per-DTO, not flag-day.</li>
+<li><strong>Decode is strict on known kinds, tolerant on unknown kinds</strong>: a registered kind reconstructs through the DTO’s <code>from_dict</code> (a missing required field raises loudly); an unknown kind passes through unchanged with the envelope intact, so a host without the result’s interface library degrades to today’s dict behavior instead of failing.</li>
+<li><strong>One deliberate divergence from the P6 law</strong>: results are a transport TERMINUS (consumed, not re-persisted), so extra keys on a known kind are dropped with a debug log rather than raising — version skew between a worker env (snapshot installs) and a host env must not hard-fail a run. Surface-drift visibility is the manifest live-companion’s job, not the result path’s.</li>
+</ul>
+<p>Direction note: this is the RESULT direction (worker → host). Typed task ARGUMENTS (host → worker) ride the CR-17 adapter routing work (stage 4); until then <code>_prepare_payload</code> / <code>FileBackedDTO</code> cover the input direction.</p>
+<hr>
+<section id="flat_from_dict" class="level3">
+<h3 class="anchored" data-anchor-id="flat_from_dict">flat_from_dict</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> flat_from_dict(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    cls, <span class="co"># The wire DTO dataclass being reconstructed</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    d:<span class="bu">dict</span>, <span class="co"># The envelope's "data" payload</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Default reconstruction for FLAT wire DTOs (no nested-DTO fields).</em></p>
+<p>Filters the payload to the dataclass’s declared fields (unknown extras are dropped with a debug log — transport-terminus tolerance, see the envelope design note) and lets the constructor enforce required fields (a missing required field raises TypeError loudly). DTOs with nested DTO fields (e.g.&nbsp;a result carrying a list of typed items) must define their own <code>from_dict</code> classmethod; <code>@wire_type</code> only attaches this default when the class has none.</p>
+<hr>
+</section>
+<section id="wire_type" class="level3">
+<h3 class="anchored" data-anchor-id="wire_type">wire_type</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> wire_type(</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    kind:<span class="bu">str</span>, <span class="co"># Stable wire discriminator, e.g. "transcription.result"</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Callable: <span class="co"># Class decorator</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Register a dataclass as a typed wire DTO under <code>kind</code>.</em></p>
+<ul>
+<li>The class must be a dataclass (encode falls back to <code>dataclasses.asdict</code> when it defines no <code>to_dict</code>).</li>
+<li>If the class defines no <code>from_dict</code>, the flat default (<code>flat_from_dict</code>) is attached; nested DTOs define their own.</li>
+<li>Re-registering the same LOGICAL class (qualname match; the module is ignored because nbdev’s literate workflow defines each class twice — in-notebook <code>__main__</code> + the exported module) replaces the decode entry; a DIFFERENT class claiming an already-registered kind raises ValueError.</li>
+</ul>
+<hr>
+</section>
+<section id="wire_encode" class="level3">
+<h3 class="anchored" data-anchor-id="wire_encode">wire_encode</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> wire_encode(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    obj:Any, <span class="co"># A task result (any shape)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Tagged envelope dict for registered DTOs; `obj` unchanged otherwise</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Wrap a registered wire DTO in its tagged envelope (worker side).</em></p>
+<p>Exact-type lookup: subclasses are NOT encoded under the parent’s kind (they pass through unregistered, preserving today’s behavior). Payload preference: the DTO’s own <code>to_dict()</code> when defined, else <code>dataclasses.asdict</code> (recursive — nested dataclasses flatten).</p>
+<hr>
+</section>
+<section id="wire_decode" class="level3">
+<h3 class="anchored" data-anchor-id="wire_decode">wire_decode</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> wire_decode(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    obj:Any, <span class="co"># A JSON-decoded response body (any shape)</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># The typed DTO for known kinds; `obj` unchanged otherwise</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Reconstruct a typed result from its tagged envelope (host side).</em></p>
+<p>Known kind -&gt; the registered class’s <code>from_dict</code> (strict: a missing required field raises). Unknown kind -&gt; the dict passes through UNCHANGED with the envelope intact (tolerant degradation for hosts without the result’s interface library). Untagged values pass through.</p>
+<div id="b64420e6" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Wire-format executable tests (the cross-boundary payload discipline):</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># round-trips simulate the real boundary — encode -&gt; json.dumps -&gt; json.loads</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co"># -&gt; decode — never in-memory shortcuts.</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> json <span class="im">as</span> _json</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> dataclasses <span class="im">import</span> dataclass, field</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> typing <span class="im">import</span> List, Optional</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="at">@wire_type</span>(<span class="st">"test.flat"</span>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _FlatResult:</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    text: <span class="bu">str</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    confidence: Optional[<span class="bu">float</span>] <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    metadata: <span class="bu">dict</span> <span class="op">=</span> field(default_factory<span class="op">=</span><span class="bu">dict</span>)</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _Item:</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>    text: <span class="bu">str</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    start_time: <span class="bu">float</span></span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    end_time: <span class="bu">float</span></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a><span class="at">@wire_type</span>(<span class="st">"test.nested"</span>)</span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _NestedResult:</span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>    items: List[_Item]</span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a>    metadata: <span class="bu">dict</span> <span class="op">=</span> field(default_factory<span class="op">=</span><span class="bu">dict</span>)</span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a>    <span class="at">@classmethod</span></span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> from_dict(cls, d: <span class="bu">dict</span>) <span class="op">-&gt;</span> <span class="st">"_NestedResult"</span>:</span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> cls(items<span class="op">=</span>[_Item(<span class="op">**</span>i) <span class="cf">for</span> i <span class="kw">in</span> d.get(<span class="st">"items"</span>, [])],</span>
+<span id="cb8-33"><a href="#cb8-33" aria-hidden="true" tabindex="-1"></a>                   metadata<span class="op">=</span>d.get(<span class="st">"metadata"</span>, {}) <span class="kw">or</span> {})</span>
+<span id="cb8-34"><a href="#cb8-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-35"><a href="#cb8-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-36"><a href="#cb8-36" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _roundtrip(obj):</span>
+<span id="cb8-37"><a href="#cb8-37" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> wire_decode(_json.loads(_json.dumps(wire_encode(obj))))</span>
+<span id="cb8-38"><a href="#cb8-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-40"><a href="#cb8-40" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Flat DTO round-trips typed through the simulated boundary.</span></span>
+<span id="cb8-41"><a href="#cb8-41" aria-hidden="true" tabindex="-1"></a>flat <span class="op">=</span> _FlatResult(text<span class="op">=</span><span class="st">"hello"</span>, confidence<span class="op">=</span><span class="fl">0.9</span>, metadata<span class="op">=</span>{<span class="st">"lang"</span>: <span class="st">"en"</span>})</span>
+<span id="cb8-42"><a href="#cb8-42" aria-hidden="true" tabindex="-1"></a>back <span class="op">=</span> _roundtrip(flat)</span>
+<span id="cb8-43"><a href="#cb8-43" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(back, _FlatResult) <span class="kw">and</span> back <span class="op">==</span> flat, back</span>
+<span id="cb8-44"><a href="#cb8-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-45"><a href="#cb8-45" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Nested DTO round-trips through its custom from_dict (items re-typed).</span></span>
+<span id="cb8-46"><a href="#cb8-46" aria-hidden="true" tabindex="-1"></a>nested <span class="op">=</span> _NestedResult(items<span class="op">=</span>[_Item(<span class="st">"a"</span>, <span class="fl">0.0</span>, <span class="fl">1.0</span>), _Item(<span class="st">"b"</span>, <span class="fl">1.0</span>, <span class="fl">2.0</span>)])</span>
+<span id="cb8-47"><a href="#cb8-47" aria-hidden="true" tabindex="-1"></a>nback <span class="op">=</span> _roundtrip(nested)</span>
+<span id="cb8-48"><a href="#cb8-48" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">isinstance</span>(nback, _NestedResult) <span class="kw">and</span> <span class="bu">isinstance</span>(nback.items[<span class="dv">0</span>], _Item)</span>
+<span id="cb8-49"><a href="#cb8-49" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> nback <span class="op">==</span> nested</span>
+<span id="cb8-50"><a href="#cb8-50" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-51"><a href="#cb8-51" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Unregistered objects pass through encode unchanged (plain dicts /</span></span>
+<span id="cb8-52"><a href="#cb8-52" aria-hidden="true" tabindex="-1"></a><span class="co">#    untyped capability results keep today's behavior).</span></span>
+<span id="cb8-53"><a href="#cb8-53" aria-hidden="true" tabindex="-1"></a>plain <span class="op">=</span> {<span class="st">"rows"</span>: [[<span class="dv">1</span>, <span class="dv">2</span>]], <span class="st">"count"</span>: <span class="dv">2</span>}</span>
+<span id="cb8-54"><a href="#cb8-54" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> wire_encode(plain) <span class="kw">is</span> plain</span>
+<span id="cb8-55"><a href="#cb8-55" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> wire_decode(plain) <span class="kw">is</span> plain</span>
+<span id="cb8-56"><a href="#cb8-56" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-57"><a href="#cb8-57" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Unknown kind passes through decode UNCHANGED, envelope intact</span></span>
+<span id="cb8-58"><a href="#cb8-58" aria-hidden="true" tabindex="-1"></a><span class="co">#    (tolerant degradation; lossless if ever re-serialized).</span></span>
+<span id="cb8-59"><a href="#cb8-59" aria-hidden="true" tabindex="-1"></a>foreign <span class="op">=</span> {WIRE_KIND_KEY: <span class="st">"some.future/kind"</span>, WIRE_DATA_KEY: {<span class="st">"x"</span>: <span class="dv">1</span>}}</span>
+<span id="cb8-60"><a href="#cb8-60" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> wire_decode(foreign) <span class="kw">is</span> foreign</span>
+<span id="cb8-61"><a href="#cb8-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-62"><a href="#cb8-62" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Exact-type encode: a subclass is NOT encoded under the parent's kind.</span></span>
+<span id="cb8-63"><a href="#cb8-63" aria-hidden="true" tabindex="-1"></a><span class="at">@dataclass</span></span>
+<span id="cb8-64"><a href="#cb8-64" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _FlatSubclass(_FlatResult):</span>
+<span id="cb8-65"><a href="#cb8-65" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb8-66"><a href="#cb8-66" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-67"><a href="#cb8-67" aria-hidden="true" tabindex="-1"></a>sub <span class="op">=</span> _FlatSubclass(text<span class="op">=</span><span class="st">"sub"</span>)</span>
+<span id="cb8-68"><a href="#cb8-68" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> wire_encode(sub) <span class="kw">is</span> sub</span>
+<span id="cb8-69"><a href="#cb8-69" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-70"><a href="#cb8-70" aria-hidden="true" tabindex="-1"></a><span class="co"># 6. Duplicate-kind guard: a DIFFERENT class claiming a taken kind raises;</span></span>
+<span id="cb8-71"><a href="#cb8-71" aria-hidden="true" tabindex="-1"></a><span class="co">#    re-registering the same logical class (same qualname; module ignored — nbdev defines classes twice) replaces quietly.</span></span>
+<span id="cb8-72"><a href="#cb8-72" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-73"><a href="#cb8-73" aria-hidden="true" tabindex="-1"></a>    <span class="at">@wire_type</span>(<span class="st">"test.flat"</span>)</span>
+<span id="cb8-74"><a href="#cb8-74" aria-hidden="true" tabindex="-1"></a>    <span class="at">@dataclass</span></span>
+<span id="cb8-75"><a href="#cb8-75" aria-hidden="true" tabindex="-1"></a>    <span class="kw">class</span> _Imposter:</span>
+<span id="cb8-76"><a href="#cb8-76" aria-hidden="true" tabindex="-1"></a>        y: <span class="bu">int</span> <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb8-77"><a href="#cb8-77" aria-hidden="true" tabindex="-1"></a>    <span class="cf">raise</span> <span class="pp">AssertionError</span>(<span class="st">"duplicate kind must raise"</span>)</span>
+<span id="cb8-78"><a href="#cb8-78" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span>:</span>
+<span id="cb8-79"><a href="#cb8-79" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb8-80"><a href="#cb8-80" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-81"><a href="#cb8-81" aria-hidden="true" tabindex="-1"></a><span class="co"># 7. Transport-terminus tolerance: extras dropped (debug-logged), missing</span></span>
+<span id="cb8-82"><a href="#cb8-82" aria-hidden="true" tabindex="-1"></a><span class="co">#    required raises loudly.</span></span>
+<span id="cb8-83"><a href="#cb8-83" aria-hidden="true" tabindex="-1"></a>tolerant <span class="op">=</span> wire_decode({WIRE_KIND_KEY: <span class="st">"test.flat"</span>,</span>
+<span id="cb8-84"><a href="#cb8-84" aria-hidden="true" tabindex="-1"></a>                        WIRE_DATA_KEY: {<span class="st">"text"</span>: <span class="st">"t"</span>, <span class="st">"new_field_from_future"</span>: <span class="dv">1</span>}})</span>
+<span id="cb8-85"><a href="#cb8-85" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> tolerant <span class="op">==</span> _FlatResult(text<span class="op">=</span><span class="st">"t"</span>)</span>
+<span id="cb8-86"><a href="#cb8-86" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb8-87"><a href="#cb8-87" aria-hidden="true" tabindex="-1"></a>    wire_decode({WIRE_KIND_KEY: <span class="st">"test.flat"</span>, WIRE_DATA_KEY: {<span class="st">"confidence"</span>: <span class="fl">0.5</span>}})</span>
+<span id="cb8-88"><a href="#cb8-88" aria-hidden="true" tabindex="-1"></a>    <span class="cf">raise</span> <span class="pp">AssertionError</span>(<span class="st">"missing required field must raise"</span>)</span>
+<span id="cb8-89"><a href="#cb8-89" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">TypeError</span>:</span>
+<span id="cb8-90"><a href="#cb8-90" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb8-91"><a href="#cb8-91" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-92"><a href="#cb8-92" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"typed wire envelope tests OK"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>typed wire envelope tests OK</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="per-call-envelope-cr-14-the-surviving-cr-15-control-channel" class="level2">
+<h2 class="anchored" data-anchor-id="per-call-envelope-cr-14-the-surviving-cr-15-control-channel">Per-call envelope (CR-14 / the surviving CR-15 control channel)</h2>
+<p>The substrate-owned per-call identity + control block. Today <code>job_id</code> reaches the worker only as a domain kwarg that polite capability authors echo into log messages (the observational pass found failures — the case diagnosis needs — carry NO identity at all). The envelope makes call identity a wire-level concern:</p>
+<ul>
+<li><strong>Host side</strong>: the queue sets the contextvar around each job execution; the proxy injects <code>"envelope": {...}</code> as a TOP-LEVEL body key on <code>/execute</code>, <code>/execute_stream</code>, and <code>/task</code> (never inside <code>kwargs</code> — capability code never sees it; old workers ignore unknown top-level keys).</li>
+<li><strong>Worker side</strong>: the endpoint decodes it back into the SAME contextvar, so the <code>DiagnosticsLogHandler</code> stamps every record with exact job identity (<code>contextvars.copy_context().run(...)</code> carries it into the executor thread — <code>run_in_executor</code> does not copy context by itself).</li>
+<li><strong><code>control</code></strong> carries per-call flags (<code>force</code> cache-bypass et al — the 4th CR-15 kwarg category) so they stop riding the typed task args.</li>
+</ul>
+<p>Tolerant both directions: unknown envelope keys are ignored on decode (forward compat); an absent envelope leaves the contextvar <code>None</code> (records honestly unattributed, never heuristically attributed).</p>
+<hr>
+<section id="get_call_envelope" class="level3">
+<h3 class="anchored" data-anchor-id="get_call_envelope">get_call_envelope</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_call_envelope(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional:</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>The current call envelope, or None outside any call span.</em></p>
+<hr>
+</section>
+<section id="reset_call_envelope" class="level3">
+<h3 class="anchored" data-anchor-id="reset_call_envelope">reset_call_envelope</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> reset_call_envelope(</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    token:Token</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Restore the prior envelope (always pair with <code>set_call_envelope</code> in finally).</em></p>
+<hr>
+</section>
+<section id="set_call_envelope" class="level3">
+<h3 class="anchored" data-anchor-id="set_call_envelope">set_call_envelope</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_call_envelope(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    env:Optional</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Token:</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Set the current call envelope; returns the token for <code>reset_call_envelope</code>.</em></p>
+<hr>
+</section>
+<section id="callenvelope" class="level3">
+<h3 class="anchored" data-anchor-id="callenvelope">CallEnvelope</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> CallEnvelope(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    job_id:Optional<span class="op">=</span><span class="va">None</span>, run_id:Optional<span class="op">=</span><span class="va">None</span>, composition_id:Optional<span class="op">=</span><span class="va">None</span>, node_id:Optional<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    actor:Optional<span class="op">=</span><span class="va">None</span>, control:<span class="bu">dict</span><span class="op">=&lt;</span>factory<span class="op">&gt;</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Substrate-owned per-call identity + control block (CR-14 / CR-15).</em></p>
+<p>Travels as a top-level <code>"envelope"</code> key on every proxy→worker call body. All fields optional — an envelope-less call (direct proxy use, old hosts) simply yields unattributed records, never a failure.</p>
+<div id="ee7e90cf" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Envelope wire-format executable tests (same boundary-simulation discipline).</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> contextvars <span class="im">as</span> _cv</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Round-trip through the simulated JSON boundary; None fields dropped.</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>env <span class="op">=</span> CallEnvelope(job_id<span class="op">=</span><span class="st">"j-1"</span>, run_id<span class="op">=</span><span class="st">"r-1"</span>, control<span class="op">=</span>{<span class="st">"force"</span>: <span class="va">True</span>})</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>wire_form <span class="op">=</span> _json.loads(_json.dumps(env.to_wire()))</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> wire_form <span class="op">==</span> {<span class="st">"job_id"</span>: <span class="st">"j-1"</span>, <span class="st">"run_id"</span>: <span class="st">"r-1"</span>, <span class="st">"control"</span>: {<span class="st">"force"</span>: <span class="va">True</span>}}</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>back <span class="op">=</span> CallEnvelope.from_wire(wire_form)</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> back <span class="op">==</span> env</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Tolerant decode: unknown keys from a future host are ignored.</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>future <span class="op">=</span> CallEnvelope.from_wire({<span class="st">"job_id"</span>: <span class="st">"j-2"</span>, <span class="st">"tenant_id"</span>: <span class="st">"future-key"</span>})</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> future.job_id <span class="op">==</span> <span class="st">"j-2"</span> <span class="kw">and</span> future.control <span class="op">==</span> {}</span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Empty/absent envelope decodes to all-None (honestly unattributed).</span></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> CallEnvelope.from_wire({}) <span class="op">==</span> CallEnvelope()</span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> CallEnvelope.from_wire(<span class="va">None</span>) <span class="op">==</span> CallEnvelope()</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Contextvar set/reset pairing + executor-thread propagation via</span></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a><span class="co">#    copy_context (the run_in_executor gotcha the worker endpoints handle).</span></span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> get_call_envelope() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>token <span class="op">=</span> set_call_envelope(env)</span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> get_call_envelope() <span class="kw">is</span> env</span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>    seen <span class="op">=</span> {}</span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>    ctx <span class="op">=</span> _cv.copy_context()</span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>    <span class="im">import</span> threading</span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>    t <span class="op">=</span> threading.Thread(target<span class="op">=</span><span class="kw">lambda</span>: seen.update(</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a>        inside<span class="op">=</span>ctx.run(get_call_envelope)))</span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a>    t.start()<span class="op">;</span> t.join()</span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> seen[<span class="st">"inside"</span>] <span class="kw">is</span> env  <span class="co"># copy_context carries it into the thread</span></span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>    bare <span class="op">=</span> {}</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a>    t2 <span class="op">=</span> threading.Thread(target<span class="op">=</span><span class="kw">lambda</span>: bare.update(inside<span class="op">=</span>get_call_envelope()))</span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>    t2.start()<span class="op">;</span> t2.join()</span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> bare[<span class="st">"inside"</span>] <span class="kw">is</span> <span class="va">None</span>  <span class="co"># without copy_context the thread sees None</span></span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a><span class="cf">finally</span>:</span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a>    reset_call_envelope(token)</span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> get_call_envelope() <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"call envelope tests OK"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>call envelope tests OK</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="in-worker-accounts-cr-14-follow-up" class="level2">
+<h2 class="anchored" data-anchor-id="in-worker-accounts-cr-14-follow-up">In-worker accounts (CR-14 follow-up)</h2>
+<p>The worker-side half of the substrate-family account events (TASK_ACCOUNT / RESULT_SAVED / CACHE_HIT — the <code>SubstrateEventType</code> reserved vocabulary). The derived-not-authored rule holds: workers never write the journal; they RECORD accounts during a call span and the records ride the wire back as a response <strong>header</strong>, where the HOST journals them with <code>worker_reported=True</code> (single-writer-class rule — a compromised worker still cannot write the audit record directly, and the host stamps the receiving-side identity).</p>
+<p>Why a header and not a body wrapper: the response body is the RESULT’s contract (typed wire envelope / capability dict) — wrapping it would break any old host talking to a new worker. A header is invisible to old proxies in both skew directions (the K6 version-skew posture). The error path attaches the same header on the <code>_job_error</code> 500 body — a FAILED call still reports the accounts recorded before the failure (e.g.&nbsp;a save that succeeded before a later crash).</p>
+<p>Honest limit: accounts ride the UNARY paths (<code>/execute</code>, <code>/task</code>) only. <code>/execute_stream</code> responses have sent their headers before execution ends; a terminal sentinel chunk (the <code>_job_error</code> dialect) is the seam-admitted carrier if a streaming adopter ever needs accounts.</p>
+<p>Writers: the worker itself (TASK_ACCOUNT at <code>/task</code> completion — zero capability cooperation) and the interface-lib storage helpers (T29 <code>save_with_logging</code> → RESULT_SAVED, <code>get_cached</code> → CACHE_HIT — recorded at the helper boundary, so every capability using the helpers reports for free). <code>record_account</code> outside a capture span is a silent no-op (standalone/dev runs, host-process imports).</p>
+<hr>
+<section id="drain_accounts" class="level3">
+<h3 class="anchored" data-anchor-id="drain_accounts">drain_accounts</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> drain_accounts(</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">list</span>:</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Return + clear the current span’s recorded accounts ([] outside a span</em> or when nothing was recorded). The worker response path calls this once when building the response headers.</p>
+<hr>
+</section>
+<section id="record_account" class="level3">
+<h3 class="anchored" data-anchor-id="record_account">record_account</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> record_account(</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    event_type:<span class="bu">str</span>, <span class="co"># SubstrateEventType value (task_account / result_saved / cache_hit / ...)</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    payload:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Structured detail (references + hashes, never content)</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Record one substrate-family account for the current call span.</em></p>
+<p>Called by the worker itself and by interface-lib storage helpers. Silent no-op outside a capture span (standalone runs, host imports) — the envelope-less-call posture applied to accounts.</p>
+<hr>
+</section>
+<section id="begin_account_capture" class="level3">
+<h3 class="anchored" data-anchor-id="begin_account_capture">begin_account_capture</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> begin_account_capture(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Start a fresh account list for the current call span (worker endpoint</em> entry; same no-reset semantics as the envelope — the ASGI request task’s context dies with the request).</p>
+<div id="65b9de96" class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Account-capture executable tests (capture span + executor-thread sharing +</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="co"># the no-span no-op + drain-once semantics).</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> threading <span class="im">as</span> _thr</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. No capture span: record_account is a silent no-op; drain yields [].</span></span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>record_account(<span class="st">"result_saved"</span>, {<span class="st">"row_job_id"</span>: <span class="st">"x"</span>})</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> drain_accounts() <span class="op">==</span> []</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Within a span: records accumulate and drain ONCE.</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>begin_account_capture()</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>record_account(<span class="st">"cache_hit"</span>, {<span class="st">"row_job_id"</span>: <span class="st">"j-1"</span>})</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>record_account(<span class="st">"result_saved"</span>)  <span class="co"># payload defaults to {}</span></span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>got <span class="op">=</span> drain_accounts()</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> got <span class="op">==</span> [</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"event_type"</span>: <span class="st">"cache_hit"</span>, <span class="st">"payload"</span>: {<span class="st">"row_job_id"</span>: <span class="st">"j-1"</span>}},</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"event_type"</span>: <span class="st">"result_saved"</span>, <span class="st">"payload"</span>: {}},</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> drain_accounts() <span class="op">==</span> []  <span class="co"># drained — second call yields nothing</span></span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Executor-thread sharing: copy_context AFTER begin gives the thread the</span></span>
+<span id="cb19-21"><a href="#cb19-21" aria-hidden="true" tabindex="-1"></a><span class="co">#    SAME list object (the worker's ctx.run pattern); appends are visible to</span></span>
+<span id="cb19-22"><a href="#cb19-22" aria-hidden="true" tabindex="-1"></a><span class="co">#    the draining request task.</span></span>
+<span id="cb19-23"><a href="#cb19-23" aria-hidden="true" tabindex="-1"></a>begin_account_capture()</span>
+<span id="cb19-24"><a href="#cb19-24" aria-hidden="true" tabindex="-1"></a>ctx <span class="op">=</span> _cv.copy_context()</span>
+<span id="cb19-25"><a href="#cb19-25" aria-hidden="true" tabindex="-1"></a>t <span class="op">=</span> _thr.Thread(target<span class="op">=</span><span class="kw">lambda</span>: ctx.run(</span>
+<span id="cb19-26"><a href="#cb19-26" aria-hidden="true" tabindex="-1"></a>    record_account, <span class="st">"task_account"</span>, {<span class="st">"task"</span>: <span class="st">"t"</span>, <span class="st">"ok"</span>: <span class="va">True</span>}))</span>
+<span id="cb19-27"><a href="#cb19-27" aria-hidden="true" tabindex="-1"></a>t.start()<span class="op">;</span> t.join()</span>
+<span id="cb19-28"><a href="#cb19-28" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> drain_accounts() <span class="op">==</span> [</span>
+<span id="cb19-29"><a href="#cb19-29" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"event_type"</span>: <span class="st">"task_account"</span>, <span class="st">"payload"</span>: {<span class="st">"task"</span>: <span class="st">"t"</span>, <span class="st">"ok"</span>: <span class="va">True</span>}}]</span>
+<span id="cb19-30"><a href="#cb19-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-31"><a href="#cb19-31" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Header round-trip shape: ASCII JSON survives the simulated boundary.</span></span>
+<span id="cb19-32"><a href="#cb19-32" aria-hidden="true" tabindex="-1"></a>begin_account_capture()</span>
+<span id="cb19-33"><a href="#cb19-33" aria-hidden="true" tabindex="-1"></a>record_account(<span class="st">"result_saved"</span>, {<span class="st">"text_hash"</span>: <span class="st">"sha256:abc"</span>, <span class="st">"n"</span>: <span class="dv">1</span>})</span>
+<span id="cb19-34"><a href="#cb19-34" aria-hidden="true" tabindex="-1"></a>hdr <span class="op">=</span> _json.dumps(drain_accounts())</span>
+<span id="cb19-35"><a href="#cb19-35" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> hdr.isascii()</span>
+<span id="cb19-36"><a href="#cb19-36" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> _json.loads(hdr)[<span class="dv">0</span>][<span class="st">"payload"</span>][<span class="st">"text_hash"</span>] <span class="op">==</span> <span class="st">"sha256:abc"</span></span>
+<span id="cb19-37"><a href="#cb19-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-38"><a href="#cb19-38" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"account capture tests OK"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>account capture tests OK</code></pre>
+</div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/cj-mills\.github\.io\/cjm-substrate");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

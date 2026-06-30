@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="CLI tool for declarative capability management">
+
+<title>cli – cjm-substrate</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-3d242d70d41cd9edc5ebe4da1d712dc5.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+<meta property="og:title" content="cli – cjm-substrate">
+<meta property="og:description" content="CLI tool for declarative capability management">
+<meta property="og:site_name" content="cjm-substrate">
+<meta name="twitter:title" content="cli – cjm-substrate">
+<meta name="twitter:description" content="CLI tool for declarative capability management">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">cjm-substrate</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./cli.html">cli</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cjm-substrate</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./bootstrap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bootstrap</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./cli.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">core</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/adapter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Task Adapter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/adapter_manifest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core.adapter_manifest</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/capability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tool Capability</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/config.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/config_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Config Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/diagnostics_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Diagnostics Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/empirical_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Empirical Resource Tracking</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/errors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Error Taxonomy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/journal_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Journal Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/manager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Manager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/manifest_format.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Manifest Format (v2.0)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/metadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Metadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/platform.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Platform Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/ports.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Composition Ports</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/proxy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Remote Capability Proxy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/queue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Job Queue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/scheduling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scheduling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/secret_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Secret Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/telemetry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Substrate Telemetry Helpers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/wire.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Typed Wire Layer</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./core/worker.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Universal Worker</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">utils</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./utils/cache_paths.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cache Paths</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./utils/hashing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Content Hashing Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./utils/validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration Validation</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#main" id="toc-main" class="nav-link active" data-scroll-target="#main">main</a></li>
+  <li><a href="#setup-runtime" id="toc-setup-runtime" class="nav-link" data-scroll-target="#setup-runtime">Setup Runtime</a>
+  <ul class="collapse">
+  <li><a href="#setup_runtime" id="toc-setup_runtime" class="nav-link" data-scroll-target="#setup_runtime">setup_runtime</a></li>
+  <li><a href="#run_cmd" id="toc-run_cmd" class="nav-link" data-scroll-target="#run_cmd">run_cmd</a></li>
+  </ul></li>
+  <li><a href="#regenerate-manifest" id="toc-regenerate-manifest" class="nav-link" data-scroll-target="#regenerate-manifest">Regenerate Manifest</a>
+  <ul class="collapse">
+  <li><a href="#regenerate_manifest" id="toc-regenerate_manifest" class="nav-link" data-scroll-target="#regenerate_manifest">regenerate_manifest</a></li>
+  <li><a href="#generate_adapter_manifest" id="toc-generate_adapter_manifest" class="nav-link" data-scroll-target="#generate_adapter_manifest">generate_adapter_manifest</a></li>
+  <li><a href="#install_all" id="toc-install_all" class="nav-link" data-scroll-target="#install_all">install_all</a></li>
+  </ul></li>
+  <li><a href="#setup-host-environment" id="toc-setup-host-environment" class="nav-link" data-scroll-target="#setup-host-environment">Setup Host Environment</a>
+  <ul class="collapse">
+  <li><a href="#setup_host" id="toc-setup_host" class="nav-link" data-scroll-target="#setup_host">setup_host</a></li>
+  </ul></li>
+  <li><a href="#estimate-disk-space" id="toc-estimate-disk-space" class="nav-link" data-scroll-target="#estimate-disk-space">Estimate Disk Space</a></li>
+  <li><a href="#list-capabilities" id="toc-list-capabilities" class="nav-link" data-scroll-target="#list-capabilities">List Capabilities</a>
+  <ul class="collapse">
+  <li><a href="#list_capabilities" id="toc-list_capabilities" class="nav-link" data-scroll-target="#list_capabilities">list_capabilities</a></li>
+  </ul></li>
+  <li><a href="#observability-commands-cr-14-follow-up" id="toc-observability-commands-cr-14-follow-up" class="nav-link" data-scroll-target="#observability-commands-cr-14-follow-up">Observability commands (CR-14 follow-up)</a>
+  <ul class="collapse">
+  <li><a href="#logs_command" id="toc-logs_command" class="nav-link" data-scroll-target="#logs_command">logs_command</a></li>
+  <li><a href="#retention_command" id="toc-retention_command" class="nav-link" data-scroll-target="#retention_command">retention_command</a></li>
+  </ul></li>
+  <li><a href="#remove-capability" id="toc-remove-capability" class="nav-link" data-scroll-target="#remove-capability">Remove Capability</a>
+  <ul class="collapse">
+  <li><a href="#remove_capability" id="toc-remove_capability" class="nav-link" data-scroll-target="#remove_capability">remove_capability</a></li>
+  </ul></li>
+  <li><a href="#validate-command-sg-6" id="toc-validate-command-sg-6" class="nav-link" data-scroll-target="#validate-command-sg-6">Validate Command (SG-6)</a>
+  <ul class="collapse">
+  <li><a href="#validate_file" id="toc-validate_file" class="nav-link" data-scroll-target="#validate_file">validate_file</a></li>
+  <li><a href="#list_secrets" id="toc-list_secrets" class="nav-link" data-scroll-target="#list_secrets">list_secrets</a></li>
+  <li><a href="#set_secret" id="toc-set_secret" class="nav-link" data-scroll-target="#set_secret">set_secret</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="cli.html.md"><i class="bi bi-file-code"></i>CommonMark</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">cli</h1>
+</div>
+
+<div>
+  <div class="description">
+    CLI tool for declarative capability management
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<hr>
+<section id="main" class="level3">
+<h3 class="anchored" data-anchor-id="main">main</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main(</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    ctx:Context, cjm_config:Annotated<span class="op">=</span><span class="va">None</span>, data_dir:Annotated<span class="op">=</span><span class="va">None</span>, conda_prefix:Annotated<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    conda_type:Annotated<span class="op">=</span><span class="va">None</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>cjm-substrate CLI for managing isolated capability environments.</em></p>
+</section>
+<section id="setup-runtime" class="level2">
+<h2 class="anchored" data-anchor-id="setup-runtime">Setup Runtime</h2>
+<p>The <code>setup-runtime</code> command downloads and installs micromamba for project-local mode. This is required before running <code>install-all</code> when using <code>conda_type: micromamba</code> in the configuration.</p>
+<hr>
+<section id="setup_runtime" class="level3">
+<h3 class="anchored" data-anchor-id="setup_runtime">setup_runtime</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setup_runtime(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    force:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961a71d0</span><span class="op">&gt;</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Download and setup micromamba runtime for project-local mode.</em></p>
+<hr>
+</section>
+<section id="run_cmd" class="level3">
+<h3 class="anchored" data-anchor-id="run_cmd">run_cmd</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> run_cmd(</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    cmd:<span class="bu">str</span>, <span class="co"># Shell command to execute</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    check:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># Whether to raise on non-zero exit</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Run a shell command and stream output.</em></p>
+<p>Uses the platform’s default shell (no hardcoded /bin/bash).</p>
+</section>
+</section>
+<section id="regenerate-manifest" class="level2">
+<h2 class="anchored" data-anchor-id="regenerate-manifest">Regenerate Manifest</h2>
+<p>The <code>regenerate-manifest</code> command re-runs the introspection pipeline for an already-installed capability and rewrites its manifest in place. Picks up new substrate-side manifest fields (resources, install-time metadata) without forcing a full <code>install-all --force</code>.</p>
+<p>Package-source recovery order: 1. <code>--package &lt;spec&gt;</code> operator override (always wins when provided) 2. The manifest’s own <code>package_source</code> field (post-Phase-5a manifests) 3. <code>--capabilities capabilities.yaml</code> lookup by capability name (legacy manifests without <code>package_source</code>) 4. Error with actionable message if none of the above resolve</p>
+<p>The ecosystem-wide <code>cascade_manifests.py</code> (loops this command over every capability) is deferred to CR-8’s nested-format migration.</p>
+<hr>
+<section id="regenerate_manifest" class="level3">
+<h3 class="anchored" data-anchor-id="regenerate_manifest">regenerate_manifest</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> regenerate_manifest(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b5100</span><span class="op">&gt;</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    capabilities_path:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b66f0</span><span class="op">&gt;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    package:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b6ea0</span><span class="op">&gt;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Re-run introspection for an installed capability and rewrite its manifest.</em></p>
+<p>Reads the existing manifest via <code>load_manifest</code>, recovers <code>env_name</code> + <code>package_source</code> from the install section, runs <code>_generate_manifest</code> to refresh the code section, then post-writes to preserve the original <code>installed_at</code> so the regenerate only updates <code>regenerated_at</code> semantically. Always emits v2.0 layout.</p>
+<hr>
+</section>
+<section id="generate_adapter_manifest" class="level3">
+<h3 class="anchored" data-anchor-id="generate_adapter_manifest">generate_adapter_manifest</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> generate_adapter_manifest(</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    env_name:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b73b0</span><span class="op">&gt;</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    target:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b73e0</span><span class="op">&gt;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2 (stage 4): introspect a task-adapter impl in-env and write its adapter manifest.</em></p>
+<p>The adapter manifest is the REGISTRATION unit (pass-2 Thread 3): task_name + required_tool_protocol members (names + parameter lists + signatures) recorded IN-ENV where the protocol is importable, so host-side compatibility matching works against UNLOADED capabilities with zero protocol imports host-side. Written to the same manifests dir capability manifests live in; <code>discover_manifests()</code> routes by the <code>unit</code> key.</p>
+<p>Thin typer wrapper over <code>_generate_adapter_manifest</code> (stage 6 J10: install-all runs the same core for per-capability <code>adapters:</code> entries).</p>
+<hr>
+</section>
+<section id="install_all" class="level3">
+<h3 class="anchored" data-anchor-id="install_all">install_all</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> install_all(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    capabilities_path:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b6a50</span><span class="op">&gt;</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    substrate_source:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b7440</span><span class="op">&gt;</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    force:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b6120</span><span class="op">&gt;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Install and register all capabilities defined in capabilities.yaml.</em></p>
+<p>Per-capability <code>adapters:</code> entries ride the same pipeline (stage 6 J10; closes the I6/J8 manual-step gap): each entry’s <code>lib</code> is pip-installed into the worker env alongside the interface libs, and each <code>impl</code> (‘module:ClassName’) gets its adapter manifest generated right after the capability manifest – INSTALL puts code in envs, REGISTRATION is per-unit manifests (pass-2 Thread 3), one command does both.</p>
+</section>
+</section>
+<section id="setup-host-environment" class="level2">
+<h2 class="anchored" data-anchor-id="setup-host-environment">Setup Host Environment</h2>
+<p>The <code>setup-host</code> command prepares the host application’s Python environment by installing all unique interface libraries referenced in <code>capabilities.yaml</code>. This is separate from <code>install-all</code> which sets up isolated capability environments.</p>
+<hr>
+<section id="setup_host" class="level3">
+<h3 class="anchored" data-anchor-id="setup_host">setup_host</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> setup_host(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    capabilities_path:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b7ec0</span><span class="op">&gt;</span>,</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    yes:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b65a0</span><span class="op">&gt;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Install interface libraries in the current Python environment.</em></p>
+</section>
+</section>
+<section id="estimate-disk-space" class="level2">
+<h2 class="anchored" data-anchor-id="estimate-disk-space">Estimate Disk Space</h2>
+<p>The <code>estimate-size</code> command estimates the disk space required for capability environments before installation. It uses conda’s dry-run feature for accurate conda package sizes and queries PyPI for pip package sizes.</p>
+</section>
+<section id="list-capabilities" class="level2">
+<h2 class="anchored" data-anchor-id="list-capabilities">List Capabilities</h2>
+<p>The <code>list</code> command shows installed capabilities by scanning manifest files in the configured manifests directory (defaults to <code>~/.cjm/manifests/</code>). It can optionally cross-reference with a capabilities.yaml file and check conda environment status.</p>
+<hr>
+<section id="list_capabilities" class="level3">
+<h3 class="anchored" data-anchor-id="list_capabilities">list_capabilities</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> list_capabilities(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    capabilities_path:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b5220</span><span class="op">&gt;</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    show_envs:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b65d0</span><span class="op">&gt;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>List installed capabilities from manifest directory.</em></p>
+</section>
+</section>
+<section id="observability-commands-cr-14-follow-up" class="level2">
+<h2 class="anchored" data-anchor-id="observability-commands-cr-14-follow-up">Observability commands (CR-14 follow-up)</h2>
+<p><code>cjm-ctl logs</code> is the operator projection over the two stores (the replacement for the retired <code>tail .cjm/logs/&lt;capability&gt;.log</code> habit): the default view is structured diagnostics records (worker <code>logger.*</code> output, job-stamped); <code>--chunks</code> shows the raw stream pump (the death-rattle floor); <code>--journal</code> shows the account-of-action. <code>--follow</code> polls the <code>seq</code> cursor — the same exact-cursor mechanism that replaced <code>LOG_APPENDED</code>.</p>
+<p><code>cjm-ctl retention</code> applies the diagnostics retention policy on demand (the startup sweep in <code>CapabilityManager</code> is the automatic invocation). The journal has no retention surface by design.</p>
+<hr>
+<section id="logs_command" class="level3">
+<h3 class="anchored" data-anchor-id="logs_command">logs_command</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> logs_command(</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    job:Annotated<span class="op">=</span><span class="va">None</span>, run:Annotated<span class="op">=</span><span class="va">None</span>, session:Annotated<span class="op">=</span><span class="va">None</span>, level:Annotated<span class="op">=</span><span class="va">None</span>, journal:Annotated<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    chunks:Annotated<span class="op">=</span><span class="va">False</span>, limit:Annotated<span class="op">=</span><span class="dv">50</span>, follow:Annotated<span class="op">=</span><span class="va">False</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Tail / follow the observability stores (CR-14).</em></p>
+<p>Default view: structured diagnostics records (worker logger output, EXACTLY job-stamped via the call envelope). <code>--chunks</code>: the raw stream pump. <code>--journal</code>: the durable account-of-action (job lifecycle, worker spawn/death, admission, config, runs, worker-reported accounts). <code>--follow</code> polls the store’s seq cursor — exact, no byte offsets.</p>
+<hr>
+</section>
+<section id="retention_command" class="level3">
+<h3 class="anchored" data-anchor-id="retention_command">retention_command</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> retention_command(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    max_age_days:Annotated<span class="op">=</span><span class="va">None</span>, max_total_mb:Annotated<span class="op">=</span><span class="va">None</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Apply the diagnostics retention policy now (CR-14).</em></p>
+<p>The explicit half of the invocation policy (CapabilityManager’s startup sweep is the automatic half). Defaults come from <code>cjm.yaml</code>’s <code>substrate.diagnostics_retention_days</code> / <code>diagnostics_retention_max_mb</code>. The JOURNAL is never touched — it has no retention surface by design.</p>
+</section>
+</section>
+<section id="remove-capability" class="level2">
+<h2 class="anchored" data-anchor-id="remove-capability">Remove Capability</h2>
+<p>The <code>remove</code> command removes a capability’s manifest and optionally its conda environment. It can look up the environment name from the manifest or a config file.</p>
+<hr>
+<section id="remove_capability" class="level3">
+<h3 class="anchored" data-anchor-id="remove_capability">remove_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> remove_capability(</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b7aa0</span><span class="op">&gt;</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    capabilities_path:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b63c0</span><span class="op">&gt;</span>,</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    keep_env:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f96040110</span><span class="op">&gt;</span>,</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    yes:<span class="bu">bool</span><span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f961b5e80</span><span class="op">&gt;</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Remove a capability’s manifest and conda environment.</em></p>
+</section>
+</section>
+<section id="validate-command-sg-6" class="level2">
+<h2 class="anchored" data-anchor-id="validate-command-sg-6">Validate Command (SG-6)</h2>
+<p>The <code>validate</code> command checks that a manifest JSON file or a <code>capabilities.yaml</code> file conforms to the substrate’s expected structure. Auto-detects format from the file extension (<code>.json</code> → manifest, <code>.yaml</code>/<code>.yml</code> → capabilities.yaml).</p>
+<p>Composes with CR-8 (manifest schema authority): the validator checks the nested v2.0 manifest layout. (The legacy flat v1.0 shape + its validator were removed at SG-48.)</p>
+<hr>
+<section id="validate_file" class="level3">
+<h3 class="anchored" data-anchor-id="validate_file">validate_file</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> validate_file(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    path:Path<span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f963f7b00</span><span class="op">&gt;</span>,</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">format</span>:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f963f7b30</span><span class="op">&gt;</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>SG-6 + T23: validate a manifest / capabilities.yaml / capability source.</em></p>
+<p>Auto-detects format from the path (<code>.json</code> → manifest, <code>.yaml</code>/<code>.yml</code> → capabilities.yaml, <code>.py</code> or a directory → source lint). The source lint is the CR-14 <code>logging.basicConfig</code> gate: <code>force=True</code> is an ERROR (it destroys the substrate diagnostics handler), a plain call is a WARNING. Exits non-zero with a list of validation errors if any check fails.</p>
+<hr>
+</section>
+<section id="list_secrets" class="level3">
+<h3 class="anchored" data-anchor-id="list_secrets">list_secrets</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> list_secrets(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d61e50</span><span class="op">&gt;</span>,</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    scope:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d608f0</span><span class="op">&gt;</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>List the secret KEY NAMES stored for a capability — never the values (CR-12).</em></p>
+<hr>
+</section>
+<section id="set_secret" class="level3">
+<h3 class="anchored" data-anchor-id="set_secret">set_secret</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_secret(</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d60c20</span><span class="op">&gt;</span>,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    key:<span class="bu">str</span><span class="op">=&lt;</span>typer.models.ArgumentInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d62600</span><span class="op">&gt;</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    value:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d62960</span><span class="op">&gt;</span>,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    scope:Optional<span class="op">=&lt;</span>typer.models.OptionInfo <span class="bu">object</span> at <span class="bn">0x7f3f94d60a40</span><span class="op">&gt;</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Store a capability secret in the project-local SecretStore (CR-12).</em></p>
+<p>The value is written to <data_dir>/secrets/secrets.json (0600) — never to capabilities.yaml, manifests, or the config store. Capabilities read it from their worker env at spawn. Omit –value to be prompted (hidden input) so the secret stays out of shell history. After setting, reload the capability (or restart the host) so its worker respawns with the new env — the GUI / CapabilityManager.set_capability_secret do this automatically.</data_dir></p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/cj-mills\.github\.io\/cjm-substrate");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>

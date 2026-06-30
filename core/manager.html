@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="Capability discovery, loading, and lifecycle management system">
+
+<title>Capability Manager – cjm-substrate</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-3d242d70d41cd9edc5ebe4da1d712dc5.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<meta property="og:title" content="Capability Manager – cjm-substrate">
+<meta property="og:description" content="Capability discovery, loading, and lifecycle management system">
+<meta property="og:site_name" content="cjm-substrate">
+<meta name="twitter:title" content="Capability Manager – cjm-substrate">
+<meta name="twitter:description" content="Capability discovery, loading, and lifecycle management system">
+<meta name="twitter:card" content="summary">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">cjm-substrate</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/manager.html">Capability Manager</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cjm-substrate</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../bootstrap.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Bootstrap</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">cli</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">core</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Task Adapter</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/adapter_manifest.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">core.adapter_manifest</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/capability.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tool Capability</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/config_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Config Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/diagnostics_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Diagnostics Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/empirical_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Empirical Resource Tracking</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/errors.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Error Taxonomy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/journal_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Journal Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manager.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Capability Manager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/manifest_format.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Manifest Format (v2.0)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/metadata.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Metadata</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/platform.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Platform Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/ports.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Composition Ports</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/proxy.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Remote Capability Proxy</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/queue.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Job Queue</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/scheduling.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scheduling</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/secret_store.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Capability Secret Store</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/telemetry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Substrate Telemetry Helpers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/wire.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Typed Wire Layer</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../core/worker.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Universal Worker</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">utils</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/cache_paths.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Cache Paths</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/hashing.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Content Hashing Utilities</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../utils/validation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Configuration Validation</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#capabilitymanager" id="toc-capabilitymanager" class="nav-link active" data-scroll-target="#capabilitymanager">CapabilityManager</a>
+  <ul class="collapse">
+  <li><a href="#capabilitymanager-1" id="toc-capabilitymanager-1" class="nav-link" data-scroll-target="#capabilitymanager-1">CapabilityManager</a></li>
+  </ul></li>
+  <li><a href="#cr-3-telemetry-system-monitor" id="toc-cr-3-telemetry-system-monitor" class="nav-link" data-scroll-target="#cr-3-telemetry-system-monitor">CR-3 Telemetry (System Monitor)</a>
+  <ul class="collapse">
+  <li><a href="#register_system_monitor" id="toc-register_system_monitor" class="nav-link" data-scroll-target="#register_system_monitor">register_system_monitor</a></li>
+  <li><a href="#get_global_stats" id="toc-get_global_stats" class="nav-link" data-scroll-target="#get_global_stats">get_global_stats</a></li>
+  <li><a href="#get_admission_profile" id="toc-get_admission_profile" class="nav-link" data-scroll-target="#get_admission_profile">get_admission_profile</a></li>
+  <li><a href="#get_instance_concurrency_cap" id="toc-get_instance_concurrency_cap" class="nav-link" data-scroll-target="#get_instance_concurrency_cap">get_instance_concurrency_cap</a></li>
+  </ul></li>
+  <li><a href="#manifest-discovery" id="toc-manifest-discovery" class="nav-link" data-scroll-target="#manifest-discovery">Manifest Discovery</a>
+  <ul class="collapse">
+  <li><a href="#discover_manifests" id="toc-discover_manifests" class="nav-link" data-scroll-target="#discover_manifests">discover_manifests</a></li>
+  <li><a href="#get_capabilities_compatible_with" id="toc-get_capabilities_compatible_with" class="nav-link" data-scroll-target="#get_capabilities_compatible_with">get_capabilities_compatible_with</a></li>
+  <li><a href="#check_adapter_compatibility" id="toc-check_adapter_compatibility" class="nav-link" data-scroll-target="#check_adapter_compatibility">check_adapter_compatibility</a></li>
+  <li><a href="#get_adapters_for_task" id="toc-get_adapters_for_task" class="nav-link" data-scroll-target="#get_adapters_for_task">get_adapters_for_task</a></li>
+  <li><a href="#get_capability_meta" id="toc-get_capability_meta" class="nav-link" data-scroll-target="#get_capability_meta">get_capability_meta</a></li>
+  <li><a href="#get_discovered_meta" id="toc-get_discovered_meta" class="nav-link" data-scroll-target="#get_discovered_meta">get_discovered_meta</a></li>
+  </ul></li>
+  <li><a href="#configuration-validation-persistence-helpers" id="toc-configuration-validation-persistence-helpers" class="nav-link" data-scroll-target="#configuration-validation-persistence-helpers">Configuration Validation + Persistence Helpers</a></li>
+  <li><a href="#cr-10-multi-instance-helpers" id="toc-cr-10-multi-instance-helpers" class="nav-link" data-scroll-target="#cr-10-multi-instance-helpers">CR-10 Multi-Instance Helpers</a>
+  <ul class="collapse">
+  <li><a href="#get_instance" id="toc-get_instance" class="nav-link" data-scroll-target="#get_instance">get_instance</a></li>
+  <li><a href="#list_instances" id="toc-list_instances" class="nav-link" data-scroll-target="#list_instances">list_instances</a></li>
+  <li><a href="#get_worker_env_status" id="toc-get_worker_env_status" class="nav-link" data-scroll-target="#get_worker_env_status">get_worker_env_status</a></li>
+  <li><a href="#missing_required_env" id="toc-missing_required_env" class="nav-link" data-scroll-target="#missing_required_env">missing_required_env</a></li>
+  <li><a href="#set_capability_secret" id="toc-set_capability_secret" class="nav-link" data-scroll-target="#set_capability_secret">set_capability_secret</a></li>
+  </ul></li>
+  <li><a href="#load-unload-lifecycle" id="toc-load-unload-lifecycle" class="nav-link" data-scroll-target="#load-unload-lifecycle">Load + Unload Lifecycle</a>
+  <ul class="collapse">
+  <li><a href="#load_capability" id="toc-load_capability" class="nav-link" data-scroll-target="#load_capability">load_capability</a></li>
+  <li><a href="#load_all" id="toc-load_all" class="nav-link" data-scroll-target="#load_all">load_all</a></li>
+  <li><a href="#unload_capability" id="toc-unload_capability" class="nav-link" data-scroll-target="#unload_capability">unload_capability</a></li>
+  <li><a href="#unload_all" id="toc-unload_all" class="nav-link" data-scroll-target="#unload_all">unload_all</a></li>
+  <li><a href="#get_capability" id="toc-get_capability" class="nav-link" data-scroll-target="#get_capability">get_capability</a></li>
+  <li><a href="#list_capabilities" id="toc-list_capabilities" class="nav-link" data-scroll-target="#list_capabilities">list_capabilities</a></li>
+  </ul></li>
+  <li><a href="#execution-resource-eviction" id="toc-execution-resource-eviction" class="nav-link" data-scroll-target="#execution-resource-eviction">Execution + Resource Eviction</a>
+  <ul class="collapse">
+  <li><a href="#execute_capability" id="toc-execute_capability" class="nav-link" data-scroll-target="#execute_capability">execute_capability</a></li>
+  <li><a href="#execute_capability_async" id="toc-execute_capability_async" class="nav-link" data-scroll-target="#execute_capability_async">execute_capability_async</a></li>
+  <li><a href="#execute_capability_task_async" id="toc-execute_capability_task_async" class="nav-link" data-scroll-target="#execute_capability_task_async">execute_capability_task_async</a></li>
+  <li><a href="#execute_capability_task" id="toc-execute_capability_task" class="nav-link" data-scroll-target="#execute_capability_task">execute_capability_task</a></li>
+  </ul></li>
+  <li><a href="#enable-disable-logs" id="toc-enable-disable-logs" class="nav-link" data-scroll-target="#enable-disable-logs">Enable / Disable + Logs</a>
+  <ul class="collapse">
+  <li><a href="#enable_capability" id="toc-enable_capability" class="nav-link" data-scroll-target="#enable_capability">enable_capability</a></li>
+  <li><a href="#disable_capability" id="toc-disable_capability" class="nav-link" data-scroll-target="#disable_capability">disable_capability</a></li>
+  <li><a href="#get_capability_diagnostics" id="toc-get_capability_diagnostics" class="nav-link" data-scroll-target="#get_capability_diagnostics">get_capability_diagnostics</a></li>
+  </ul></li>
+  <li><a href="#configuration-management" id="toc-configuration-management" class="nav-link" data-scroll-target="#configuration-management">Configuration Management</a>
+  <ul class="collapse">
+  <li><a href="#get_capability_config" id="toc-get_capability_config" class="nav-link" data-scroll-target="#get_capability_config">get_capability_config</a></li>
+  <li><a href="#get_capability_config_schema" id="toc-get_capability_config_schema" class="nav-link" data-scroll-target="#get_capability_config_schema">get_capability_config_schema</a></li>
+  <li><a href="#get_config_options" id="toc-get_config_options" class="nav-link" data-scroll-target="#get_config_options">get_config_options</a></li>
+  <li><a href="#get_all_capability_configs" id="toc-get_all_capability_configs" class="nav-link" data-scroll-target="#get_all_capability_configs">get_all_capability_configs</a></li>
+  <li><a href="#update_capability_config" id="toc-update_capability_config" class="nav-link" data-scroll-target="#update_capability_config">update_capability_config</a></li>
+  <li><a href="#reload_capability" id="toc-reload_capability" class="nav-link" data-scroll-target="#reload_capability">reload_capability</a></li>
+  <li><a href="#get_capability_stats" id="toc-get_capability_stats" class="nav-link" data-scroll-target="#get_capability_stats">get_capability_stats</a></li>
+  </ul></li>
+  <li><a href="#streaming-execution" id="toc-streaming-execution" class="nav-link" data-scroll-target="#streaming-execution">Streaming Execution</a>
+  <ul class="collapse">
+  <li><a href="#execute_capability_stream" id="toc-execute_capability_stream" class="nav-link" data-scroll-target="#execute_capability_stream">execute_capability_stream</a></li>
+  </ul></li>
+  <li><a href="#concurrent-load-unload-cr-10b" id="toc-concurrent-load-unload-cr-10b" class="nav-link" data-scroll-target="#concurrent-load-unload-cr-10b">Concurrent Load / Unload (CR-10b)</a>
+  <ul class="collapse">
+  <li><a href="#load_capability_async" id="toc-load_capability_async" class="nav-link" data-scroll-target="#load_capability_async">load_capability_async</a></li>
+  <li><a href="#unload_capability_async" id="toc-unload_capability_async" class="nav-link" data-scroll-target="#unload_capability_async">unload_capability_async</a></li>
+  <li><a href="#load_capabilities_concurrent" id="toc-load_capabilities_concurrent" class="nav-link" data-scroll-target="#load_capabilities_concurrent">load_capabilities_concurrent</a></li>
+  <li><a href="#unload_capabilities_concurrent" id="toc-unload_capabilities_concurrent" class="nav-link" data-scroll-target="#unload_capabilities_concurrent">unload_capabilities_concurrent</a></li>
+  </ul></li>
+  <li><a href="#capabilitybinding-sg-17" id="toc-capabilitybinding-sg-17" class="nav-link" data-scroll-target="#capabilitybinding-sg-17">CapabilityBinding (SG-17)</a>
+  <ul class="collapse">
+  <li><a href="#capabilitybinding" id="toc-capabilitybinding" class="nav-link" data-scroll-target="#capabilitybinding">CapabilityBinding</a></li>
+  <li><a href="#bind" id="toc-bind" class="nav-link" data-scroll-target="#bind">bind</a></li>
+  </ul></li>
+  <li><a href="#platform-queries-phase-5a" id="toc-platform-queries-phase-5a" class="nav-link" data-scroll-target="#platform-queries-phase-5a">Platform Queries (Phase 5a)</a>
+  <ul class="collapse">
+  <li><a href="#get_compatible_for_current_platform" id="toc-get_compatible_for_current_platform" class="nav-link" data-scroll-target="#get_compatible_for_current_platform">get_compatible_for_current_platform</a></li>
+  </ul></li>
+  <li><a href="#usage-examples" id="toc-usage-examples" class="nav-link" data-scroll-target="#usage-examples">Usage Examples</a>
+  <ul class="collapse">
+  <li><a href="#basic-usage" id="toc-basic-usage" class="nav-link" data-scroll-target="#basic-usage">Basic Usage</a></li>
+  <li><a href="#async-usage-fasthtml" id="toc-async-usage-fasthtml" class="nav-link" data-scroll-target="#async-usage-fasthtml">Async Usage (FastHTML)</a></li>
+  </ul></li>
+  </ul>
+<div class="toc-actions"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div><div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="manager.html.md"><i class="bi bi-file-code"></i>CommonMark</a></li></ul></div></nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../core/adapter.html">core</a></li><li class="breadcrumb-item"><a href="../core/manager.html">Capability Manager</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Capability Manager</h1>
+</div>
+
+<div>
+  <div class="description">
+    Capability discovery, loading, and lifecycle management system
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<!-- WARNING: THIS FILE WAS AUTOGENERATED! DO NOT EDIT! -->
+<section id="capabilitymanager" class="level2">
+<h2 class="anchored" data-anchor-id="capabilitymanager">CapabilityManager</h2>
+<p>The <code>CapabilityManager</code> orchestrates the complete lifecycle of capabilities in the process-isolated architecture:</p>
+<ul>
+<li><strong>Discovery</strong>: Finds capability manifests in local (<code>.cjm/manifests/</code>) or global (<code>~/.cjm/manifests/</code>) directories</li>
+<li><strong>Loading</strong>: Creates <code>RemoteCapabilityProxy</code> instances that spawn isolated Worker subprocesses</li>
+<li><strong>Execution</strong>: Forwards calls to Workers via HTTP, supports both sync and async</li>
+<li><strong>Lifecycle</strong>: Handles initialization, configuration updates, and cleanup</li>
+</ul>
+<pre><code>CapabilityManager                           Worker Subprocesses
+┌─────────────────┐                    ┌─────────────────────┐
+│ discover_       │                    │ Conda Env: Whisper  │
+│   manifests()   │     HTTP/JSON      │   └─ whisper        │
+│                 │◄──────────────────▶│                     │
+│ capabilities:        │                    └─────────────────────┘
+│   whisper ──────┼──► RemoteProxy     ┌─────────────────────┐
+│   gemini ───────┼──► RemoteProxy ◄──▶│ Conda Env: Gemini   │
+│                 │                    │   └─ gemini         │
+└─────────────────┘                    └─────────────────────┘</code></pre>
+<hr>
+<section id="capabilitymanager-1" class="level3">
+<h3 class="anchored" data-anchor-id="capabilitymanager-1">CapabilityManager</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> CapabilityManager(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    capability_interface:Type<span class="op">=</span>ToolCapability, <span class="co"># Base interface for type checking</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    search_paths:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Custom manifest search paths</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    scheduler:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Resource allocation policy</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    config_store:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-2: persistence backend; lazy LocalCapabilityConfigStore default per OQ-4</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    empirical_store:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-7: resource-usage tracking backend; lazy LocalEmpiricalResourceStore when cfg.substrate.empirical_tracking</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    secret_store:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-12: secret backend; lazy LocalSecretStore default (project-local &lt;data_dir&gt;/secrets)</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    max_retries:<span class="bu">int</span><span class="op">=</span><span class="dv">1</span>, <span class="co"># CR-7: how many reactive retries to attempt on CapabilityResourceError (default 1 — one retry after eviction)</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    sysmon_capability_name:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># monitor capability (CR-3) name for GPU subtree attribution; default-None records skip GPU attribution (compute axis only)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    journal_store:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-14: durable account-of-action; lazy LocalJournalStore at &lt;data_dir&gt;/journal.db</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    diagnostics_store:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-14: disposable diagnostic narrative; lazy LocalDiagnosticsStore at &lt;data_dir&gt;/diagnostics.db</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Manages capability discovery, loading, and lifecycle via process isolation.</em></p>
+</section>
+</section>
+<section id="cr-3-telemetry-system-monitor" class="level2">
+<h2 class="anchored" data-anchor-id="cr-3-telemetry-system-monitor">CR-3 Telemetry (System Monitor)</h2>
+<p>Bind a <code>MonitorToolProtocol</code> proxy and read system telemetry through CR-3’s typed surface. <code>_get_global_stats*</code> duck-types on the proxy’s typed accessor, falling back to the legacy dispatcher path for monitors that haven’t migrated.</p>
+<hr>
+<section id="register_system_monitor" class="level3">
+<h3 class="anchored" data-anchor-id="register_system_monitor">register_system_monitor</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> register_system_monitor(</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the system monitor capability</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Bind a loaded capability to act as the hardware system monitor.</em></p>
+<hr>
+</section>
+<section id="get_global_stats" class="level3">
+<h3 class="anchored" data-anchor-id="get_global_stats">get_global_stats</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> get_global_stats(</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># Current system telemetry</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Public async system-telemetry accessor (stage 3 / CR-16).</em></p>
+<p>The JobQueue’s multi-lane admission consumes this through the <code>JobQueueDependencies</code> protocol (defensively via getattr). Thin wrapper over <code>_get_global_stats_async</code> — same CR-3 duck-type semantics.</p>
+<hr>
+</section>
+<section id="get_admission_profile" class="level3">
+<h3 class="anchored" data-anchor-id="get_admission_profile">get_admission_profile</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_admission_profile(</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># {'gpu_memory_mb_peak_max','memory_mb_peak_max','sample_count'} or None</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Empirical resource profile for a loaded instance’s CURRENT config</em> (stage 3 / CR-16 multi-lane admission).</p>
+<p>Reads the CR-7 empirical store at the instance’s live <code>(instance_id, config_hash)</code> key — the SAME keying that records samples, so the profile always describes the configuration actually being run (a config change = a new hash = no record = the queue runs the job EXCLUSIVE until its first measurement run graduates it).</p>
+<p>None = no evidence (instance unknown / store disabled / no record for this config). The manifest’s <code>requires_gpu</code> is deliberately not part of this surface — GPU use is an empirical fact, not a declaration (stage-3 ledger G2).</p>
+<hr>
+</section>
+<section id="get_instance_concurrency_cap" class="level3">
+<h3 class="anchored" data-anchor-id="get_instance_concurrency_cap">get_instance_concurrency_cap</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_instance_concurrency_cap(</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># The instance's SG-33 max_concurrent_requests (None = unset)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Per-instance concurrency cap for queue admission (stage 3 / CR-16).</em></p>
+<p>Surfaces the SG-33 <code>max_concurrent_requests</code> setting. The queue treats None as 1 (same-worker concurrency is OPT-IN per capability — e.g. ffmpeg raises its cap because its sync endpoints run in a threadpool and concurrent converts genuinely parallelize as subprocesses; model workers stay serial-per-instance).</p>
+</section>
+</section>
+<section id="manifest-discovery" class="level2">
+<h2 class="anchored" data-anchor-id="manifest-discovery">Manifest Discovery</h2>
+<p>Read manifests from disk into typed <code>CapabilityMeta</code> (parsing Phase 5a resources), routing adapter manifests to the adapter registry. Stable cluster.</p>
+<hr>
+<section id="discover_manifests" class="level3">
+<h3 class="anchored" data-anchor-id="discover_manifests">discover_manifests</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> discover_manifests(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># List of discovered capability metadata</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Discover capabilities via JSON manifests in search paths.</em></p>
+<p>CR-8: reads each manifest via <code>load_manifest</code>, which parses the v2.0 nested layout into a typed <code>ManifestV2</code>. <code>meta.manifest</code> is set to a flat-shaped dict view so existing consumers (proxy, scheduling, execute path) continue working unchanged; the typed <code>ManifestV2</code> is also attached as <code>meta.manifest_v2</code> so drift detection + future typed callers can read <code>drift_tracking.config_schema_hash</code> without re-parsing.</p>
+<hr>
+</section>
+<section id="get_capabilities_compatible_with" class="level3">
+<h3 class="anchored" data-anchor-id="get_capabilities_compatible_with">get_capabilities_compatible_with</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capabilities_compatible_with(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    adapter:Union, <span class="co"># Adapter unit name or manifest</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># Discovered capability names whose surface satisfies the protocol</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2: the pass-2 compatibility query, manifest-surface-based.</em></p>
+<hr>
+</section>
+<section id="check_adapter_compatibility" class="level3">
+<h3 class="anchored" data-anchor-id="check_adapter_compatibility">check_adapter_compatibility</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> check_adapter_compatibility(</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    adapter:Union, <span class="co"># Adapter unit name or manifest</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Discovered capability (capability) name</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># Match verdict (see match_protocol_against_surface)</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2: surface-based compatibility verdict (host-side; works against</em> UNLOADED capabilities — manifest-vs-manifest, no protocol imports host-side).</p>
+<p>Matches the adapter’s recorded protocol members against the capability manifest’s recorded <code>structural_surface</code> (pass-2 Thread 3: the capability records only itself; the adapter declares the protocol; the substrate matches). A capability without a recorded surface (pre-fracture manifest) is NOT compatible until its manifest regenerates — staleness stays visible instead of silently mis-answering.</p>
+<hr>
+</section>
+<section id="get_adapters_for_task" class="level3">
+<h3 class="anchored" data-anchor-id="get_adapters_for_task">get_adapters_for_task</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_adapters_for_task(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    task_name:<span class="bu">str</span>, <span class="co"># Task name, e.g. "graph-storage"</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># Discovered adapter units serving the task</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2: the adapter-registry view — discovered adapter manifests for a task.</em></p>
+<hr>
+</section>
+<section id="get_capability_meta" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability_meta">get_capability_meta</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability_meta(</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the capability</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Capability metadata or None</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get metadata for a loaded capability by name.</em></p>
+<hr>
+</section>
+<section id="get_discovered_meta" class="level3">
+<h3 class="anchored" data-anchor-id="get_discovered_meta">get_discovered_meta</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_discovered_meta(</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the capability</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Capability metadata or None</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get metadata for a discovered (not necessarily loaded) capability by name.</em></p>
+</section>
+</section>
+<section id="configuration-validation-persistence-helpers" class="level2">
+<h2 class="anchored" data-anchor-id="configuration-validation-persistence-helpers">Configuration Validation + Persistence Helpers</h2>
+<p>SG-5 strict-by-default config validation against the manifest’s <code>config_schema</code>; SG-9 schema drift detection; CR-2 per-capability persistence via <code>CapabilityConfigStore</code>; deferred-on-disable hook bookkeeping. Stable cluster — these gates are settled.</p>
+</section>
+<section id="cr-10-multi-instance-helpers" class="level2">
+<h2 class="anchored" data-anchor-id="cr-10-multi-instance-helpers">CR-10 Multi-Instance Helpers</h2>
+<p>Validate explicit <code>instance_id</code> inputs against the constrained pattern, auto-generate unique IDs for <code>new_instance=True</code>, and query the per-instance state in <code>self.instances</code>. Closed by CR-10 core.</p>
+<hr>
+<section id="get_instance" class="level3">
+<h3 class="anchored" data-anchor-id="get_instance">get_instance</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_instance(</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or explicit instance_id</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional:</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Return the CapabilityInstance for <code>name_or_id</code>, or None if not loaded.</em></p>
+<p>Lookup is keyed by instance_id (which equals capability_name for default- loaded capabilities). Multi-instance IDs only exist in self.instances.</p>
+<hr>
+</section>
+<section id="list_instances" class="level3">
+<h3 class="anchored" data-anchor-id="list_instances">list_instances</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> list_instances(</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    capability_name:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># If given, filter to this capability's instances</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List:</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>List all loaded instances, optionally filtered by underlying capability name.</em></p>
+<hr>
+</section>
+<section id="get_worker_env_status" class="level3">
+<h3 class="anchored" data-anchor-id="get_worker_env_status">get_worker_env_status</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_worker_env_status(</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    name_or_meta:Any, <span class="co"># Capability name (loaded/discovered) or a CapabilityMeta</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    scope:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># SG-55 forward seam</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># Per-entry status dicts (secret values never returned)</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-12: per-entry satisfaction status of a capability’s worker-env contract.</em></p>
+<p>Each entry: {name, secret, required, satisfied, label, description}. <code>satisfied</code> means a value is resolvable (secret present in the store, or a visible var has a default/override). Secret VALUES are never returned — only whether one is set. The capability-config UI uses this to gate config display on required secrets being satisfied.</p>
+<hr>
+</section>
+<section id="missing_required_env" class="level3">
+<h3 class="anchored" data-anchor-id="missing_required_env">missing_required_env</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> missing_required_env(</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    name_or_meta:Any, <span class="co"># Capability name or CapabilityMeta</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    scope:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># SG-55 forward seam</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># Names of required worker-env entries with no resolvable value</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-12: names of required worker-env entries that are unsatisfied.</em></p>
+<hr>
+</section>
+<section id="set_capability_secret" class="level3">
+<h3 class="anchored" data-anchor-id="set_capability_secret">set_capability_secret</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> set_capability_secret(</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name or instance_id whose secret to set</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    key:<span class="bu">str</span>, <span class="co"># Secret key (the env-var name, e.g. "GEMINI_API_KEY")</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    value:<span class="bu">str</span>, <span class="co"># Secret value (stored via the SecretStore, never config/logs)</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    scope:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># SG-55 forward seam: per-principal scope</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">reload</span>:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># Respawn loaded worker(s) so the new env is injected</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if the secret was stored</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-12: store a capability secret, then respawn its worker(s) to inject it.</em></p>
+<p>Secrets are keyed by the underlying CAPABILITY name (not instance_id), so all instances of a capability share one credential — set the Gemini key once and every Gemini instance gets it at (re)spawn. Because worker env is fixed at spawn, the new value only reaches a <em>running</em> worker via a RESPAWN, so this reloads each loaded instance of the capability (unless <code>reload=False</code>, e.g.&nbsp;when provisioning a secret before the capability is loaded). This is the actuation seam both the CLI (<code>cjm-ctl set-secret</code>) and a future config UI call. Reload failures are logged, not raised.</p>
+</section>
+</section>
+<section id="load-unload-lifecycle" class="level2">
+<h2 class="anchored" data-anchor-id="load-unload-lifecycle">Load + Unload Lifecycle</h2>
+<p>Spawn / terminate capability workers. <code>load_capability</code> is the canonical entry; <code>unload_capability</code> handles canonical-vs-multi-instance cleanup (drops <code>CapabilityMeta</code> only when no instances remain for the capability). <code>get_capability</code> / <code>list_capabilities</code> are the simple-accessor surface. <strong>Mid-churn</strong> — CR-7 reactive resource management will touch <code>load_capability</code> lightly to initialize empirical resource tracking.</p>
+<hr>
+<section id="load_capability" class="level3">
+<h3 class="anchored" data-anchor-id="load_capability">load_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_capability(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    capability_meta:CapabilityMeta, <span class="co"># Capability metadata (with manifest attached)</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    config:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Initial configuration</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    strict:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># SG-5: reject unknown keys against manifest config_schema (default)</span></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a>    instance_id:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-10: explicit instance_id; None defaults to capability_name</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>    new_instance:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># CR-10: auto-generate `{name}-{hex}` instance_id (with instance_id=None)</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a>    max_concurrent_requests:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># SG-33 (CR-7): per-instance async concurrency cap; None = unbounded</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>    adapters:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: explicit adapter unit names (loud refusal on mismatch); None = auto-bind discovered compatibles</span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if successfully loaded</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Load a capability by spawning a Worker subprocess.</em></p>
+<p>CR-2: reads the persisted CapabilityConfigRecord from <code>self.config_store</code> before launching the worker. If a persisted record exists and the caller didn’t pass an explicit config, the persisted config is used as the effective input. The persisted <code>enabled</code> flag is applied to <code>capability_meta.enabled</code> so disabled capabilities stay disabled across process restarts.</p>
+<p>CR-10: optional <code>instance_id</code> allows multi-instance loading. - instance_id=None, new_instance=False (default): instance_id = capability_meta.name. Populates self.capabilities[capability_name] + self.instances [capability_name] together (single-instance backward compat). - instance_id=“custom”: validated against <code>[A-Za-z0-9_-]{1,64}</code>. Populates self.instances[custom]. Persistence is keyed by capability_name and only applied to the default instance. - instance_id=None, new_instance=True: auto-generates <code>{name}-{6-hex}</code>. Idempotent: re-load against an existing instance_id returns True without re-spawning.</p>
+<p>CR-7: computes <code>config_hash</code> from the effective config (post-defaults + post-validation) and stores it on the CapabilityInstance so execute_capability* can key empirical samples by (instance_id, config_hash). SG-33 stores <code>max_concurrent_requests</code> on the instance — the actual asyncio.Semaphore is lazy-created in execute_capability_async via <code>_get_concurrent_limiter</code>.</p>
+<hr>
+</section>
+<section id="load_all" class="level3">
+<h3 class="anchored" data-anchor-id="load_all">load_all</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> load_all(</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    configs:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Capability name -&gt; config mapping</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># Capability name -&gt; success mapping</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Discover and load all available capabilities.</em></p>
+<hr>
+</section>
+<section id="unload_capability" class="level3">
+<h3 class="anchored" data-anchor-id="unload_capability">unload_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> unload_capability(</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if successfully unloaded</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Unload a capability instance and terminate its Worker process (CR-10).</em></p>
+<p>If name_or_id resolves to the default instance (instance_id == capability_name) and no other instances remain for the same capability, also removes the CapabilityMeta from self.capabilities. Otherwise removes only the instance and clears CapabilityMeta.instance if it pointed at the unloaded canonical.</p>
+<hr>
+</section>
+<section id="unload_all" class="level3">
+<h3 class="anchored" data-anchor-id="unload_all">unload_all</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> unload_all(</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Unload all capability instances and terminate all Worker processes (CR-10).</em></p>
+<p>Iterates self.instances (CR-10 keying) rather than self.capabilities so all multi-instance entries get torn down, not just the canonical instances.</p>
+<hr>
+</section>
+<section id="get_capability" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability">get_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability(</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Capability proxy instance or None</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get a loaded capability’s proxy by name or instance_id (CR-10).</em></p>
+<p>Lookup order: self.instances first (covers both default capability_name and multi-instance IDs), falling back to CapabilityMeta.instance for any legacy code path that populated self.capabilities without self.instances (defensive — shouldn’t happen post-CR-10 since load_capability always records the instance).</p>
+<hr>
+</section>
+<section id="list_capabilities" class="level3">
+<h3 class="anchored" data-anchor-id="list_capabilities">list_capabilities</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> list_capabilities(</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># List of loaded capability metadata</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>List all loaded capabilities.</em></p>
+</section>
+</section>
+<section id="execution-resource-eviction" class="level2">
+<h2 class="anchored" data-anchor-id="execution-resource-eviction">Execution + Resource Eviction</h2>
+<p>The high-churn execute path. <strong>CR-7’s primary rewrite target</strong> — reactive retry + OOM recovery + bounded retries will land here without touching the stable cells above. Per-instance <code>_running_executions</code> tracking (keyed by <code>instance_id</code>) allows concurrent multi-instance executes without colliding on the deferred-disable coordination.</p>
+<hr>
+<section id="execute_capability" class="level3">
+<h3 class="anchored" data-anchor-id="execute_capability">execute_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_capability(</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL,</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    _task_name:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: route via the task channel (adapter task) instead of execute</span></span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    _method:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: adapter method (set with _task_name)</span></span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    kwargs:VAR_KEYWORD</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Capability result</span></span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Execute a capability instance’s main functionality (sync).</em></p>
+<p>CR-10: resolves <code>name_or_id</code> via self.instances; per-instance enabled flag gates execution. <code>_running_executions</code> tracks by instance_id so concurrent multi-instance executes don’t collide.</p>
+<p>CR-2: raises CapabilityDisabledError (typed) when the instance is disabled.</p>
+<p>CR-7: reactive retry on CapabilityResourceError — evicts other capabilities to free resources, then ALWAYS reloads the failing capability’s worker before the retry attempt. Track A (WorkerOOMError — worker died from SIGKILL) needs the reload because there’s no live worker to retry on. Track B (capability-raised CapabilityResourceError — worker still alive) ALSO reloads because PyTorch’s CUDA caching allocator can fragment post-OOM in ways the capability can’t clean up from within its own process; a fresh worker is the only reliable reset. Bounded by <code>self.max_retries</code> (default 1). Empirical sample recorded in the finally block — best-effort, doesn’t break execute on failure.</p>
+<hr>
+</section>
+<section id="execute_capability_async" class="level3">
+<h3 class="anchored" data-anchor-id="execute_capability_async">execute_capability_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> execute_capability_async(</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL,</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    _task_name:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: route via the task channel (adapter task) instead of execute</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    _method:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># CR-17 pt 2: adapter method (set with _task_name)</span></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    kwargs:VAR_KEYWORD</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Capability result</span></span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Execute a capability instance’s main functionality (async).</em></p>
+<p>CR-10 + CR-2: same semantics as execute_capability, async-flavored. Scheduler allocation goes through allocate_async for non-blocking polling.</p>
+<p>CR-7 + SG-33: reactive retry on CapabilityResourceError — always reloads before retry (Track A + Track B converge on the same reload path; see sync variant docstring for the rationale). Per-instance asyncio.Semaphore enforces the <code>max_concurrent_requests</code> cap (None = unbounded). Empirical sample recorded in the finally block.</p>
+<hr>
+</section>
+<section id="execute_capability_task_async" class="level3">
+<h3 class="anchored" data-anchor-id="execute_capability_task_async">execute_capability_task_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> execute_capability_task_async(</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    task_name:<span class="bu">str</span>, <span class="co"># Adapter task, e.g. "graph-storage"</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    method:<span class="bu">str</span>, <span class="co"># Adapter method, e.g. "query_nodes"</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>    kwargs:VAR_KEYWORD</span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Typed task result</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2: execute a typed task-adapter method (explicit task channel; async).</em></p>
+<p>Thin wrapper over <code>execute_capability_async</code> — CR-7 retry, SG-33 semaphore, admission and empirical sampling apply identically; this is the method the JobQueue’s task-addressed jobs invoke.</p>
+<hr>
+</section>
+<section id="execute_capability_task" class="level3">
+<h3 class="anchored" data-anchor-id="execute_capability_task">execute_capability_task</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_capability_task(</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default-loaded) or instance_id (multi-instance)</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    task_name:<span class="bu">str</span>, <span class="co"># Adapter task, e.g. "graph-storage"</span></span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    method:<span class="bu">str</span>, <span class="co"># Adapter method, e.g. "query_nodes"</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    kwargs:VAR_KEYWORD</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Any: <span class="co"># Typed task result</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-17 pt 2: execute a typed task-adapter method (explicit task channel; sync).</em></p>
+<p>Thin wrapper over <code>execute_capability</code> — the whole CR-7 retry / scheduler / empirical-sampling machinery applies identically to task-channel calls.</p>
+</section>
+</section>
+<section id="enable-disable-logs" class="level2">
+<h2 class="anchored" data-anchor-id="enable-disable-logs">Enable / Disable + Logs</h2>
+<p>CR-2 enable/disable surface: per-instance <code>enabled</code> flag with default-instance sync to <code>CapabilityMeta.enabled</code> + persistence via <code>CapabilityConfigStore</code> + deferred-on-disable hook fire-after-in-flight-job semantics. Plus the log-file tail reader. The capability-config UI library (Path C step 4) is the most likely consumer to extend the enable/disable behavior next.</p>
+<hr>
+<section id="enable_capability" class="level3">
+<h3 class="anchored" data-anchor-id="enable_capability">enable_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> enable_capability(</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if instance was enabled</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Enable a capability instance (CR-10 multi-instance aware).</em></p>
+<p>CR-2: persists the new state via <code>config_store</code> (default-instance only; persistence is per-capability, not per-instance) and fires the capability’s on_enable hook on state-change. Idempotent for already-enabled instances.</p>
+<hr>
+</section>
+<section id="disable_capability" class="level3">
+<h3 class="anchored" data-anchor-id="disable_capability">disable_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> disable_capability(</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if instance was disabled</span></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Disable a capability instance without unloading it (CR-10 multi-instance aware).</em></p>
+<p>CR-2: persists the new state (default-instance only) and fires the capability’s on_disable hook — but defers the hook until any in-flight job for THIS instance finishes (the per-instance <code>_running_executions</code> key is the instance_id, so a concurrent execute on a different instance of the same capability doesn’t gate this instance’s hook).</p>
+<hr>
+</section>
+<section id="get_capability_diagnostics" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability_diagnostics">get_capability_diagnostics</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability_diagnostics(</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name or instance_id</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    limit:<span class="bu">int</span><span class="op">=</span><span class="dv">50</span>, <span class="co"># Max records to return (most recent)</span></span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>    include_stream:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># Include raw stream chunks for the capability's worker sessions</span></span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">str</span>: <span class="co"># Rendered diagnostic text (most recent last)</span></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Render a capability’s recent diagnostics as text (CR-14; replaces</em> the retired flat-log accessor — the flat <code>.cjm/logs/*.log</code> files no longer exist).</p>
+<p>A convenience TEXT projection over the diagnostics store for operator / UI display: structured records (level + logger name + exact job id when stamped) merged with the raw stream chunks (prints / tqdm final frames / death rattles) from this capability’s worker sessions, ordered by time. Programmatic consumers query the stores directly (<code>manager.diagnostics_store</code> / <code>JobQueue.get_job_diagnostics</code>).</p>
+<p>Key features:</p>
+<ul>
+<li><strong>Local-first discovery</strong>: Manifests in <code>.cjm/manifests/</code> shadow global ones in <code>~/.cjm/manifests/</code></li>
+<li><strong>Process isolation</strong>: Each capability runs in its own subprocess with a dedicated Python interpreter</li>
+<li><strong>Dual execution modes</strong>: <code>execute_capability()</code> for sync, <code>execute_capability_async()</code> for async</li>
+<li><strong>Automatic cleanup</strong>: <code>unload_all()</code> terminates all Worker processes</li>
+</ul>
+</section>
+</section>
+<section id="configuration-management" class="level2">
+<h2 class="anchored" data-anchor-id="configuration-management">Configuration Management</h2>
+<p>Methods for managing capability configuration. These forward to the <code>RemoteCapabilityProxy</code> which communicates with the Worker over HTTP.</p>
+<hr>
+<section id="get_capability_config" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability_config">get_capability_config</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability_config(</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the capability</span></span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Current configuration or None</span></span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get the current configuration of a capability.</em></p>
+<hr>
+</section>
+<section id="get_capability_config_schema" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability_config_schema">get_capability_config_schema</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability_config_schema(</span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the capability</span></span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># JSON Schema or None</span></span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get the configuration JSON Schema for a capability.</em></p>
+<hr>
+</section>
+<section id="get_config_options" class="level3">
+<h3 class="anchored" data-anchor-id="get_config_options">get_config_options</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_config_options(</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># CR-11: live config option domains, or {} if unavailable</span></span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get a capability instance’s runtime config option providers (CR-11).</em></p>
+<p>Forwards to the worker’s get_config_options() - live enum domains + per-option metadata for dynamic config fields (e.g.&nbsp;an API model list). Kept separate from get_capability_config_schema (static, hashed for CR-8 drift); these options are the live companion the capability-config UI merges on top.</p>
+<p>Degrades to {} if the instance is missing or the worker call fails - the UI then falls back to the static schema. Typed-error surfacing for the UI consumer is deferred to the capability-config UI library (Path C Step 4).</p>
+<hr>
+</section>
+<section id="get_all_capability_configs" class="level3">
+<h3 class="anchored" data-anchor-id="get_all_capability_configs">get_all_capability_configs</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_all_capability_configs(</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># Capability name -&gt; config mapping</span></span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get current configuration for all loaded capabilities.</em></p>
+<hr>
+</section>
+<section id="update_capability_config" class="level3">
+<h3 class="anchored" data-anchor-id="update_capability_config">update_capability_config</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> update_capability_config(</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    config:Dict, <span class="co"># New configuration values</span></span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>    strict:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, <span class="co"># SG-5: reject unknown keys against manifest config_schema (default)</span></span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if successful</span></span>
+<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Update a capability instance’s configuration (CR-10 multi-instance aware).</em></p>
+<p>CR-2: on successful reconfigure, persists the new config (default instance only; multi-instance loads don’t persist). Per-instance <code>inst.config</code> is updated regardless. SG-5: validates against the underlying capability’s config_schema (per-capability, not per-instance, so all instances share the same schema).</p>
+<hr>
+</section>
+<section id="reload_capability" class="level3">
+<h3 class="anchored" data-anchor-id="reload_capability">reload_capability</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> reload_capability(</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    config:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Optional new configuration</span></span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>: <span class="co"># True if successful</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Reload a capability instance by terminating and restarting its Worker (CR-10).</em></p>
+<hr>
+</section>
+<section id="get_capability_stats" class="level3">
+<h3 class="anchored" data-anchor-id="get_capability_stats">get_capability_stats</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_capability_stats(</span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Optional: <span class="co"># Resource telemetry or None</span></span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Get resource usage stats for a capability instance’s Worker process (CR-10).</em></p>
+</section>
+</section>
+<section id="streaming-execution" class="level2">
+<h2 class="anchored" data-anchor-id="streaming-execution">Streaming Execution</h2>
+<p>Async streaming support for real-time results (e.g., transcription word-by-word).</p>
+<hr>
+<section id="execute_capability_stream" class="level3">
+<h3 class="anchored" data-anchor-id="execute_capability_stream">execute_capability_stream</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> execute_capability_stream(</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span>, <span class="co"># Capability name (default instance) or instance_id (multi-instance)</span></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    args:VAR_POSITIONAL, kwargs:VAR_KEYWORD</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>AsyncGenerator: <span class="co"># Async generator yielding results</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Execute a capability instance with streaming response (CR-10 multi-instance aware).</em></p>
+<p>Same per-instance resolution as execute_capability_async; scheduler allocation keys off the CapabilityMeta (capability-level), execution + bookkeeping key off the CapabilityInstance (per-instance).</p>
+</section>
+</section>
+<section id="concurrent-load-unload-cr-10b" class="level2">
+<h2 class="anchored" data-anchor-id="concurrent-load-unload-cr-10b">Concurrent Load / Unload (CR-10b)</h2>
+<p><code>load_capabilities_concurrent</code> / <code>unload_capabilities_concurrent</code> fan out capability spawns + teardowns across an asyncio gather, dropping host startup time from sum-of-spawns to max-of-spawn. The sync <code>load_capability</code> / <code>unload_capability</code> paths are unchanged; the async variants run them via <code>asyncio.to_thread</code> so the existing sync <code>_wait_for_ready</code> doesn’t block the event loop while the worker boots.</p>
+<p><code>CapabilityLoadSpec</code> (defined in <code>core.metadata</code>) collects the per-load parameters into one dataclass so a batch can be expressed as <code>List[CapabilityLoadSpec]</code>.</p>
+<p>Result shapes:</p>
+<ul>
+<li><code>load_capabilities_concurrent(...)</code> returns <code>Dict[str, Union[str, Exception]]</code> mapping the requested key (explicit <code>instance_id</code> if set, else <code>spec.meta.name</code>) → resolved <code>instance_id</code> on success or the raised <code>Exception</code> on failure.</li>
+<li><code>unload_capabilities_concurrent(...)</code> returns <code>Dict[str, Union[bool, Exception]]</code> mapping the input <code>name_or_id</code> → <code>True</code> on success or the raised <code>Exception</code> on failure.</li>
+</ul>
+<p><code>max_concurrency=None</code> (the default) means unbounded — every spec runs concurrently. Set an integer to cap simultaneous loads (useful when many capabilities share a constrained resource like GPU memory at boot). <code>fail_fast=False</code> (the default) collects every result via <code>asyncio.gather(..., return_exceptions=True)</code>; <code>fail_fast=True</code> re-raises the first exception and lets remaining tasks complete in the background.</p>
+<hr>
+<section id="load_capability_async" class="level3">
+<h3 class="anchored" data-anchor-id="load_capability_async">load_capability_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> load_capability_async(</span>
+<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>    capability_meta:CapabilityMeta, config:Optional<span class="op">=</span><span class="va">None</span>, strict:<span class="bu">bool</span><span class="op">=</span><span class="va">True</span>, instance_id:Optional<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>    new_instance:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span></span>
+<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>:</span>
+<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>load_capability</code> (CR-10b).</em></p>
+<p>Runs the existing sync <code>load_capability</code> via <code>asyncio.to_thread</code> so the blocking proxy spawn + <code>_wait_for_ready</code> doesn’t stall the event loop. Backward compat: identical behavior to the sync method, just non-blocking.</p>
+<hr>
+</section>
+<section id="unload_capability_async" class="level3">
+<h3 class="anchored" data-anchor-id="unload_capability_async">unload_capability_async</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> unload_capability_async(</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>    name_or_id:<span class="bu">str</span></span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="bu">bool</span>:</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Async variant of <code>unload_capability</code> (CR-10b).</em></p>
+<hr>
+</section>
+<section id="load_capabilities_concurrent" class="level3">
+<h3 class="anchored" data-anchor-id="load_capabilities_concurrent">load_capabilities_concurrent</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb41"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> load_capabilities_concurrent(</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>    specs:List, <span class="co"># Per-capability load specifications</span></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>    max_concurrency:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Cap simultaneous loads; None = unbounded</span></span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>    fail_fast:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span>, <span class="co"># Re-raise first exception (default: collect all results)</span></span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># requested_key → instance_id or Exception</span></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-10b: fan out capability loads concurrently via asyncio.gather.</em></p>
+<p>Each spec is loaded via <code>load_capability_async</code> (<code>asyncio.to_thread</code> under the hood). The total wall-clock drops from sum-of-spawns to max-of-spawns when <code>max_concurrency=None</code>. Capped concurrency uses an asyncio.Semaphore.</p>
+<p>Result keys come from <code>_spec_requested_key</code>: explicit <code>instance_id</code> if set, <code>{capability_name}#new[{index}]</code> for ambiguous new_instance specs, else <code>capability_name</code>. Successful entries map to the resolved instance_id (string); failures map to the raised exception (caught regardless of fail_fast value for non-fail-fast mode; re-raised in fail_fast=True).</p>
+<hr>
+</section>
+<section id="unload_capabilities_concurrent" class="level3">
+<h3 class="anchored" data-anchor-id="unload_capabilities_concurrent">unload_capabilities_concurrent</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> unload_capabilities_concurrent(</span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    name_or_ids:List, <span class="co"># Capability names or instance_ids to unload</span></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>    max_concurrency:Optional<span class="op">=</span><span class="va">None</span>, fail_fast:<span class="bu">bool</span><span class="op">=</span><span class="va">False</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>Dict: <span class="co"># name_or_id → True or Exception</span></span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>CR-10b: fan out capability unloads concurrently via asyncio.gather.</em></p>
+<p>Same concurrency + fail_fast semantics as load_capabilities_concurrent. Result keys are the input <code>name_or_ids</code> (deduplication is the caller’s responsibility; duplicate inputs produce one dict entry per unique key).</p>
+</section>
+</section>
+<section id="capabilitybinding-sg-17" class="level2">
+<h2 class="anchored" data-anchor-id="capabilitybinding-sg-17">CapabilityBinding (SG-17)</h2>
+<p>A <code>CapabilityBinding</code> is a pre-bound view of one capability through a shared <code>CapabilityManager</code>. Consumer services (8 audited in the substrate audit) have each been writing the same ~80-line wrapper class to hide the <code>manager + capability_name</code> pair behind a clean instance API — <code>whisper.execute(...)</code> rather than <code>manager.execute_capability("whisper", ...)</code>.</p>
+<p><code>CapabilityManager.bind(name, default_config=...)</code> returns one. The binding forwards every method call to the bound manager, supplying <code>capability_name</code> automatically. <code>default_config</code> is applied when <code>load()</code> is called without an explicit config.</p>
+<hr>
+<section id="capabilitybinding" class="level3">
+<h3 class="anchored" data-anchor-id="capabilitybinding">CapabilityBinding</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb43"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> CapabilityBinding(</span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>    manager:CapabilityManager, capability_name:<span class="bu">str</span>, default_config:Dict<span class="op">=&lt;</span>factory<span class="op">&gt;</span></span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span><span class="va">None</span>:</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Pre-bound view of a single capability through a shared CapabilityManager.</em></p>
+<p>Eliminates the wrapper-class duplication audited across 8 consumer services (SG-17). Methods forward to the manager with <code>capability_name</code> pre-supplied; <code>default_config</code> is the fallback used when <code>load()</code> is called without an explicit config (matches the manifest-default behavior in <code>load_capability</code>).</p>
+<hr>
+</section>
+<section id="bind" class="level3">
+<h3 class="anchored" data-anchor-id="bind">bind</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> bind(</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    capability_name:<span class="bu">str</span>, <span class="co"># Name of the capability to pre-bind</span></span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>    default_config:Optional<span class="op">=</span><span class="va">None</span>, <span class="co"># Default config used by binding.load()</span></span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>CapabilityBinding: <span class="co"># Bound view ready for instance-style use</span></span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Create a CapabilityBinding pre-bound to this manager + capability_name.</em></p>
+</section>
+</section>
+<section id="platform-queries-phase-5a" class="level2">
+<h2 class="anchored" data-anchor-id="platform-queries-phase-5a">Platform Queries (Phase 5a)</h2>
+<p>Substrate query API for filtering discovered capabilities by current-platform compatibility. The query is pure string-based — the substrate never imports the interface library to answer it, because <code>_generate_manifest</code>’s introspection script captured <code>resources.platforms</code> at install time inside the capability’s own conda env.</p>
+<ul>
+<li><code>get_compatible_for_current_platform()</code> — filters <code>discovered</code> by <code>resources.platforms</code>. Empty platforms list ≡ universal compatibility.</li>
+</ul>
+<hr>
+<section id="get_compatible_for_current_platform" class="level3">
+<h3 class="anchored" data-anchor-id="get_compatible_for_current_platform">get_compatible_for_current_platform</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb45"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_compatible_for_current_platform(</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>)<span class="op">-&gt;</span>List: <span class="co"># Capabilities compatible with current platform</span></span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><em>Phase 5a: return discovered capabilities compatible with the host platform.</em></p>
+<p>Filters by <code>resources.platforms</code>. Capabilities with an empty (or absent) platforms list are considered universally compatible — that’s the introspection-time convention when a capability author didn’t declare a platform constraint. Capabilities lacking the entire <code>resources</code> block (legacy / pre-Phase-5a manifests) also pass through as universal.</p>
+<p>Does NOT filter on <code>requires_gpu</code> — substrate doesn’t know whether a GPU is present without invoking a system monitor capability. Callers gate on GPU availability separately if needed.</p>
+</section>
+</section>
+<section id="usage-examples" class="level2">
+<h2 class="anchored" data-anchor-id="usage-examples">Usage Examples</h2>
+<section id="basic-usage" class="level3">
+<h3 class="anchored" data-anchor-id="basic-usage">Basic Usage</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> logging</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> cjm_substrate.core.manager <span class="im">import</span> CapabilityManager</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>logging.basicConfig(level<span class="op">=</span>logging.INFO)</span>
+<span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Create manager</span></span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a>manager <span class="op">=</span> CapabilityManager()</span>
+<span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Discover and load all capabilities from manifest directories</span></span>
+<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a>results <span class="op">=</span> manager.load_all()</span>
+<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Loaded: </span><span class="sc">{</span>results<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb46-12"><a href="#cb46-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-13"><a href="#cb46-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Execute a capability</span></span>
+<span id="cb46-14"><a href="#cb46-14" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> manager.execute_capability(<span class="st">"whisper-local"</span>, audio<span class="op">=</span><span class="st">"/path/to/audio.wav"</span>)</span>
+<span id="cb46-15"><a href="#cb46-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-16"><a href="#cb46-16" aria-hidden="true" tabindex="-1"></a><span class="co"># Update configuration (hot-reload)</span></span>
+<span id="cb46-17"><a href="#cb46-17" aria-hidden="true" tabindex="-1"></a>manager.update_capability_config(<span class="st">"whisper-local"</span>, {<span class="st">"model"</span>: <span class="st">"large-v3"</span>})</span>
+<span id="cb46-18"><a href="#cb46-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb46-19"><a href="#cb46-19" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean up all workers</span></span>
+<span id="cb46-20"><a href="#cb46-20" aria-hidden="true" tabindex="-1"></a>manager.unload_all()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="async-usage-fasthtml" class="level3">
+<h3 class="anchored" data-anchor-id="async-usage-fasthtml">Async Usage (FastHTML)</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> transcribe(audio_path: <span class="bu">str</span>):</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    manager <span class="op">=</span> CapabilityManager()</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>    manager.load_all()</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>        result <span class="op">=</span> <span class="cf">await</span> manager.execute_capability_async(<span class="st">"whisper-local"</span>, audio<span class="op">=</span>audio_path)</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> result</span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">finally</span>:</span>
+<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>        manager.unload_all()</span>
+<span id="cb47-10"><a href="#cb47-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb47-11"><a href="#cb47-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Streaming</span></span>
+<span id="cb47-12"><a href="#cb47-12" aria-hidden="true" tabindex="-1"></a><span class="cf">async</span> <span class="kw">def</span> transcribe_stream(audio_path: <span class="bu">str</span>):</span>
+<span id="cb47-13"><a href="#cb47-13" aria-hidden="true" tabindex="-1"></a>    manager <span class="op">=</span> CapabilityManager()</span>
+<span id="cb47-14"><a href="#cb47-14" aria-hidden="true" tabindex="-1"></a>    manager.load_all()</span>
+<span id="cb47-15"><a href="#cb47-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb47-16"><a href="#cb47-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb47-17"><a href="#cb47-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">async</span> <span class="cf">for</span> chunk <span class="kw">in</span> manager.execute_capability_stream(<span class="st">"whisper-local"</span>, audio<span class="op">=</span>audio_path):</span>
+<span id="cb47-18"><a href="#cb47-18" aria-hidden="true" tabindex="-1"></a>            <span class="cf">yield</span> chunk</span>
+<span id="cb47-19"><a href="#cb47-19" aria-hidden="true" tabindex="-1"></a>    <span class="cf">finally</span>:</span>
+<span id="cb47-20"><a href="#cb47-20" aria-hidden="true" tabindex="-1"></a>        manager.unload_all()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/cj-mills\.github\.io\/cjm-substrate");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<footer class="footer"><div class="nav-footer"><div class="nav-footer-center"><div class="toc-actions d-sm-block d-md-none"><ul><li><a href="https://github.com/cj-mills/cjm-substrate/issues/new" class="toc-action"><i class="bi bi-github"></i>Report an issue</a></li></ul></div></div></div></footer></body></html>
