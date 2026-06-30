@@ -8,6 +8,7 @@ Docs: https://cj-mills.github.io/cjm-substratecore/scheduling.html.md"""
 __all__ = ['ResourceScheduler', 'PermissiveScheduler', 'SafetyScheduler', 'QueueScheduler']
 
 # %% ../../nbs/core/scheduling.ipynb #9a7deef4
+import sys
 import time
 import asyncio
 from abc import ABC, abstractmethod
@@ -106,11 +107,11 @@ class SafetyScheduler(ResourceScheduler):
             available_vram = stats.get('gpu_free_memory_mb')
             
             if available_vram is None:
-                print("[Scheduler] Warning: No GPU stats available.")
+                print("[Scheduler] Warning: No GPU stats available.", file=sys.stderr)
                 return True
 
             if needed_vram > available_vram:
-                print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_vram}MB VRAM, has {available_vram}MB")
+                print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_vram}MB VRAM, has {available_vram}MB", file=sys.stderr)
                 return False
                 
         # Check System RAM
@@ -118,7 +119,7 @@ class SafetyScheduler(ResourceScheduler):
         available_ram = stats.get('memory_available_mb')
         
         if available_ram is not None and needed_ram > available_ram:
-            print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_ram}MB RAM, has {available_ram}MB")
+            print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_ram}MB RAM, has {available_ram}MB", file=sys.stderr)
             return False
             
         return True

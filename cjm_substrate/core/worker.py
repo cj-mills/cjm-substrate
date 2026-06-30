@@ -82,7 +82,7 @@ def parent_monitor(
                 raise psutil.NoSuchProcess(ppid)
             time.sleep(1)
     except (psutil.NoSuchProcess, ProcessLookupError):
-        print(f"[Worker {os.getpid()}] Parent {ppid} gone. Shutting down.")
+        print(f"[Worker {os.getpid()}] Parent {ppid} gone. Shutting down.", file=sys.stderr)
         # Use cross-platform self-termination
         terminate_self()
 
@@ -102,7 +102,7 @@ def _load_capability_instance(
         capability_cls = getattr(module, class_name)
         return capability_cls()
     except Exception as e:
-        print(f"FATAL: Failed to load {module_name}:{class_name} - {e}")
+        print(f"FATAL: Failed to load {module_name}:{class_name} - {e}", file=sys.stderr)
         sys.exit(1)
 
 # %% ../../nbs/core/worker.ipynb #45de0055

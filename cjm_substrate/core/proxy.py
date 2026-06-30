@@ -18,6 +18,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -291,8 +292,8 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
         env["CJM_DIAGNOSTICS_DB"] = str(diag_db)
     env["CJM_WORKER_SESSION_ID"] = self.worker_session_id
 
-    print(f"[{self.name}] Starting worker on port {self.port}...")
-    print(f"[{self.name}] Diagnostics: {diag_db or self.diagnostics} (session {self.worker_session_id[:8]})")
+    print(f"[{self.name}] Starting worker on port {self.port}...", file=sys.stderr)
+    print(f"[{self.name}] Diagnostics: {diag_db or self.diagnostics} (session {self.worker_session_id[:8]})", file=sys.stderr)
 
     # Get cross-platform process isolation kwargs
     isolation_kwargs = get_popen_isolation_kwargs()
@@ -347,7 +348,7 @@ def _wait_for_ready(
         try:
             with httpx.Client() as client:
                 client.get(f"{self.base_url}/health")
-            print(f"[{self.name}] Worker ready.")
+            print(f"[{self.name}] Worker ready.", file=sys.stderr)
             # CR-14: readiness is a journal event (startup latency rides along).
             self._journal_event(SubstrateEventType.WORKER_READY.value, {
                 "wait_seconds": round(time.time() - start, 3),
