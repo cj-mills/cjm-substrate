@@ -1497,13 +1497,26 @@ def _record_sample_safe(self, inst:CapabilityInstance, start_time:float, success
     try:
         worker_stats: Dict[str, Any] = {}
         if inst.proxy is not None:
-            try:
-                fetched = inst.proxy.get_stats()
-                if isinstance(fetched, dict):
-                    worker_stats = fetched
-            except Exception:
-                # Worker may be dead (WorkerOOMError path). Sample with zero stats.
-                pass
+            # The stats FETCH is a sync HTTP round-trip to the worker (~10ms) —
+            # per-op it dominates ms-scale ops 9:1, so it rides a short TTL cache
+            # (the queue's resource_snapshot_cadence_polls precedent). duration/
+            # success below stay exact per-op; cpu/mem peaks are ≤1Hz samples.
+            cache = getattr(self, '_worker_stats_cache', None)
+            if cache is None:
+                cache = self._worker_stats_cache = {}
+            cached = cache.get(inst.instance_id)
+            now = time.monotonic()
+            if cached is not None and (now - cached[0]) < 1.0:
+                worker_stats = cached[1]
+            else:
+                try:
+                    fetched = inst.proxy.get_stats()
+                    if isinstance(fetched, dict):
+                        worker_stats = fetched
+                        cache[inst.instance_id] = (now, fetched)
+                except Exception:
+                    # Worker may be dead (WorkerOOMError path). Sample with zero stats.
+                    pass
 
         # GPU subtree attribution via the shared helper. Returns None when no
         # sysmon is configured / reachable; returns 0.0 for CPU-only capabilities.

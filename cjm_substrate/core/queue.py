@@ -1928,7 +1928,8 @@ async def _execute_with_cancellation(
                 self._emit_cancel_phase(job, CancelPhase.COMPLETED)
                 raise asyncio.CancelledError()
 
-        await asyncio.sleep(0.1)
+        # Wake on completion instantly; the timeout only bounds cancel-flag latency.
+        await asyncio.wait({exec_task}, timeout=0.1)
 
     return exec_task.result()
 

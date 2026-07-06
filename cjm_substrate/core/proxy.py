@@ -12,6 +12,7 @@ __all__ = ['RemoteCapabilityProxy', 'execute_async', 'execute_stream_sync', 'exe
            'prefetch', 'prefetch_async', 'reconfigure', 'reconfigure_async']
 
 # %% ../../nbs/core/proxy.ipynb #exports
+import asyncio
 import json
 import logging
 import os
@@ -92,6 +93,11 @@ class RemoteCapabilityProxy(ToolCapability):
         self.diagnostics: DiagnosticsStore = diagnostics if diagnostics is not None else LocalDiagnosticsStore(cfg.diagnostics_db_path)
         self.worker_session_id: Optional[str] = None  # Set per spawn in _start_process
         self._pump_thread: Optional[threading.Thread] = None
+        # Persistent per-loop HTTP client for the async hot path (execute_async):
+        # keep-alive + the listener's TCP_NODELAY make a worker op sub-ms, vs
+        # ~10ms of per-request client setup. Dropped on worker (re)spawn.
+        self._async_client: Optional[httpx.AsyncClient] = None
+        self._async_client_loop: Optional[Any] = None
         # SG-4: bind the listening socket in the parent and (on Unix) pass the
         # FD to the worker via subprocess inheritance, closing the
         # bind-then-close-then-reopen TOCTOU race that would otherwise let
@@ -177,6 +183,9 @@ def _bind_listen_socket(self:RemoteCapabilityProxy) -> Tuple[socket.socket, int]
     The socket is kept open so its FD can be inherited by the worker
     subprocess (Unix). Returns (socket, port)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Accepted worker connections inherit TCP_NODELAY from the listener (Linux);
+    # without it, keep-alive requests stall ~40ms on Nagle + delayed-ACK.
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     sock.bind(('127.0.0.1', 0))
     sock.listen(128)
     return sock, sock.getsockname()[1]
@@ -236,6 +245,11 @@ def _start_process(self:RemoteCapabilityProxy) -> None:
     # journal events and every diagnostics row from this worker lifetime
     # together (the durable replacement for "--- Starting ---" markers).
     self.worker_session_id = str(uuid.uuid4())
+
+    # A fresh worker means any pooled keep-alive connections are dead — drop
+    # the cached async client so the next execute_async builds a new pool.
+    self._async_client = None
+    self._async_client_loop = None
 
     # SG-4: prefer FD inheritance over bind-then-close. `pass_fds` is
     # Unix-only; Windows falls back to the legacy port-handoff (TOCTOU
@@ -513,6 +527,24 @@ def _harvest_worker_accounts(
 RemoteCapabilityProxy._harvest_worker_accounts = _harvest_worker_accounts
 
 # %% ../../nbs/core/proxy.ipynb #async-methods
+def _ensure_async_client(self) -> httpx.AsyncClient:
+    """The persistent per-loop client behind `execute_async`.
+
+    `keepalive_expiry` stays UNDER uvicorn's 5s keep-alive timeout so the client
+    retires an idle connection before the worker closes it (no reuse-after-FIN
+    race). A client is bound to the loop it was created on — a new loop (or a
+    closed/dropped client) gets a fresh one."""
+    loop = asyncio.get_running_loop()
+    if (self._async_client is None or self._async_client.is_closed
+            or self._async_client_loop is not loop):
+        self._async_client = httpx.AsyncClient(
+            timeout=None, limits=httpx.Limits(keepalive_expiry=4.0))
+        self._async_client_loop = loop
+    return self._async_client
+
+RemoteCapabilityProxy._ensure_async_client = _ensure_async_client
+
+
 async def execute_async(
     self,
     *args,
@@ -524,8 +556,7 @@ async def execute_async(
     Same 409/200/other semantics as the sync `execute()` variant.
     """
     payload = self._prepare_payload(args, kwargs)
-    async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(f"{self.base_url}/execute", json=payload)
+    resp = await self._ensure_async_client().post(f"{self.base_url}/execute", json=payload)
     
     if resp.status_code == 409:
         # CR-4: see sync variant
@@ -777,8 +808,7 @@ async def execute_task_async(self, task_name: str, method: str, **kwargs) -> Any
     """Invoke a typed task-adapter method in-worker (CR-17 pt 2; async). Same semantics."""
     payload = self._prepare_task_payload(task_name, method, kwargs)
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
-            resp = await client.post(f"{self.base_url}/task", json=payload)
+        resp = await self._ensure_async_client().post(f"{self.base_url}/task", json=payload)
     except (httpx.ConnectError, httpx.RemoteProtocolError,
             httpx.ReadError, httpx.WriteError):
         self._check_worker_death()
