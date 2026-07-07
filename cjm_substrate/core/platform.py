@@ -7,9 +7,10 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.error import URLError
+from urllib.request import urlretrieve
 
 from cjm_substrate.core.config import CJMConfig
 
@@ -306,8 +307,8 @@ def download_micromamba(
             print(f"Downloading micromamba from {url}...")
         
         try:
-            urllib.request.urlretrieve(url, archive_path)
-        except urllib.error.URLError as e:
+            urlretrieve(url, archive_path)
+        except URLError as e:
             if show_progress:
                 print(f"Failed to download micromamba: {e}")
             return False
