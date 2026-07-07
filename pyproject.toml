@@ -10,17 +10,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "Apache-2.0"}
 authors = [{name = "Christian J. Mills", email = "9126128+cj-mills@users.noreply.github.com"}]
-keywords = ['nbdev', 'jupyter', 'notebook', 'python']
+keywords = ['python']
 classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 3 - Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
 dependencies = ['fastapi', 'fastcore', 'psutil', 'uvicorn', 'httpx', 'typer', 'pyyaml']
 
 [project.urls]
 Repository = "https://github.com/cj-mills/cjm-substrate"
-Documentation = "https://cj-mills.github.io/cjm-substrate"
-
-[project.entry-points.nbdev]
-cjm_substrate = "cjm_substrate._modidx:d"
-
 
 [project.scripts]
 cjm-ctl = "cjm_substrate.cli:app"
@@ -30,5 +25,3 @@ version = {attr = "cjm_substrate.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["cjm_substrate*"]
-
-[tool.nbdev]
