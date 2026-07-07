@@ -1,28 +1,25 @@
 """Resource scheduling policies for capability execution."""
 
-import asyncio
-import logging
-import sys
-import time
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable, Dict, Set
+from typing import Any, Awaitable, Callable, Dict
 
 from cjm_substrate.core.metadata import CapabilityMeta
-
-
-# SG-39: library modules use `logging.getLogger(__name__)` and let the host
-# (CLI entry point, FastHTML app, worker subprocess) own `basicConfig`.
 
 
 class ResourceScheduler(ABC):
     """Abstract base class for resource allocation policies.
 
     Schedulers are the POLICY half of a mechanism/policy split: capabilities
-    report stats (mechanism), schedulers decide allocation (policy) — so the
-    same capability ecosystem serves interactive apps (SafetyScheduler),
-    batch processing (QueueScheduler), and development (PermissiveScheduler).
+    report stats (mechanism), schedulers decide allocation (policy). The
+    manager defaults to `PermissiveScheduler`; hosts inject an alternative
+    through the `CapabilityManager(scheduler=...)` seam. Quantity-based
+    policies (the pre-CR-7 SafetyScheduler / QueueScheduler) read manifest
+    fields the CR-7 reactive-resource reframe dropped and were deleted —
+    resource safety now lives in the empirical layer (the queue's multi-lane
+    admission over `get_admission_profile` + `get_global_stats`, and the
+    manager's reactive retry/eviction path).
     """
-    
+
     @abstractmethod
     def allocate(
         self,
@@ -60,7 +57,7 @@ class ResourceScheduler(ABC):
 
 class PermissiveScheduler(ResourceScheduler):
     """Scheduler that allows all executions (Default / Dev Mode)."""
-    
+
     def allocate(
         self,
         capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
@@ -82,186 +79,3 @@ class PermissiveScheduler(ResourceScheduler):
     ) -> None:
         """No-op for permissive scheduler."""
         pass
-
-
-class SafetyScheduler(ResourceScheduler):
-    """Scheduler that prevents execution if resources are insufficient."""
-    
-    def _check_resources(
-        self,
-        capability_meta: CapabilityMeta,  # Capability metadata with manifest
-        stats: Dict[str, Any]  # Current system stats
-    ) -> bool:  # True if resources available
-        """Check if system has sufficient resources for the capability.
-
-        NOTE: the quantity keys read here (min_gpu_vram_mb /
-        min_system_ram_mb) were dropped from manifests by the CR-7
-        reactive-resource reframe (the V12 lint flags them as dead data), so
-        against a lint-clean manifest every quantity compares to 0 and this
-        check degenerates to allow — see the open on-graph FINDING from the
-        golden-reference triage.
-        """
-        reqs = {}
-        if hasattr(capability_meta, 'manifest'):
-            reqs = capability_meta.manifest.get('resources', {})
-            
-        if not reqs:
-            return True  # No requirements defined
-
-        # Check GPU Memory
-        if reqs.get('requires_gpu', False):
-            needed_vram = reqs.get('min_gpu_vram_mb', 0)
-            available_vram = stats.get('gpu_free_memory_mb')
-            
-            if available_vram is None:
-                print("[Scheduler] Warning: No GPU stats available.", file=sys.stderr)
-                return True
-
-            if needed_vram > available_vram:
-                print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_vram}MB VRAM, has {available_vram}MB", file=sys.stderr)
-                return False
-                
-        # Check System RAM
-        needed_ram = reqs.get('min_system_ram_mb', 0)
-        available_ram = stats.get('memory_available_mb')
-        
-        if available_ram is not None and needed_ram > available_ram:
-            print(f"[Scheduler] Blocked {capability_meta.name}: Needs {needed_ram}MB RAM, has {available_ram}MB", file=sys.stderr)
-            return False
-            
-        return True
-    
-    def allocate(
-        self,
-        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
-        stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
-    ) -> bool:  # True if resources are available
-        """Check resource requirements against system state."""
-        return self._check_resources(capability_meta, stats_provider())
-
-    def on_execution_start(
-        self,
-        capability_name: str  # Name of the capability starting execution
-    ) -> None:
-        """Called when execution starts (for future resource reservation)."""
-        pass
-
-    def on_execution_finish(
-        self,
-        capability_name: str  # Name of the capability finishing execution
-    ) -> None:
-        """Called when execution finishes (for future resource release)."""
-        pass
-
-
-class QueueScheduler(ResourceScheduler):
-    """Scheduler that waits for resources to become available."""
-    
-    def __init__(
-        self,
-        timeout: float = 300.0,  # Max seconds to wait for resources
-        poll_interval: float = 2.0  # Seconds between resource checks
-    ):
-        """Initialize queue scheduler with timeout and polling settings."""
-        self.timeout = timeout
-        self.poll_interval = poll_interval
-        self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
-        self._active_capabilities: Set[str] = set()  # Track capabilities with running executions
-
-    
-    def allocate(
-        self,
-        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
-        stats_provider: Callable[[], Dict[str, Any]]  # Function returning current stats
-    ) -> bool:  # True if resources become available before timeout
-        """Wait for resources using blocking sleep."""
-        start_time = time.time()
-        
-        while True:
-            stats = stats_provider()
-            if self._check_resources(capability_meta, stats):
-                return True
-            
-            if time.time() - start_time > self.timeout:
-                self.logger.error(f"Timeout waiting for resources for {capability_meta.name}")
-                return False
-                
-            self.logger.info(f"Resources busy. Waiting {self.poll_interval}s...")
-            time.sleep(self.poll_interval)
-
-    async def allocate_async(
-        self,
-        capability_meta: CapabilityMeta,  # Metadata of the capability requesting resources
-        stats_provider: Callable[[], Awaitable[Dict[str, Any]]]  # Async stats function
-    ) -> bool:  # True if resources become available before timeout
-        """Wait for resources using non-blocking async sleep."""
-        start_time = time.time()
-        
-        while True:
-            stats = await stats_provider()
-            if self._check_resources(capability_meta, stats):
-                return True
-            
-            if time.time() - start_time > self.timeout:
-                self.logger.error(f"Timeout waiting for resources for {capability_meta.name}")
-                return False
-                
-            self.logger.info(f"Resources busy. Yielding {self.poll_interval}s...")
-            await asyncio.sleep(self.poll_interval)
-
-    def on_execution_start(
-        self,
-        capability_name: str  # Name of the capability starting execution
-    ) -> None:
-        """Track that a capability has started executing."""
-        self._active_capabilities.add(capability_name)
-
-    def on_execution_finish(
-        self,
-        capability_name: str  # Name of the capability finishing execution
-    ) -> None:
-        """Track that a capability has finished executing."""
-        self._active_capabilities.discard(capability_name)
-
-    def _check_resources(
-        self,
-        capability_meta: CapabilityMeta,  # Capability metadata with manifest
-        stats: Dict[str, Any]  # Current system stats
-    ) -> bool:  # True if resources available
-        """Check if system has sufficient resources for the capability.
-
-        Same vestigial-quantity caveat as SafetyScheduler._check_resources:
-        the min_* keys were dropped by the CR-7 reframe (V12 lint), so this
-        never blocks against a lint-clean manifest — see the open FINDING.
-        """
-        reqs = {}
-        if hasattr(capability_meta, 'manifest'):
-            reqs = capability_meta.manifest.get('resources', {})
-
-        if not reqs:
-            return True
-
-        # Check GPU Memory
-        if reqs.get('requires_gpu', False):
-            needed_vram = reqs.get('min_gpu_vram_mb', 0)
-            available_vram = stats.get('gpu_free_memory_mb')
-            if available_vram is not None and needed_vram > available_vram:
-                return False
-
-        # Check System RAM
-        needed_ram = reqs.get('min_system_ram_mb', 0)
-        available_ram = stats.get('memory_available_mb')
-        if available_ram is not None and needed_ram > available_ram:
-            return False
-
-        return True
-
-    def get_active_capabilities(self) -> Set[str]:  # Set of currently executing capability names
-        """Get the set of capabilities with active executions.
-
-        Built to enable smart eviction (never evict a capability that is
-        mid-execution; idle ones are safe to release) — though no substrate
-        code consumes it yet; the CR-7 reactive-retry path does not consult
-        it (see the module-16/26 triage FINDING).
-        """
-        return self._active_capabilities.copy()
