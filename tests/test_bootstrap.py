@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cjm_substrate.bootstrap import Pipeline, _normalize_spec
+from cjm_substrate.bootstrap import Pipeline, _normalize_spec, create_pipeline
 from cjm_substrate.core.manager import CapabilityManager
 from cjm_substrate.core.queue import JobQueue
 
@@ -56,3 +56,14 @@ def test_pipeline_context_manager_starts_and_stops():
         mgr.unload_all.assert_called_once()
 
     asyncio.run(scenario())
+
+
+def test_create_pipeline_constructs_real_stack(tmp_path):
+    # Real-construction regression (soak FINDING a056e883): bootstrap passed
+    # JobQueue(manager=...) but the parameter is named deps — every real call
+    # raised TypeError while the mock-only tests stayed green.
+    pipeline = create_pipeline(search_paths=[tmp_path])
+    assert isinstance(pipeline, Pipeline)
+    assert isinstance(pipeline.manager, CapabilityManager)
+    assert isinstance(pipeline.queue, JobQueue)
+    assert pipeline.bindings == {}

@@ -115,5 +115,5 @@ def create_pipeline(
     if system_monitor:
         manager.register_system_monitor(system_monitor)
     
-    queue = JobQueue(manager=manager, **(queue_kwargs or {}))
+    queue = JobQueue(deps=manager, **(queue_kwargs or {}))
     return Pipeline(manager=manager, queue=queue, bindings=bindings)
