@@ -1113,3 +1113,41 @@ def test_task_channel_routing():
             await queue.stop()
 
     asyncio.run(scenario())
+
+
+def test_never_fits_job_fails_fast_instead_of_pending_forever():
+    # 532ea1da: a 9.5GB empirical peak can NEVER fit the 9GB budget (10GB × 0.9)
+    # — the poisoned-OOM-record case (voxtral-small live incident 2026-07-15).
+    # Pre-fix, the resources rung skipped the job on every scan and it pended
+    # forever; now it fails fast with a structured resource error, and a
+    # composition containing it reaches a TERMINAL status instead of hanging.
+    async def scenario():
+        never = {"gpu_memory_mb_peak_max": 9500.0, "memory_mb_peak_max": 100.0,
+                 "sample_count": 2}
+        deps = AdmissionDeps(profiles={"big": never}, stats=GPU_STATS)
+        deps.register("big", _slow)
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            jid = await queue.submit("big")
+            job = await queue.wait_for_job(jid, timeout=5.0)
+            assert job.status == JobStatus.failed
+            assert job.error is not None and job.error.category == "resource"
+            assert "never admissible" in job.error.message
+            assert job.error.retriable is False
+            assert job.error.resource_shortfall is not None
+            assert job.error.resource_shortfall.needed == 9500.0
+            assert job.error.resource_shortfall.available == 9000.0
+            assert deps.call_log == []  # the job never executed
+
+            # The composition path (the TUI probe's shape) must also terminate.
+            comp = Composition(nodes=[CompositionNode("n0", "big", {})])
+            comp_id = await queue.submit_composition(comp)
+            crun = await asyncio.wait_for(queue.wait_for_composition(comp_id),
+                                          timeout=5.0)
+            assert crun.status == NodeState.failed
+            assert "never admissible" in str(crun.node_runs["n0"].error)
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())

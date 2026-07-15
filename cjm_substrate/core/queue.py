@@ -15,7 +15,7 @@ from typing import (Any, AsyncIterator, Dict, List, Optional, Protocol, runtime_
 
 from cjm_substrate.core._telemetry import attribute_gpu_to_worker_subtree
 from cjm_substrate.core.diagnostics_store import DiagnosticRecord, DiagnosticsStore
-from cjm_substrate.core.errors import JobError, map_bare_exception_to_job_error
+from cjm_substrate.core.errors import JobError, map_bare_exception_to_job_error, ResourceShortfall
 from cjm_substrate.core.journal_store import (JournalEvent, JournalStore, LIVENESS_EVENT_TYPES,
                                               SubstrateEventType)
 from cjm_substrate.core.ports import (Composition, CompositionBindingError, CompositionRun,
@@ -330,6 +330,9 @@ class JobQueue:
         # reservation ledger covering admitted-but-not-yet-loaded models.
         self._running_exclusive: Set[str] = set()
         self._gpu_reservations: Dict[str, float] = {}
+        # Never-fits collection (532ea1da): (job, gpu_peak, budget) rows the scan
+        # popped as PERMANENTLY inadmissible; _process_loop fails them post-lock.
+        self._never_fits: List[Tuple['Job', float, float]] = []
 
         # Synchronization
         self._lock = asyncio.Lock()
@@ -1452,6 +1455,14 @@ class JobQueue:
                 break
             if gpu_peak > 0.0:
                 budget = float(gpu_total) * self.gpu_headroom_fraction
+                if gpu_peak > budget:
+                    # Never-fits (532ea1da): the empirical peak exceeds the WHOLE
+                    # budget — no reservation release can ever admit this job, so
+                    # pending-forever would be a hang, not a wait. Collected for a
+                    # post-lock fail-fast (terminal I/O never rides the locked
+                    # scan, same discipline as ADMISSION_DECIDED journaling).
+                    self._never_fits.append((job, gpu_peak, budget))
+                    continue
                 reserved = sum(self._gpu_reservations.values())
                 if reserved + gpu_peak > budget:
                     continue
@@ -1461,6 +1472,13 @@ class JobQueue:
                 continue
             chosen, chosen_exclusive, chosen_gpu_peak = job, False, gpu_peak
             break
+
+        # Never-fits rows leave pending NOW (under the caller's lock) so the next
+        # scan cannot re-collect them; the loop fails them once the lock releases.
+        if self._never_fits:
+            dead = {j.id for j, _, _ in self._never_fits}
+            self._pending = [j for j in self._pending if j.id not in dead]
+            heapq.heapify(self._pending)
 
         if chosen is None:
             return None
@@ -1478,6 +1496,51 @@ class JobQueue:
         if chosen_gpu_peak > 0.0:
             self._gpu_reservations[chosen.id] = chosen_gpu_peak
         return chosen
+
+    async def _fail_never_admissible(
+        self,
+        job: 'Job',       # The scanned-out never-admissible job (already off pending)
+        gpu_peak: float,  # Its empirical gpu_memory_mb_peak_max
+        budget: float,    # The admission budget it can never fit under
+    ) -> None:
+        """Fail a NEVER-ADMISSIBLE job fast instead of pending forever (532ea1da).
+
+        The live case: an OOM measurement run records a GPU peak above the whole
+        budget (total × headroom fraction). The empirical record then blocks the
+        instance on EVERY scan — across processes, because the store persists —
+        so without a terminal path the caller hangs. The outs belong to the
+        operator (reconfigure the instance, e.g. device=cpu / quantization, or
+        clear its empirical record), so the job fails with a structured resource
+        error naming the numbers. Terminal path mirrors _execute_job's finalize
+        minus lane/ledger release (the job never ran).
+        """
+        prev = job.status
+        job.status = JobStatus.failed
+        job.error = JobError(
+            category='resource',
+            message=(f"never admissible: empirical GPU peak {gpu_peak:.0f}MB exceeds "
+                     f"the admission budget {budget:.0f}MB (gpu_total × "
+                     f"{self.gpu_headroom_fraction:g} headroom) — reconfigure the "
+                     f"instance (e.g. device=cpu / quantization) or clear its "
+                     f"empirical record"),
+            retriable=False,
+            original_exc_repr='',
+            resource_shortfall=ResourceShortfall(
+                resource='gpu_vram_mb', needed=gpu_peak, available=budget),
+            capability_instance_id=job.capability_instance_id,
+            occurred_at=datetime.now(timezone.utc),
+        )
+        self.logger.error(f"Job {job.id[:8]} {job.error.message}")
+        self._emit_state_transition(job, prev)
+        if job.completed_at is None:
+            job.completed_at = datetime.now(timezone.utc)
+        async with self._lock:
+            # SG-13 ordering, same as _execute_job's finalize.
+            self._signal_job_completed(job.id)
+            self._move_to_history(job)
+        self._job_available.set()
+        if job.composition_id is not None:
+            await self._advance_composition(job)
 
     async def _process_loop(self) -> None:
         """Main dispatch loop (stage 3: multi-lane ready-set dispatch).
@@ -1510,12 +1573,20 @@ class JobQueue:
 
             async with self._lock:
                 job = self._pop_next_admissible(stats)
-                if job is None:
+                never_fits, self._never_fits = self._never_fits, []
+                if job is None and not never_fits:
                     # Nothing dispatchable (empty / lanes full / nothing
                     # admissible): sleep until a submit or completion changes
                     # the dispatch state.
                     self._job_available.clear()
                     continue
+
+            # Never-fits fail-fast (532ea1da): the terminal machinery runs after
+            # the lock releases, like the ADMISSION_DECIDED journaling below.
+            for nf_job, nf_peak, nf_budget in never_fits:
+                await self._fail_never_admissible(nf_job, nf_peak, nf_budget)
+            if job is None:
+                continue
 
             task = asyncio.create_task(self._execute_job(job))
             self._running_tasks[job.id] = task
