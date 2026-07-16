@@ -1139,3 +1139,73 @@ def test_gpu_subtree_attribution_without_sysmon_records_zero():
     assert len(pm.empirical_store.samples) == 1
     _, _, _, sample = pm.empirical_store.samples[0]
     assert sample.gpu_memory_mb_peak == 0.0
+
+
+def test_reactive_eviction_sees_named_instances_and_sizes_to_real_need():
+    """335023d6: reactive eviction must (a) see CR-10 NAMED instances (the
+    live-case resident whisper family was invisible to the meta-keyed candidate
+    set), (b) run largest-first sized to the needy instance's empirical GPU
+    peak — NOT CUDA's marginal shortfall, and (c) evict ALL idle GPU residents
+    when the needy instance is unprofiled (its measurement run). Mid-execute
+    instances and CPU-only residents are never candidates."""
+    pm = _build_cr7_test_pm()
+
+    class _ReleasingProxy(_CR7StubProxy):
+        def __init__(self, name):
+            super().__init__(name)
+            self.released = False
+        def release(self):
+            self.released = True
+
+    class _PeakStore:
+        def __init__(self):
+            self.peaks = {}
+        def get_record(self, instance_id, config_hash):
+            peak = self.peaks.get((instance_id, config_hash))
+            if peak is None:
+                return None
+            class _Rec:
+                gpu_memory_mb_peak_max = peak
+                memory_mb_peak_max = 100.0
+            return _Rec()
+
+    store = _PeakStore()
+    pm.empirical_store = store
+
+    def add(iid, peak, executing=False):
+        proxy = _ReleasingProxy(iid)
+        pm.instances[iid] = CapabilityInstance(
+            instance_id=iid, capability_name="cjm-capability-whisper",
+            proxy=proxy, config_hash=f"sha256:{iid}")
+        if peak is not None:
+            store.peaks[(iid, f"sha256:{iid}")] = peak
+        if executing:
+            pm._running_executions.add(iid)
+        return proxy
+
+    large_a = add("whisper--large-v2", 9912.0)
+    large_b = add("whisper--large-v3", 9912.0)
+    small = add("whisper--small", 1992.0)
+    cpu_only = add("cjm-capability-ffmpeg", 0.0)
+    busy = add("cjm-capability-voxtral-hf", 9506.0, executing=True)
+    add("whisper--medium", 3072.0)  # the needy instance (profiled case)
+
+    needed_meta = CapabilityMeta(name="cjm-capability-whisper", version="1.0.0")
+
+    # (b) profiled needy: target 3072MB -> ONE large goes (9912 covers it), rest stay
+    assert pm._reactive_evict_for(needed_meta,
+                                  needy_instance_id="whisper--medium") is True
+    assert large_a.released != large_b.released, "largest-first, ONE large suffices"
+    assert not small.released and not cpu_only.released and not busy.released
+    assert not pm.instances["whisper--medium"].proxy.released, "never evict the needy instance"
+
+    # (c) unprofiled needy: no target derivable -> ALL idle GPU residents go
+    for p in (large_a, large_b, small):
+        p.released = False
+    store.peaks.pop(("whisper--medium", "sha256:whisper--medium"))
+    assert pm._reactive_evict_for(needed_meta,
+                                  needy_instance_id="whisper--medium") is True
+    assert large_a.released and large_b.released and small.released, \
+        "unprofiled needy = clean the GPU (residents lazy-reload later)"
+    assert not cpu_only.released and not busy.released, \
+        "CPU-only + mid-execute instances are never candidates"

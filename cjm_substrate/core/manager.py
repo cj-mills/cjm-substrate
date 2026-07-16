@@ -1444,29 +1444,87 @@ class CapabilityManager:
     def _reactive_evict_for(
         self,
         needed_meta:CapabilityMeta,
-        shortfall:Optional[Any]=None,  # Optional ResourceShortfall from Track B; informational only
-    ) -> bool:
-        """CR-7: try to free resources after a CapabilityResourceError during execute.
-    
-        Wraps `_evict_for_resources` with reactive-flow logging. `_evict_for_resources`
-        itself extends to multi-axis + cost-aware candidate selection (drops the
-        GPU-only filter, prefers evicting empirically-expensive idle capabilities).
-    
-        `shortfall` is recorded for log context but doesn't currently steer
-        candidate selection beyond what _evict_for_resources already does via
-        its `needed_meta.resources` check. A future enhancement could pass it
-        through for axis-specific candidate filtering.
+        shortfall:Optional[Any]=None,  # ResourceShortfall from the failed execute (CUDA reports the MARGINAL allocation)
+        needy_instance_id:Optional[str]=None,  # The failing instance: empirical-need lookup + candidate exclusion
+    ) -> bool:  # True when at least one resident was evicted
+        """CR-7: free GPU room after a CapabilityResourceError during execute (335023d6).
+
+        Pre-fix this delegated to _evict_for_resources, which (a) drew candidates
+        from the per-NAME meta map, so CR-10 NAMED instances — the live case's
+        resident whisper family — were INVISIBLE to eviction, and (b) stopped on
+        scheduler.allocate(), whose quantity checks are dead against v2 manifests
+        (76441c91): ONE eviction of a possibly zero-GPU candidate "succeeded"
+        while ~21GB of idle models stayed resident and the retry re-OOMed.
+
+        Now: candidates are ALL loaded instances except the needy one and any
+        mid-execute; a candidate's footprint is its empirical GPU peak (unmeasured
+        = nothing known to free = skipped); eviction runs LARGEST-FIRST and stops
+        once the estimated freed total covers TARGET = max(the needy instance's
+        empirical GPU peak, shortfall.needed). When the needy instance is
+        UNPROFILED (its first, measurement run — the live case) the target is
+        unknowable, so EVERY idle GPU resident goes: the retry deserves a clean
+        GPU, and evicted residents lazy-reload on their next use.
         """
-        if shortfall is not None:
+        store = getattr(self, 'empirical_store', None)
+
+        def _gpu_peak(inst) -> float:
+            if store is None or inst is None or not getattr(inst, 'config_hash', None):
+                return 0.0
+            try:
+                rec = store.get_record(inst.instance_id, inst.config_hash)
+            except Exception:
+                return 0.0
+            return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
+
+        reported = float(getattr(shortfall, 'needed', 0.0) or 0.0)
+        needy_peak = _gpu_peak(self.instances.get(needy_instance_id)
+                               if needy_instance_id else None)
+        target = max(needy_peak, reported) if needy_peak > 0.0 else None
+        self.logger.info(
+            f"CR-7 reactive eviction for {needed_meta.name} "
+            f"(instance={needy_instance_id!r}, reported shortfall={reported:.0f}MB, "
+            f"target={f'{target:.0f}MB' if target is not None else 'ALL idle GPU residents (needy unprofiled)'})"
+        )
+
+        candidates = []
+        for inst in self.instances.values():
+            if needy_instance_id is not None and inst.instance_id == needy_instance_id:
+                continue
+            if inst.instance_id in self._running_executions:
+                continue  # never evict a mid-execute instance
+            if inst.proxy is None:
+                continue  # not actually resident
+            peak = _gpu_peak(inst)
+            if peak <= 0.0:
+                continue  # nothing known to free on the GPU
+            candidates.append((peak, inst))
+        candidates.sort(key=lambda pair: -pair[0])
+
+        freed = 0.0
+        evicted = 0
+        for peak, inst in candidates:
             self.logger.info(
-                f"CR-7 reactive eviction for {needed_meta.name} after CapabilityResourceError "
-                f"(shortfall={shortfall})"
+                f"Evicting idle GPU resident: {inst.instance_id} "
+                f"(~{peak:.0f}MB, last used {inst.last_executed})"
             )
-        else:
-            self.logger.info(
-                f"CR-7 reactive eviction for {needed_meta.name} after CapabilityResourceError"
+            if hasattr(inst.proxy, 'release'):
+                inst.proxy.release()
+            else:
+                # Reload preserves the instance's effective config (a named
+                # (capability, MODEL) instance must not reset to defaults).
+                self.reload_capability(inst.instance_id,
+                                       config=dict(inst.config) if inst.config else None)
+            time.sleep(0.5)  # release settle (mirrors the pre-fix pacing)
+            freed += peak
+            evicted += 1
+            if target is not None and freed >= target:
+                break
+        if evicted == 0:
+            self.logger.warning(
+                f"CR-7 reactive eviction for {needed_meta.name}: "
+                f"no idle GPU-resident candidates to evict"
             )
-        return self._evict_for_resources(needed_meta)
+        return evicted > 0
 
     def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
         """Attempt to free resources by unloading/releasing idle capabilities (LRU).
@@ -1593,6 +1651,7 @@ class CapabilityManager:
                 self._reactive_evict_for(
                     capability_meta,
                     getattr(last_resource_error, 'resource_shortfall', None),
+                    needy_instance_id=instance_id,
                 )
                 # CR-7: always reload — Track A (worker dead) needs it for any
                 # retry to hit a live worker; Track B (capability-raised, worker alive)
@@ -1704,6 +1763,7 @@ class CapabilityManager:
                 self._reactive_evict_for(
                     capability_meta,
                     getattr(last_resource_error, 'resource_shortfall', None),
+                    needy_instance_id=instance_id,
                 )
                 # CR-7: always reload — Track A worker-dead + Track B
                 # allocator-fragmentation both demand a fresh process.
