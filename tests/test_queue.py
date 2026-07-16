@@ -1151,3 +1151,38 @@ def test_never_fits_job_fails_fast_instead_of_pending_forever():
             await queue.stop()
 
     asyncio.run(scenario())
+
+
+def test_resident_blocked_job_surfaces_reason_then_clears_on_dispatch():
+    # c5bbd511: a profiled job that fits the BUDGET but not live FREE VRAM used
+    # to skip silently on every scan — with idle resident models holding the
+    # memory it pends forever (the 7-candidate TUI hang, 2026-07-16). The scan
+    # now surfaces the wait via BLOCK_REASON_CHANGED and clears it on dispatch.
+    async def scenario():
+        prof = {"gpu_memory_mb_peak_max": 8000.0, "memory_mb_peak_max": 100.0,
+                "sample_count": 2}
+        deps = AdmissionDeps(profiles={"big": prof},
+                             stats=dict(GPU_STATS, gpu_free_memory_mb=5000.0))
+        deps.register("big", _slow)
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            jid = await queue.submit("big")
+            await asyncio.sleep(0.1)  # let the dispatch loop scan + emit
+            job = queue.get_job(jid)
+            assert job.status == JobStatus.pending  # blocked, not failed/hung-fatal
+            assert job.block_reason is not None
+            assert "8000" in job.block_reason
+            assert "resident" in job.block_reason
+
+            # Residents release (external eviction / unload): the job dispatches
+            # and its reason clears through the same channel.
+            deps.stats = dict(GPU_STATS)  # 9500MB free again
+            queue._job_available.set()  # stats changes don't wake the loop themselves
+            done = await queue.wait_for_job(jid, timeout=5.0)
+            assert done.status == JobStatus.completed
+            assert done.block_reason is None
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())

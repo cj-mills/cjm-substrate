@@ -333,6 +333,10 @@ class JobQueue:
         # Never-fits collection (532ea1da): (job, gpu_peak, budget) rows the scan
         # popped as PERMANENTLY inadmissible; _process_loop fails them post-lock.
         self._never_fits: List[Tuple['Job', float, float]] = []
+        # Block-reason collection (c5bbd511): (job, reason-or-None) updates the
+        # scan observed; _process_loop emits them post-lock (journal I/O never
+        # rides the locked scan) and _emit_block_reason dedups repeats.
+        self._block_updates: List[Tuple['Job', Optional[str]]] = []
 
         # Synchronization
         self._lock = asyncio.Lock()
@@ -1337,12 +1341,13 @@ class JobQueue:
         job: Job,
         new_reason: Optional[str],
     ) -> None:
-        """Emit a BLOCK_REASON_CHANGED event (CR-6 Stage 4 — reserved).
+        """Emit a BLOCK_REASON_CHANGED event (CR-6 Stage 4).
 
         Updates `job.block_reason` and publishes an event with the prior + new
-        reason. Stage 4 ships this helper for future scheduler-integration use;
-        the queue's current scheduling logic doesn't surface block reasons, so
-        the helper is reserved for the eventual scheduler-coordination wiring.
+        reason. First consumer (c5bbd511): the admission scan surfaces jobs
+        blocked on resident-held VRAM through this channel — collected in-scan,
+        emitted post-lock by _process_loop. The same-reason no-op below is what
+        keeps a per-scan re-evaluation from spamming events/journal rows.
         """
         prev_reason = job.block_reason
         if prev_reason == new_reason:
@@ -1467,6 +1472,17 @@ class JobQueue:
                 if reserved + gpu_peak > budget:
                     continue
                 if gpu_peak > float(gpu_free):
+                    # Blocked on RESIDENT-held VRAM (c5bbd511): fits the budget
+                    # but not live free memory, and admission has no eviction
+                    # lever — the CR-7 reactive backstop can't fire on a job
+                    # that never dispatches, so this can pend indefinitely.
+                    # Surface the reason instead of skipping silently; the
+                    # string is stable per job so the _emit_block_reason dedup
+                    # absorbs the per-scan repeats.
+                    self._block_updates.append((job, (
+                        f"awaiting GPU VRAM: needs {gpu_peak:.0f}MB, held by "
+                        f"resident idle models (admission cannot evict them — "
+                        f"eviction-v2)")))
                     continue
             if mem_avail is not None and mem_peak > float(mem_avail):
                 continue
@@ -1495,6 +1511,9 @@ class JobQueue:
             self._running_exclusive.add(chosen.id)
         if chosen_gpu_peak > 0.0:
             self._gpu_reservations[chosen.id] = chosen_gpu_peak
+        if chosen.block_reason is not None:
+            # A previously-blocked job is dispatching — clear its reason.
+            self._block_updates.append((chosen, None))
         return chosen
 
     async def _fail_never_admissible(
@@ -1556,9 +1575,11 @@ class JobQueue:
         emitted AFTER the lock releases (sqlite I/O never rides the locked fast
         path; the decision detail is recovered from the admission ledgers the
         pop updated synchronously). Blocked jobs are NOT journaled per scan —
-        the scan loop re-evaluates them on every pass and would spam rows; the
-        reserved BLOCK_REASON_CHANGED transition channel is the place block
-        visibility lands when the scheduler-coordination wiring happens.
+        the scan loop re-evaluates them on every pass and would spam rows;
+        block visibility rides the BLOCK_REASON_CHANGED transition channel
+        instead (c5bbd511): the scan collects reason CHANGES, this loop emits
+        them post-lock, and the dedup in _emit_block_reason keeps it to one
+        row per transition.
         """
         while self._running_flag:
             await self._job_available.wait()
@@ -1574,12 +1595,21 @@ class JobQueue:
             async with self._lock:
                 job = self._pop_next_admissible(stats)
                 never_fits, self._never_fits = self._never_fits, []
+                block_updates, self._block_updates = self._block_updates, []
                 if job is None and not never_fits:
                     # Nothing dispatchable (empty / lanes full / nothing
                     # admissible): sleep until a submit or completion changes
-                    # the dispatch state.
+                    # the dispatch state. Block reasons still emit below —
+                    # the blocked-with-nothing-dispatchable pass IS the case
+                    # that used to hang silently (c5bbd511).
                     self._job_available.clear()
-                    continue
+
+            # Block-reason surfacing (c5bbd511): emitted after the lock releases
+            # (journal I/O never rides the locked scan); _emit_block_reason
+            # no-ops unchanged reasons, so steady-state blocked jobs journal
+            # exactly one row per reason transition.
+            for b_job, b_reason in block_updates:
+                self._emit_block_reason(b_job, b_reason)
 
             # Never-fits fail-fast (532ea1da): the terminal machinery runs after
             # the lock releases, like the ADMISSION_DECIDED journaling below.
