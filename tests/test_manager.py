@@ -1224,3 +1224,67 @@ def test_reactive_eviction_sees_named_instances_and_sizes_to_real_need():
                                   needy_instance_id="whisper--medium") is True
     assert large_a.released and large_b.released and small.released, \
         "failed-only needy record = clean sweep, never a 5184MB target"
+
+
+def test_admission_idle_eviction_frees_shortfall_with_exclusions():
+    """9b0c8eb1 (eviction-v2 A): evict_idle_gpu frees ~1.25x the shortfall
+    LARGEST-FIRST, never touching excluded instances (the queue's structural
+    hysteresis: in-flight + pending-targeted), mid-execute instances, or
+    CPU-only residents; returns the freed estimate (0.0 when nothing
+    qualifies — the caller's re-scan then re-blocks with reason)."""
+    pm = _build_cr7_test_pm()
+
+    class _ReleasingProxy(_CR7StubProxy):
+        def __init__(self, name):
+            super().__init__(name)
+            self.released = False
+        def release(self):
+            self.released = True
+
+    class _PeakStore:
+        def __init__(self):
+            self.peaks = {}
+        def get_record(self, instance_id, config_hash):
+            peak = self.peaks.get((instance_id, config_hash))
+            if peak is None:
+                return None
+            class _Rec:
+                gpu_memory_mb_peak_max = peak
+                memory_mb_peak_max = 100.0
+                success_rate = 1.0
+            return _Rec()
+
+    store = _PeakStore()
+    pm.empirical_store = store
+
+    def add(iid, peak, executing=False):
+        proxy = _ReleasingProxy(iid)
+        pm.instances[iid] = CapabilityInstance(
+            instance_id=iid, capability_name="cjm-capability-whisper",
+            proxy=proxy, config_hash=f"sha256:{iid}")
+        if peak is not None:
+            store.peaks[(iid, f"sha256:{iid}")] = peak
+        if executing:
+            pm._running_executions.add(iid)
+        return proxy
+
+    large_a = add("whisper--large-v2", 9912.0)
+    small = add("whisper--small", 1992.0)
+    pending_tgt = add("whisper--large-v3", 9912.0)  # queue-known pending target
+    cpu_only = add("cjm-capability-ffmpeg", 0.0)
+    busy = add("cjm-capability-voxtral-hf", 9506.0, executing=True)
+
+    # target = 3000 * 1.25 = 3750MB -> the largest NON-excluded resident
+    # (large-v2, 9912MB) covers it alone; everyone else stays.
+    freed = pm.evict_idle_gpu(3000.0, exclude_instance_ids=["whisper--large-v3"])
+    assert freed == 9912.0
+    assert large_a.released
+    assert not small.released and not pending_tgt.released
+    assert not cpu_only.released and not busy.released
+
+    # Everything evictable excluded -> nothing freed, no raise.
+    small.released = False
+    freed2 = pm.evict_idle_gpu(3000.0, exclude_instance_ids=[
+        "whisper--large-v2", "whisper--large-v3", "whisper--small"])
+    assert freed2 == 0.0
+    assert not small.released

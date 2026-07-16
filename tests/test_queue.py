@@ -55,6 +55,7 @@ class FakeDeps:
     def get_admission_profile(self, name_or_id): return None
     def get_instance_concurrency_cap(self, name_or_id): return None
     async def get_global_stats(self): return {}
+    def evict_idle_gpu(self, shortfall_mb, exclude_instance_ids): return 0.0
     async def execute_capability_task_async(self, name_or_id, task_name, method, **kwargs): return None
 
 
@@ -1182,6 +1183,80 @@ def test_resident_blocked_job_surfaces_reason_then_clears_on_dispatch():
             done = await queue.wait_for_job(jid, timeout=5.0)
             assert done.status == JobStatus.completed
             assert done.block_reason is None
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())
+
+
+def test_blocked_job_triggers_idle_eviction_and_dispatches():
+    # 9b0c8eb1 (eviction-v2 A): a resident-blocked job fires exactly ONE
+    # idle-eviction request (head-only + requester-side cooldown); the manager
+    # frees VRAM, the completion re-wakes the loop, and the re-scan admits the
+    # job — the c5bbd511 deadlock resolves without operator action.
+    async def scenario():
+        prof = {"gpu_memory_mb_peak_max": 8000.0, "memory_mb_peak_max": 100.0,
+                "sample_count": 2}
+        deps = AdmissionDeps(profiles={"big": prof},
+                             stats=dict(GPU_STATS, gpu_free_memory_mb=5000.0))
+        deps.register("big", _slow)
+        calls = []
+
+        def evict_idle_gpu(shortfall_mb, exclude_instance_ids):
+            calls.append((shortfall_mb, list(exclude_instance_ids)))
+            deps.stats = dict(GPU_STATS)  # residents released: 9500MB free again
+            return 8000.0
+
+        deps.evict_idle_gpu = evict_idle_gpu
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            jid = await queue.submit("big")
+            done = await queue.wait_for_job(jid, timeout=5.0)
+            assert done.status == JobStatus.completed
+            assert done.block_reason is None  # cleared at dispatch
+            assert calls == [(3000.0, [])]  # shortfall = 8000 need - 5000 free
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())
+
+
+def test_idle_eviction_excludes_inflight_and_pending_targets():
+    # 9b0c8eb1 structural hysteresis: the eviction request's exclude list
+    # carries in-flight instances AND residents that OTHER pending jobs target
+    # (skip-ahead drains those jobs first, then their models become evictable) —
+    # the anti-ping-pong guard that replaced a victim-side time window in v1.
+    async def scenario():
+        prof = {"gpu_memory_mb_peak_max": 8000.0, "memory_mb_peak_max": 100.0,
+                "sample_count": 2}
+        deps = AdmissionDeps(profiles={"big": prof, "big2": prof,
+                                       "runner": CPU_PROFILE},
+                             stats=dict(GPU_STATS, gpu_free_memory_mb=5000.0))
+        for name in ("big", "big2", "runner"):
+            deps.register(name, _slow)
+        calls = []
+
+        def evict_idle_gpu(shortfall_mb, exclude_instance_ids):
+            calls.append(sorted(exclude_instance_ids))
+            deps.stats = dict(GPU_STATS)
+            return 8000.0
+
+        deps.evict_idle_gpu = evict_idle_gpu
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            rid = await queue.submit("runner")  # CPU-profiled: dispatches
+            await _wait_until_running(queue, rid)
+            j1 = await queue.submit("big")   # head: resident-blocked, fires request
+            j2 = await queue.submit("big2")  # sibling blocked: pending target, no request
+            d1 = await queue.wait_for_job(j1, timeout=5.0)
+            d2 = await queue.wait_for_job(j2, timeout=5.0)
+            assert d1.status == JobStatus.completed
+            assert d2.status == JobStatus.completed
+            # ONE request (head-only), excluding the in-flight runner and the
+            # pending sibling's instance.
+            assert calls == [["big2", "runner"]]
         finally:
             await queue.stop()
 

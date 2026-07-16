@@ -5,6 +5,7 @@ Priority dispatch (higher first, FIFO within a priority) across independent lane
 import asyncio
 import heapq
 import logging
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
@@ -114,6 +115,10 @@ class JobQueueDependencies(Protocol):
     def get_admission_profile(self, name_or_id: str) -> Optional[Dict[str, Any]]: ...
     def get_instance_concurrency_cap(self, name_or_id: str) -> Optional[int]: ...
     async def get_global_stats(self) -> Dict[str, Any]: ...
+    # Eviction-v2 A (9b0c8eb1) admission-eviction seam — consumed defensively
+    # like the rest of stage 3: a deps without it leaves blocked jobs blocked
+    # (visible via BLOCK_REASON_CHANGED), exactly the pre-A behavior.
+    def evict_idle_gpu(self, shortfall_mb: float, exclude_instance_ids: List[str]) -> float: ...
     # Stage 4 (CR-17 pt 2) task channel — invoked only for task-addressed jobs
     # (Job.task_name set); execute-channel jobs never touch it, so older test
     # doubles keep working unchanged.
@@ -265,6 +270,7 @@ class JobQueue:
         resource_snapshot_cadence_polls: int = 4,  # Sample resources every Nth progress poll
         max_concurrent_lanes: int = 4,     # Stage 3: max in-flight jobs (admission still gates each)
         gpu_headroom_fraction: float = 0.9,  # Stage 3: blunt GPU admission margin (budget = total * fraction)
+        evict_cooldown_seconds: float = 15.0,  # Eviction-v2 A: min seconds between idle-eviction requests for the SAME blocked job
         journal: Optional[JournalStore] = None,  # CR-14: journal sink; defaults to deps.journal_store (the manager's)
         diagnostics: Optional[DiagnosticsStore] = None,  # CR-14: diagnostics sink for get_job_diagnostics; defaults to deps.diagnostics_store
     ):
@@ -291,6 +297,7 @@ class JobQueue:
         self.resource_snapshot_cadence_polls = max(1, resource_snapshot_cadence_polls)
         self.max_concurrent_lanes = max(1, max_concurrent_lanes)
         self.gpu_headroom_fraction = gpu_headroom_fraction
+        self.evict_cooldown_seconds = evict_cooldown_seconds
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
 
         # CR-14: observability stores (journal-primary emission). The wedge
@@ -337,6 +344,13 @@ class JobQueue:
         # scan observed; _process_loop emits them post-lock (journal I/O never
         # rides the locked scan) and _emit_block_reason dedups repeats.
         self._block_updates: List[Tuple['Job', Optional[str]]] = []
+        # Eviction-v2 A (9b0c8eb1): at most ONE idle-eviction request per scan
+        # (head-only — the highest-priority resident-blocked job), fired as a
+        # post-lock task; the per-job monotonic stamp is the requester-side
+        # cooldown so a still-blocked job cannot busy-fire eviction.
+        self._evict_request: Optional[Tuple['Job', float, List[str]]] = None
+        self._evict_last_request: Dict[str, float] = {}
+        self._evict_tasks: Set[asyncio.Task] = set()
 
         # Synchronization
         self._lock = asyncio.Lock()
@@ -1194,6 +1208,16 @@ class JobQueue:
                 t.cancel()
         self._running_tasks.clear()
 
+        # Eviction-v2 A: drain any in-flight idle-eviction request the same way
+        # (the manager's evict loop runs in a thread; a dangling task at loop
+        # close would warn and skip its wake-up poke).
+        etasks = [t for t in self._evict_tasks if not t.done()]
+        if etasks:
+            done, pending = await asyncio.wait(etasks, timeout=5.0)
+            for t in pending:
+                t.cancel()
+        self._evict_tasks.clear()
+
         # Restore previous retry observer (if any). Best-effort — same setattr
         # caveats as start().
         try:
@@ -1259,6 +1283,7 @@ class JobQueue:
 
     def _move_to_history(self, job: Job) -> None:
         """Move a job to history, maintaining max_history limit."""
+        self._evict_last_request.pop(job.id, None)  # terminal: drop its cooldown stamp
         self._history.append(job)
         if len(self._history) > self.max_history:
             old_job = self._history.pop(0)
@@ -1473,16 +1498,29 @@ class JobQueue:
                     continue
                 if gpu_peak > float(gpu_free):
                     # Blocked on RESIDENT-held VRAM (c5bbd511): fits the budget
-                    # but not live free memory, and admission has no eviction
-                    # lever — the CR-7 reactive backstop can't fire on a job
-                    # that never dispatches, so this can pend indefinitely.
-                    # Surface the reason instead of skipping silently; the
-                    # string is stable per job so the _emit_block_reason dedup
-                    # absorbs the per-scan repeats.
+                    # but not live free memory. Surface the reason (stable
+                    # string; _emit_block_reason dedups the per-scan repeats)
+                    # and request idle eviction for the HEAD blocked job only
+                    # (eviction-v2 A, 9b0c8eb1). Structural victim hysteresis:
+                    # in-flight instances and residents that OTHER pending jobs
+                    # target are excluded — skip-ahead drains those jobs first,
+                    # then their models become evictable. The per-job cooldown
+                    # keeps a still-blocked job from busy-firing requests.
                     self._block_updates.append((job, (
                         f"awaiting GPU VRAM: needs {gpu_peak:.0f}MB, held by "
-                        f"resident idle models (admission cannot evict them — "
+                        f"resident idle models (idle eviction requested — "
                         f"eviction-v2)")))
+                    now = time.monotonic()
+                    if (self._evict_request is None
+                            and now - self._evict_last_request.get(job.id, -1e9)
+                            >= self.evict_cooldown_seconds):
+                        busy = {j.capability_instance_id
+                                for j in self._running.values()}
+                        pending_targets = {j.capability_instance_id
+                                           for j in self._pending if j.id != job.id}
+                        self._evict_request = (job, gpu_peak - float(gpu_free),
+                                               sorted(busy | pending_targets))
+                        self._evict_last_request[job.id] = now
                     continue
             if mem_avail is not None and mem_peak > float(mem_avail):
                 continue
@@ -1561,6 +1599,35 @@ class JobQueue:
         if job.composition_id is not None:
             await self._advance_composition(job)
 
+    async def _request_idle_eviction(
+        self,
+        job: 'Job',           # The head blocked job the request serves
+        shortfall_mb: float,  # Empirical peak minus live free VRAM at scan time
+        exclude: List[str],   # In-flight + pending-targeted instance ids (structural hysteresis)
+    ) -> None:
+        """Fire an admission-side idle-eviction request (eviction-v2 A, 9b0c8eb1).
+
+        Defensive-getattr like the rest of the stage-3 deps surface: a deps
+        without the seam leaves the job blocked with its reason visible (the
+        c5bbd511 C channel) — exactly the pre-A behavior. The manager's evict
+        loop is sync and sleeps between releases, so it runs in a thread; ANY
+        completion (freed or not) re-wakes the dispatch loop so the next scan
+        re-evaluates against fresh telemetry.
+        """
+        fn = getattr(self._deps, 'evict_idle_gpu', None)
+        if not callable(fn):
+            return
+        try:
+            freed = await asyncio.to_thread(fn, shortfall_mb, exclude)
+            self.logger.info(
+                f"Idle-eviction request for job {job.id[:8]} "
+                f"(shortfall {shortfall_mb:.0f}MB): ~{float(freed or 0.0):.0f}MB freed")
+        except Exception as e:
+            self.logger.warning(
+                f"Idle-eviction request for job {job.id[:8]} failed: {e}")
+        finally:
+            self._job_available.set()
+
     async def _process_loop(self) -> None:
         """Main dispatch loop (stage 3: multi-lane ready-set dispatch).
 
@@ -1596,6 +1663,7 @@ class JobQueue:
                 job = self._pop_next_admissible(stats)
                 never_fits, self._never_fits = self._never_fits, []
                 block_updates, self._block_updates = self._block_updates, []
+                evict_request, self._evict_request = self._evict_request, None
                 if job is None and not never_fits:
                     # Nothing dispatchable (empty / lanes full / nothing
                     # admissible): sleep until a submit or completion changes
@@ -1610,6 +1678,17 @@ class JobQueue:
             # exactly one row per reason transition.
             for b_job, b_reason in block_updates:
                 self._emit_block_reason(b_job, b_reason)
+
+            # Eviction-v2 A (9b0c8eb1), fire-and-re-scan: the manager's evict
+            # loop is sync and sleeps between releases, so it runs as a task
+            # (thread inside) off the dispatch loop; its completion pokes
+            # _job_available and the next scan re-evaluates against fresh
+            # telemetry — admitting the job or re-blocking it with reason.
+            if evict_request is not None:
+                etask = asyncio.create_task(
+                    self._request_idle_eviction(*evict_request))
+                self._evict_tasks.add(etask)
+                etask.add_done_callback(self._evict_tasks.discard)
 
             # Never-fits fail-fast (532ea1da): the terminal machinery runs after
             # the lock releases, like the ADMISSION_DECIDED journaling below.

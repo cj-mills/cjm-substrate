@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field as _field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Type, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, Type, Union
 
 from cjm_substrate.core._telemetry import attribute_gpu_to_worker_subtree
 from cjm_substrate.core.adapter_manifest import (adapter_manifest_from_dict, AdapterManifest,
@@ -1466,16 +1466,6 @@ class CapabilityManager:
         GPU, and evicted residents lazy-reload on their next use.
         """
         store = getattr(self, 'empirical_store', None)
-
-        def _gpu_peak(inst) -> float:
-            if store is None or inst is None or not getattr(inst, 'config_hash', None):
-                return 0.0
-            try:
-                rec = store.get_record(inst.instance_id, inst.config_hash)
-            except Exception:
-                return 0.0
-            return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
-
         reported = float(getattr(shortfall, 'needed', 0.0) or 0.0)
         available = float(getattr(shortfall, 'available', 0.0) or 0.0)
         needy_rec = None
@@ -1505,9 +1495,43 @@ class CapabilityManager:
             f"target={f'{target:.0f}MB' if target is not None else 'ALL idle GPU residents (needy unprofiled)'})"
         )
 
+        freed, evicted = self._evict_gpu_residents(
+            target, exclude={needy_instance_id} if needy_instance_id else None)
+        if evicted == 0:
+            self.logger.warning(
+                f"CR-7 reactive eviction for {needed_meta.name}: "
+                f"no idle GPU-resident candidates to evict"
+            )
+        return evicted > 0
+
+    def _evict_gpu_residents(
+        self,
+        target:Optional[float],       # MB to free (None = evict EVERY idle GPU resident)
+        exclude:Optional[Set[str]]=None,  # instance_ids never to touch (needy / queue-known busy or pending-targeted)
+    ) -> Tuple[float, int]:  # (estimated MB freed, residents evicted)
+        """The shared largest-first idle-GPU evict loop (CR-7 + eviction-v2 A).
+
+        Candidates are ALL loaded instances except `exclude` and any mid-execute;
+        a candidate's footprint is its empirical GPU peak (unmeasured = nothing
+        known to free = skipped). Eviction runs LARGEST-FIRST and stops once the
+        estimated freed total covers `target` (None = clean sweep). Extracted
+        from _reactive_evict_for so admission-side eviction (evict_idle_gpu,
+        ratified 9b0c8eb1) pulls the identical lever from its new call site."""
+        store = getattr(self, 'empirical_store', None)
+
+        def _gpu_peak(inst) -> float:
+            if store is None or inst is None or not getattr(inst, 'config_hash', None):
+                return 0.0
+            try:
+                rec = store.get_record(inst.instance_id, inst.config_hash)
+            except Exception:
+                return 0.0
+            return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
+
+        exclude = exclude or set()
         candidates = []
         for inst in self.instances.values():
-            if needy_instance_id is not None and inst.instance_id == needy_instance_id:
+            if inst.instance_id in exclude:
                 continue
             if inst.instance_id in self._running_executions:
                 continue  # never evict a mid-execute instance
@@ -1538,12 +1562,37 @@ class CapabilityManager:
             evicted += 1
             if target is not None and freed >= target:
                 break
+        return freed, evicted
+
+    def evict_idle_gpu(
+        self,
+        shortfall_mb:float,                             # VRAM the blocked job lacks (empirical peak - live free)
+        exclude_instance_ids:Optional[List[str]]=None,  # Queue-known in-flight + pending-targeted instances
+    ) -> float:  # Estimated MB freed (0.0 when no candidate qualified)
+        """Admission-side idle eviction (eviction-v2 A, ratified 9b0c8eb1).
+
+        The queue's resources rung fires this (post-lock task, fire-and-re-scan)
+        when a profiled job fits the admission BUDGET but not live FREE VRAM —
+        the c5bbd511 deadlock: idle residents never release on their own, and
+        the CR-7 reactive backstop can't fire on a job that never dispatches.
+        The target carries the same 1.25x margin as the reactive path (20b5689:
+        freeing exactly the shortfall leaves the load on the boundary). Victim
+        hysteresis is STRUCTURAL — the exclude list carries the queue's
+        in-flight + pending-targeted instances; a time-based window is
+        deliberately absent from v1 (it would have refused the live repro's
+        only useful victims — see the ratification)."""
+        target = max(float(shortfall_mb) * 1.25, 1.0)
+        exclude = set(exclude_instance_ids or ())
+        self.logger.info(
+            f"Admission idle-eviction request: shortfall {shortfall_mb:.0f}MB "
+            f"(target {target:.0f}MB, excluding {len(exclude)} instance(s))"
+        )
+        freed, evicted = self._evict_gpu_residents(target, exclude=exclude)
         if evicted == 0:
             self.logger.warning(
-                f"CR-7 reactive eviction for {needed_meta.name}: "
-                f"no idle GPU-resident candidates to evict"
+                "Admission idle-eviction: no idle GPU-resident candidates to evict"
             )
-        return evicted > 0
+        return freed
 
     def _evict_for_resources(self, needed_meta:CapabilityMeta) -> bool:
         """Attempt to free resources by unloading/releasing idle capabilities (LRU).
