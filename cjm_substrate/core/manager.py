@@ -1512,12 +1512,19 @@ class CapabilityManager:
         """The shared largest-first idle-GPU evict loop (CR-7 + eviction-v2 A).
 
         Candidates are ALL loaded instances except `exclude` and any mid-execute;
-        a candidate's footprint is its empirical GPU peak (unmeasured = nothing
-        known to free = skipped). Eviction runs LARGEST-FIRST and stops once the
-        estimated freed total covers `target` (None = clean sweep). Extracted
-        from _reactive_evict_for so admission-side eviction (evict_idle_gpu,
+        a candidate's footprint is its LIVE per-PID GPU residency when sysmon
+        can measure it (worker subtree attribution — the 8687082e half that A's
+        first live firing forced: a lazy-load worker carries a LARGE empirical
+        peak while holding ZERO VRAM, and "evicting" it frees nothing but a
+        pointless worker respawn), falling back to the empirical GPU peak when
+        it can't (no sysmon / worker stats unreachable — the original CR-7
+        behavior). Measured-hollow candidates (< 64MB live) are skipped.
+        Eviction runs LARGEST-FIRST by that footprint and stops once the freed
+        total covers `target` (None = clean sweep). Extracted from
+        _reactive_evict_for so admission-side eviction (evict_idle_gpu,
         ratified 9b0c8eb1) pulls the identical lever from its new call site."""
         store = getattr(self, 'empirical_store', None)
+        sysmon = self._get_sysmon_capability() if hasattr(self, '_get_sysmon_capability') else None
 
         def _gpu_peak(inst) -> float:
             if store is None or inst is None or not getattr(inst, 'config_hash', None):
@@ -1528,6 +1535,21 @@ class CapabilityManager:
                 return 0.0
             return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
 
+        def _live_gpu_mb(inst) -> Optional[float]:
+            # None = cannot measure (no sysmon / stats unreachable) -> peak fallback.
+            if sysmon is None or inst.proxy is None:
+                return None
+            try:
+                stats = inst.proxy.get_stats()
+            except Exception:
+                return None
+            if not isinstance(stats, dict):
+                return None
+            attribution = attribute_gpu_to_worker_subtree(stats, sysmon)
+            if attribution is None:
+                return None
+            return float(attribution.get('gpu_memory_mb') or 0.0)
+
         exclude = exclude or set()
         candidates = []
         for inst in self.instances.values():
@@ -1537,18 +1559,21 @@ class CapabilityManager:
                 continue  # never evict a mid-execute instance
             if inst.proxy is None:
                 continue  # not actually resident
-            peak = _gpu_peak(inst)
-            if peak <= 0.0:
+            live = _live_gpu_mb(inst)
+            if live is not None and live < 64.0:
+                continue  # measured HOLLOW (no CUDA residency) — nothing to free
+            footprint = live if live is not None else _gpu_peak(inst)
+            if footprint <= 0.0:
                 continue  # nothing known to free on the GPU
-            candidates.append((peak, inst))
+            candidates.append((footprint, inst))
         candidates.sort(key=lambda pair: -pair[0])
 
         freed = 0.0
         evicted = 0
-        for peak, inst in candidates:
+        for footprint, inst in candidates:
             self.logger.info(
                 f"Evicting idle GPU resident: {inst.instance_id} "
-                f"(~{peak:.0f}MB, last used {inst.last_executed})"
+                f"(~{footprint:.0f}MB, last used {inst.last_executed})"
             )
             if hasattr(inst.proxy, 'release'):
                 inst.proxy.release()
@@ -1558,7 +1583,7 @@ class CapabilityManager:
                 self.reload_capability(inst.instance_id,
                                        config=dict(inst.config) if inst.config else None)
             time.sleep(0.5)  # release settle (mirrors the pre-fix pacing)
-            freed += peak
+            freed += footprint
             evicted += 1
             if target is not None and freed >= target:
                 break

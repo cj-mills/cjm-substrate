@@ -1288,3 +1288,67 @@ def test_admission_idle_eviction_frees_shortfall_with_exclusions():
         "whisper--large-v2", "whisper--large-v3", "whisper--small"])
     assert freed2 == 0.0
     assert not small.released
+
+
+def test_eviction_skips_hollow_workers_and_sizes_by_live_residency():
+    """The A-first-firing live failure (2026-07-16 04:13 run): at stack open
+    every instance has a lazy HOLLOW worker, and the blocked large models'
+    own spares carried the LARGEST empirical peaks — largest-first "evicted"
+    them, freed nothing real, and the job re-blocked into a cooldown sleep.
+    With sysmon reachable, candidates now use LIVE per-PID subtree residency:
+    measured-hollow workers are skipped and freed accounting is real; when
+    live measurement is unavailable the empirical peak remains the fallback."""
+    pm = _build_cr7_test_pm()
+
+    class _StatsProxy(_CR7StubProxy):
+        def __init__(self, name, pid):
+            super().__init__(name)
+            self.pid = pid
+            self.released = False
+        def get_stats(self):
+            return {"pid": self.pid}
+        def release(self):
+            self.released = True
+
+    class _PeakStore:
+        def __init__(self):
+            self.peaks = {}
+        def get_record(self, instance_id, config_hash):
+            peak = self.peaks.get((instance_id, config_hash))
+            if peak is None:
+                return None
+            class _Rec:
+                gpu_memory_mb_peak_max = peak
+                memory_mb_peak_max = 100.0
+                success_rate = 1.0
+            return _Rec()
+
+    store = _PeakStore()
+    pm.empirical_store = store
+    live_by_pid = {101: 0.0, 102: 9506.0, 103: 4902.0}
+
+    class _SysmonStub:
+        def list_processes(self):
+            return [{"pid": pid, "gpu_memory_mb": mb, "gpu_index": 0}
+                    for pid, mb in live_by_pid.items()]
+
+    pm._get_sysmon_capability = lambda: _SysmonStub()
+
+    def add(iid, pid, peak):
+        proxy = _StatsProxy(iid, pid)
+        pm.instances[iid] = CapabilityInstance(
+            instance_id=iid, capability_name="cjm-capability-whisper",
+            proxy=proxy, config_hash=f"sha256:{iid}")
+        store.peaks[(iid, f"sha256:{iid}")] = peak
+        return proxy
+
+    hollow = add("whisper--large-v1", 101, 9912.0)   # biggest PEAK, zero LIVE
+    voxtral = add("cjm-capability-voxtral-hf", 102, 9506.0)
+    medium = add("whisper--medium", 103, 4902.0)
+
+    # target = 3000 * 1.25 = 3750MB. The hollow spare (largest peak) is
+    # SKIPPED; largest LIVE resident (voxtral 9506) covers the target alone.
+    freed = pm.evict_idle_gpu(3000.0, exclude_instance_ids=[])
+    assert not hollow.released, "hollow lazy worker is never a victim"
+    assert voxtral.released and not medium.released
+    assert freed == 9506.0  # accounted at LIVE residency, not empirical peak

@@ -1215,7 +1215,9 @@ def test_blocked_job_triggers_idle_eviction_and_dispatches():
             done = await queue.wait_for_job(jid, timeout=5.0)
             assert done.status == JobStatus.completed
             assert done.block_reason is None  # cleared at dispatch
-            assert calls == [(3000.0, [])]  # shortfall = 8000 need - 5000 free
+            # shortfall = 8000 need - 5000 free; the head's OWN instance is
+            # excluded (its hollow lazy worker must never be the victim).
+            assert calls == [(3000.0, ["big"])]
         finally:
             await queue.stop()
 
@@ -1254,9 +1256,9 @@ def test_idle_eviction_excludes_inflight_and_pending_targets():
             d2 = await queue.wait_for_job(j2, timeout=5.0)
             assert d1.status == JobStatus.completed
             assert d2.status == JobStatus.completed
-            # ONE request (head-only), excluding the in-flight runner and the
-            # pending sibling's instance.
-            assert calls == [["big2", "runner"]]
+            # ONE request (head-only), excluding the head's own instance, the
+            # in-flight runner, and the pending sibling's instance.
+            assert calls == [["big", "big2", "runner"]]
         finally:
             await queue.stop()
 

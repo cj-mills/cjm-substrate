@@ -1518,8 +1518,15 @@ class JobQueue:
                                 for j in self._running.values()}
                         pending_targets = {j.capability_instance_id
                                            for j in self._pending if j.id != job.id}
-                        self._evict_request = (job, gpu_peak - float(gpu_free),
-                                               sorted(busy | pending_targets))
+                        # The head's OWN instance is never a victim: at stack
+                        # open every instance has a (lazy, hollow) worker whose
+                        # EMPIRICAL peak can top the largest-first order — A's
+                        # first live firing "evicted" the blocked model itself,
+                        # freeing nothing (the 8687082e hollow-worker gap).
+                        self._evict_request = (
+                            job, gpu_peak - float(gpu_free),
+                            sorted(busy | pending_targets
+                                   | {job.capability_instance_id}))
                         self._evict_last_request[job.id] = now
                     continue
             if mem_avail is not None and mem_peak > float(mem_avail):
@@ -1619,9 +1626,17 @@ class JobQueue:
             return
         try:
             freed = await asyncio.to_thread(fn, shortfall_mb, exclude)
+            freed_mb = float(freed or 0.0)
             self.logger.info(
                 f"Idle-eviction request for job {job.id[:8]} "
-                f"(shortfall {shortfall_mb:.0f}MB): ~{float(freed or 0.0):.0f}MB freed")
+                f"(shortfall {shortfall_mb:.0f}MB): ~{freed_mb:.0f}MB freed")
+            self._job_available.set()  # immediate re-scan
+            if freed_mb > 0.0:
+                # Settle slack: sysmon can lag the release by a beat, and one
+                # stale read at the immediate re-scan would re-block the job
+                # until cooldown with no further wake — a single bounded
+                # re-poke closes that race without a polling loop.
+                await asyncio.sleep(2.0)
         except Exception as e:
             self.logger.warning(
                 f"Idle-eviction request for job {job.id[:8]} failed: {e}")
