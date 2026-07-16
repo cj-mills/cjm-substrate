@@ -1477,9 +1477,28 @@ class CapabilityManager:
             return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
 
         reported = float(getattr(shortfall, 'needed', 0.0) or 0.0)
-        needy_peak = _gpu_peak(self.instances.get(needy_instance_id)
-                               if needy_instance_id else None)
-        target = max(needy_peak, reported) if needy_peak > 0.0 else None
+        available = float(getattr(shortfall, 'available', 0.0) or 0.0)
+        needy_rec = None
+        if store is not None and needy_instance_id:
+            needy_inst = self.instances.get(needy_instance_id)
+            if needy_inst is not None and getattr(needy_inst, 'config_hash', None):
+                try:
+                    needy_rec = store.get_record(needy_inst.instance_id,
+                                                 needy_inst.config_hash)
+                except Exception:
+                    needy_rec = None
+        # A record built ONLY from failed attempts cannot size a target: its peak
+        # is how far the load got BEFORE the OOM (stress-3 live case: 5184MB
+        # recorded vs whisper-large's real ~9.9GB) — treat as unprofiled.
+        needy_peak = (float(needy_rec.gpu_memory_mb_peak_max)
+                      if needy_rec is not None
+                      and float(getattr(needy_rec, 'success_rate', 0.0) or 0.0) > 0.0
+                      else 0.0)
+        # Freed VRAM ADDS to what was already free at the OOM, and fresh workers
+        # carry non-PyTorch overhead — 1.25x margin keeps the retry off the exact
+        # boundary (stress-3: freeing exactly-the-peak left the retry ~600MB short).
+        target = (max(needy_peak * 1.25 - available, reported, 1.0)
+                  if needy_peak > 0.0 else None)
         self.logger.info(
             f"CR-7 reactive eviction for {needed_meta.name} "
             f"(instance={needy_instance_id!r}, reported shortfall={reported:.0f}MB, "

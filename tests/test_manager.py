@@ -1160,13 +1160,16 @@ def test_reactive_eviction_sees_named_instances_and_sizes_to_real_need():
     class _PeakStore:
         def __init__(self):
             self.peaks = {}
+            self.failed_only = set()  # instance ids whose samples ALL failed
         def get_record(self, instance_id, config_hash):
             peak = self.peaks.get((instance_id, config_hash))
             if peak is None:
                 return None
+            rate = 0.0 if instance_id in self.failed_only else 1.0
             class _Rec:
                 gpu_memory_mb_peak_max = peak
                 memory_mb_peak_max = 100.0
+                success_rate = rate
             return _Rec()
 
     store = _PeakStore()
@@ -1209,3 +1212,15 @@ def test_reactive_eviction_sees_named_instances_and_sizes_to_real_need():
         "unprofiled needy = clean the GPU (residents lazy-reload later)"
     assert not cpu_only.released and not busy.released, \
         "CPU-only + mid-execute instances are never candidates"
+
+    # (d) a needy record built ONLY from failed attempts cannot size a target —
+    # its peak is how far the load got BEFORE the OOM (stress-3 live case:
+    # 5184MB recorded vs whisper-large's real ~9.9GB) -> treated as unprofiled
+    for p in (large_a, large_b, small):
+        p.released = False
+    store.peaks[("whisper--medium", "sha256:whisper--medium")] = 5184.0
+    store.failed_only.add("whisper--medium")
+    assert pm._reactive_evict_for(needed_meta,
+                                  needy_instance_id="whisper--medium") is True
+    assert large_a.released and large_b.released and small.released, \
+        "failed-only needy record = clean sweep, never a 5184MB target"
