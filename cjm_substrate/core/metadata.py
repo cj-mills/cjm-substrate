@@ -106,6 +106,11 @@ class CapabilityInstance:
     # gates execute_capability_async behind it. Sync execute_capability is NOT gated —
     # the cap is async-path only since sync callers can't await a semaphore.
     max_concurrent_requests: Optional[int] = None
+    # 5daadfc4 workspace re-key: whether this instance's id is DETERMINISTIC and
+    # may be used as a config_store key. Default + caller-supplied ids persist;
+    # `new_instance=True` auto-generated ids are random per-run and never do.
+    # Set by CapabilityManager.load_capability.
+    persistable: bool = True
 
 
 @dataclass

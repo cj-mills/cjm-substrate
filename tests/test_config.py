@@ -133,3 +133,44 @@ def test_substrate_yaml_unknown_keys_ignored(tmp_path):
     cfg = _load_from_yaml(yaml_file)
     assert cfg.substrate.drift_detection is False
     assert cfg.substrate.empirical_tracking is True
+
+
+def test_5daadfc4_workspace_supplies_data_dir(tmp_path, monkeypatch):
+    """Workspace layer: an active workspace supplies data_dir when no CLI flag,
+    env var, or cjm.yaml set one; explicit CJM_DATA_DIR still wins."""
+    from cjm_substrate.core.workspace import init_workspace
+    ws = init_workspace(tmp_path / "space", name="t")
+    # Neutral cwd (no cjm.yaml on the walk path); workspace named via env
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CJM_WORKSPACE", str(ws.root))
+    monkeypatch.delenv("CJM_DATA_DIR", raising=False)
+    cfg = load_config()
+    assert cfg.data_dir == ws.substrate_data_dir
+    assert cfg.manifests_dir == ws.substrate_data_dir / "manifests"
+    # Explicit env beats the workspace (workspace replaces only the default)
+    monkeypatch.setenv("CJM_DATA_DIR", str(tmp_path / "explicit"))
+    cfg = load_config()
+    assert cfg.data_dir == tmp_path / "explicit"
+
+
+def test_7e0a889f_workspace_root_yaml_is_fallback_candidate(tmp_path, monkeypatch):
+    """7e0a889f: when the cwd walk finds no cjm.yaml, the workspace root's own
+    cjm.yaml supplies the full project config (runtime, models_dir,
+    capabilities_config) — a workspace launch from a repo without cjm.yaml
+    matches a core-repo launch. A cwd-walked cjm.yaml still wins."""
+    from cjm_substrate.core.workspace import init_workspace
+    ws = init_workspace(tmp_path / "space", name="t")
+    (ws.root / "cjm.yaml").write_text("data_dir: .cjm\nmodels_dir: models\n")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("CJM_WORKSPACE", str(ws.root))
+    monkeypatch.delenv("CJM_DATA_DIR", raising=False)
+    cfg = load_config()
+    assert cfg.data_dir == ws.root / ".cjm"
+    assert cfg.models_dir == ws.root / "models", "workspace yaml supplies models_dir from anywhere"
+    # A cwd-walked cjm.yaml still beats the workspace's (fallback, not override)
+    (elsewhere / "cjm.yaml").write_text("data_dir: local\n")
+    cfg = load_config()
+    assert cfg.data_dir == elsewhere / "local"
+    assert cfg.models_dir is None, "walked yaml wins wholesale; no workspace-yaml merge"

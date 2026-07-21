@@ -25,6 +25,8 @@ from cjm_substrate.core.platform import (build_conda_command, conda_env_exists, 
                                          ensure_runtime_available, get_conda_command,
                                          get_current_platform, get_micromamba_binary_path,
                                          run_shell_command)
+from cjm_substrate.core.workspace import (init_workspace, resolve_workspace, workspace_doctor,
+                                          WorkspaceError)
 
 app = typer.Typer(help="cjm-substrate CLI", no_args_is_help=True)
 
@@ -1784,3 +1786,40 @@ def list_secrets(
     typer.echo(f"Secrets for {capability_name!r} ({len(keys)}):")
     for k in keys:
         typer.echo(f"  - {k}")
+
+
+@app.command("workspace-init")
+def workspace_init(
+    root: Path = typer.Argument(Path("."), help="Directory to declare as a workspace root (created if missing)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Display name recorded in a fresh marker"),
+):
+    """Declare a workspace: write the marker + create the conventional layout (idempotent; an existing marker is left untouched)."""
+    ws = init_workspace(root, name=name)
+    typer.echo(f"Workspace {ws.name!r} at {ws.root}")
+    for line in workspace_doctor(ws):
+        typer.echo(f"  {line}")
+
+
+@app.command("workspace-doctor")
+def workspace_doctor_cmd(
+    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w", help="Workspace root (else CJM_WORKSPACE / upward walk from cwd)"),
+):
+    """Run workspace integrity checks; exits non-zero when any check warns."""
+    try:
+        ws = resolve_workspace(explicit=workspace)
+    except WorkspaceError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+    if ws is None:
+        typer.echo(
+            "No workspace found: no marker on the walk path — pass --workspace, set "
+            "CJM_WORKSPACE, or declare one with `cjm-ctl workspace-init`.", err=True,
+        )
+        raise typer.Exit(code=1)
+    typer.echo(f"Workspace {ws.name!r} at {ws.root}")
+    warned = False
+    for line in workspace_doctor(ws):
+        typer.echo(f"  {line}")
+        warned = warned or line.startswith("warn:")
+    if warned:
+        raise typer.Exit(code=1)

@@ -1352,3 +1352,43 @@ def test_eviction_skips_hollow_workers_and_sizes_by_live_residency():
     assert not hollow.released, "hollow lazy worker is never a victim"
     assert voxtral.released and not medium.released
     assert freed == 9506.0  # accounted at LIVE residency, not empirical peak
+
+
+def test_5daadfc4_worker_env_override_precedence(tmp_path):
+    """Persisted per-instance override beats the manifest default; secret and
+    undeclared override keys are ignored; set_worker_env_override stages a
+    record for a not-yet-loaded deterministic instance id and refuses
+    auto-generated (non-persistable) ids."""
+    we = [
+        {"name": "WE_API_KEY", "secret": True, "required": False, "label": "Key",
+         "description": "", "default": None, "options": None},
+        {"name": "WE_DEVICE", "secret": False, "required": False, "label": "Dev",
+         "description": "", "default": "0", "options": None},
+    ]
+    meta = CapabilityMeta(name="weplug", version="1.0.0", description="d")
+    meta.manifest_v2 = ManifestV2(code=CodeSection(name="weplug", worker_env=we))
+    meta.manifest = {"worker_env": we}
+
+    pm = CapabilityManager.__new__(CapabilityManager)
+    pm.secret_store = _FakeSecretStore()
+    pm.logger = logging.getLogger("5daadfc4-test")
+    pm.capabilities = {}
+    pm.instances = {}
+    pm.config_store = LocalCapabilityConfigStore(tmp_path / "configs.db")
+
+    # Override beats the manifest default; secret + undeclared keys are ignored.
+    overlay = pm._resolve_worker_env(meta, worker_env_override={
+        "WE_DEVICE": "1", "WE_API_KEY": "evil", "WE_UNDECLARED": "x",
+    })
+    assert overlay == {"WE_DEVICE": "1"}
+
+    # Staging: persist an override for a not-yet-loaded deterministic id.
+    assert pm.set_worker_env_override("weplug--large", {"WE_DEVICE": "2"}) is True
+    assert pm.config_store.get("weplug--large").worker_env == {"WE_DEVICE": "2"}
+
+    # A loaded auto-generated instance refuses to persist.
+    pm.instances["weplug-abc123"] = CapabilityInstance(
+        instance_id="weplug-abc123", capability_name="weplug", persistable=False,
+    )
+    assert pm.set_worker_env_override("weplug-abc123", {"WE_DEVICE": "3"}) is False
+    assert pm.config_store.get("weplug-abc123") is None

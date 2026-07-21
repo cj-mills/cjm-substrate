@@ -736,34 +736,71 @@ class CapabilityManager:
 
     def _persist_config(
         self,
-        capability_name: str  # Capability to persist
+        name_or_id: str  # instance_id (== capability_name for the default instance) to persist
     ) -> None:
-        """CR-2: write current CapabilityMeta state + live worker config to the store.
+        """CR-2, re-keyed per 5daadfc4/1f369ab2: write per-INSTANCE state to the store.
     
-        Reads `meta.enabled` (the substrate-authoritative flag) and the worker's
-        current_config (when reachable). Failures are logged + swallowed —
+        Keyed by instance_id — the default instance's id equals its
+        capability_name, so legacy rows keep working. Auto-generated instance
+        ids are random per-run and are never persisted (`inst.persistable`).
+        Reads the instance's live worker config when reachable and carries any
+        stored worker_env override forward. Failures are logged + swallowed —
         persistence is a best-effort side-channel, not a correctness invariant.
         """
-        meta = self.capabilities.get(capability_name)
-        if meta is None:
+        inst = self.instances.get(name_or_id)
+        if inst is None or not inst.persistable:
             return
-        current_config: Dict[str, Any] = {}
-        if meta.instance is not None:
+        current_config: Dict[str, Any] = dict(inst.config)
+        if inst.proxy is not None:
             try:
-                fetched = meta.instance.get_current_config()
+                fetched = inst.proxy.get_current_config()
                 if isinstance(fetched, dict):
                     current_config = fetched
             except Exception as e:
                 self.logger.debug(
-                    f"Could not fetch live config for {capability_name} during persist: {e}"
+                    f"Could not fetch live config for {inst.instance_id} during persist: {e}"
                 )
         try:
-            self.config_store.set(capability_name, CapabilityConfigRecord(
+            prior = self.config_store.get(inst.instance_id)
+            self.config_store.set(inst.instance_id, CapabilityConfigRecord(
                 config=current_config,
-                enabled=meta.enabled,
+                enabled=inst.enabled,
+                worker_env=dict(prior.worker_env) if prior is not None else {},
             ))
         except Exception as e:
-            self.logger.warning(f"Failed to persist config for {capability_name}: {e}")
+            self.logger.warning(f"Failed to persist config for {inst.instance_id}: {e}")
+
+    def set_worker_env_override(
+        self,
+        name_or_id: str,  # instance_id (or capability name for the default instance)
+        overrides: Dict[str, str]  # Non-secret worker-env overrides; {} clears the override
+    ) -> bool:  # True if the override was persisted
+        """5daadfc4 (workspace rung c): persist a per-instance worker_env override.
+
+        Stored in the instance's CapabilityConfigRecord and injected ahead of
+        manifest defaults on the NEXT load/reload (manifest-default <
+        persisted-override < secret; worker env is fixed at spawn). Secret vars
+        cannot be overridden here — set them via the SecretStore (loads warn and
+        ignore secret-named overrides). Works for not-yet-loaded instances too:
+        the id is used as the store key directly, so a host can stage overrides
+        before the first load. Refused for auto-generated (non-persistable)
+        instance ids.
+        """
+        inst = self.instances.get(name_or_id)
+        if inst is not None and not inst.persistable:
+            self.logger.warning(
+                f"set_worker_env_override({name_or_id!r}): auto-generated instance ids never persist"
+            )
+            return False
+        instance_id = inst.instance_id if inst is not None else name_or_id
+        try:
+            record = self.config_store.get(instance_id) or CapabilityConfigRecord()
+            record.worker_env = {str(k): str(v) for k, v in (overrides or {}).items()}
+            self.config_store.set(instance_id, record)
+            return True
+        except Exception as e:
+            self.logger.warning(f"Failed to persist worker_env override for {instance_id}: {e}")
+            return False
 
     def _maybe_fire_disable_hook(
         self,
@@ -865,7 +902,8 @@ class CapabilityManager:
     def _resolve_worker_env(
         self,
         capability_meta: CapabilityMeta,        # Capability being loaded
-        scope: Optional[str] = None     # SG-55 forward seam: per-principal scope (None = single-user)
+        scope: Optional[str] = None,     # SG-55 forward seam: per-principal scope (None = single-user)
+        worker_env_override: Optional[Dict[str, str]] = None  # 5daadfc4: persisted per-instance non-secret overrides
     ) -> Dict[str, str]:  # {ENV_NAME: value} overlay injected into the worker at spawn
         """CR-12 + Q1-A: compose the resolved worker-env overlay for a load.
 
@@ -887,6 +925,11 @@ class CapabilityManager:
         Capability-author-bug-class errors (unknown placeholders) surface at
         install/release time via `cjm-ctl validate` + `template_check_placeholders`,
         not here. All values are fixed at spawn — a change requires `reload_capability`.
+
+        5daadfc4 (workspace rung c): `worker_env_override` carries the persisted
+        per-instance NON-SECRET overrides from the config store, applied ahead
+        of manifest defaults (manifest-default < persisted-override < secret).
+        Overrides naming secret or undeclared vars are ignored with a warning.
         """
         from cjm_substrate.core.capability import expand_worker_env_template
 
@@ -920,6 +963,12 @@ class CapabilityManager:
                 if val is not None:
                     overlay[name] = val
             else:
+                if worker_env_override and name in worker_env_override:
+                    # Persisted per-instance override beats the manifest default.
+                    # Secret vars never take this path (their branch is above) —
+                    # override values live plaintext in the config store.
+                    overlay[name] = str(worker_env_override[name])
+                    continue
                 default = spec.get("default")
                 if default is None:
                     continue
@@ -939,6 +988,20 @@ class CapabilityManager:
                     self.logger.warning(
                         f"failed to expand worker-env default for "
                         f"{capability_meta.name!r} EnvVarSpec(name={name!r}, default={default!r}): {e}"
+                    )
+        if worker_env_override:
+            specs_by_name = {s.get("name"): s for s in self._worker_env_specs(capability_meta)}
+            for k in worker_env_override:
+                s = specs_by_name.get(k)
+                if s is None:
+                    self.logger.warning(
+                        f"{capability_meta.name}: worker_env override {k!r} is not in the "
+                        f"declared WORKER_ENV contract; ignored"
+                    )
+                elif s.get("secret"):
+                    self.logger.warning(
+                        f"{capability_meta.name}: worker_env override {k!r} names a SECRET "
+                        f"var; ignored (secrets resolve only from the SecretStore)"
                     )
         return overlay
 
@@ -1038,21 +1101,25 @@ class CapabilityManager:
     ) -> bool: # True if successfully loaded
         """Load a capability by spawning a Worker subprocess.
     
-        CR-2: reads the persisted CapabilityConfigRecord from `self.config_store`
-        before launching the worker. If a persisted record exists and the
-        caller didn't pass an explicit config, the persisted config is used
-        as the effective input. The persisted `enabled` flag is applied to
-        `capability_meta.enabled` so disabled capabilities stay disabled across
-        process restarts.
+        CR-2 (re-keyed per 5daadfc4): reads the persisted CapabilityConfigRecord
+        for the resolved INSTANCE id from `self.config_store` before launching
+        the worker. If a persisted record exists and the caller didn't pass an
+        explicit config, the persisted config is used as the effective input;
+        the record's worker_env override is injected ahead of manifest defaults.
+        The persisted `enabled` flag restores per-instance; for the default
+        instance it is also applied to `capability_meta.enabled` so disabled
+        capabilities stay disabled across process restarts.
     
         CR-10: optional `instance_id` allows multi-instance loading.
         - instance_id=None, new_instance=False (default): instance_id =
           capability_meta.name. Populates self.capabilities[capability_name] + self.instances
           [capability_name] together (single-instance backward compat).
         - instance_id="custom": validated against `[A-Za-z0-9_-]{1,64}`. Populates
-          self.instances[custom]. Persistence is keyed by capability_name and only
-          applied to the default instance.
-        - instance_id=None, new_instance=True: auto-generates `{name}-{6-hex}`.
+          self.instances[custom]. Persistence applies to every DETERMINISTIC id
+          (default + caller-supplied); the driver must derive custom ids
+          deterministically for persistence to be meaningful (1f369ab2).
+        - instance_id=None, new_instance=True: auto-generates `{name}-{6-hex}` —
+          random per-run, never persisted.
         Idempotent: re-load against an existing instance_id returns True without
         re-spawning.
     
@@ -1076,17 +1143,19 @@ class CapabilityManager:
             self.logger.info(f"Instance {resolved_id!r} already loaded; idempotent skip")
             return True
         is_default = (resolved_id == capability_meta.name)
+        # 5daadfc4: only DETERMINISTIC ids (default + caller-supplied) may key
+        # the config store; auto-generated ids are random per-run and never persist.
+        persistable = not (instance_id is None and new_instance)
 
-        # CR-2: read persisted record (config + enabled flag) before launching.
-        # Persistence is per-capability (keyed by capability_name), not per-instance, so
-        # multi-instance loads ignore the persisted state.
+        # CR-2 (re-keyed): read the persisted record (config + enabled +
+        # worker_env override) for this INSTANCE before launching.
         persisted: Optional[CapabilityConfigRecord] = None
-        if is_default:
+        if persistable:
             try:
-                persisted = self.config_store.get(capability_meta.name)
+                persisted = self.config_store.get(resolved_id)
             except Exception as e:
                 self.logger.debug(
-                    f"config_store.get({capability_meta.name}) raised; falling through: {e}"
+                    f"config_store.get({resolved_id}) raised; falling through: {e}"
                 )
 
         try:
@@ -1097,7 +1166,10 @@ class CapabilityManager:
             # visible defaults) and inject it at spawn. Warn — don't fail — when a
             # required secret is unset: the capability loads lazily and reports the gap
             # at execute, so a config UI / operator can supply the secret post-load.
-            extra_env = self._resolve_worker_env(capability_meta)
+            extra_env = self._resolve_worker_env(
+                capability_meta,
+                worker_env_override=(persisted.worker_env if persisted is not None else None),
+            )
             _missing_env = self.missing_required_env(capability_meta)
             if _missing_env:
                 self.logger.warning(
@@ -1124,7 +1196,7 @@ class CapabilityManager:
             # same cjm.yaml opt-out switch).
             self._check_structural_surface_drift(proxy, capability_meta)
         
-            # CR-2: effective config = caller > persisted (default-only) > manifest defaults.
+            # CR-2: effective config = caller > persisted (deterministic ids) > manifest defaults.
             if not config and persisted is not None and persisted.config:
                 config = dict(persisted.config)
                 self.logger.info(
@@ -1148,12 +1220,14 @@ class CapabilityManager:
             if config:
                 proxy.initialize(config)
 
-            # CR-10: per-instance enabled flag. Default instance restores from
-            # persistence; multi-instance starts enabled.
+            # CR-10 + 5daadfc4: the enabled flag restores from the instance's own
+            # persisted record; the default instance also syncs
+            # CapabilityMeta.enabled (backward compat).
             effective_enabled = True
-            if is_default and persisted is not None:
+            if persisted is not None:
                 effective_enabled = persisted.enabled
-                capability_meta.enabled = effective_enabled
+                if is_default:
+                    capability_meta.enabled = effective_enabled
         
             # CR-7: hash the effective config so empirical recording can key by
             # (instance_id, config_hash). Two configs for the same instance get
@@ -1170,6 +1244,7 @@ class CapabilityManager:
                 enabled=effective_enabled,
                 config_hash=instance_config_hash,
                 max_concurrent_requests=max_concurrent_requests,
+                persistable=persistable,
             )
         
             # Default-instance only: maintain backward-compat single-instance
@@ -1964,13 +2039,14 @@ class CapabilityManager:
             return False
         was_disabled = not inst.enabled
         inst.enabled = True
-        # Default instance: also sync the CapabilityMeta.enabled flag (backward compat)
-        # and persist via config_store (per-capability persistence).
+        # Default instance: also sync the CapabilityMeta.enabled flag (backward compat).
         if inst.instance_id == inst.capability_name:
             meta = self.capabilities.get(inst.capability_name)
             if meta is not None:
                 meta.enabled = True
-            self._persist_config(inst.capability_name)
+        # 5daadfc4: persistence is per-instance; _persist_config itself skips
+        # non-persistable (auto-generated) ids.
+        self._persist_config(inst.instance_id)
         if was_disabled and inst.proxy is not None:
             try:
                 inst.proxy.on_enable()
@@ -1995,12 +2071,13 @@ class CapabilityManager:
             return False
         was_enabled = inst.enabled
         inst.enabled = False
-        # Default instance: sync CapabilityMeta.enabled + persist
+        # Default instance: sync CapabilityMeta.enabled (backward compat)
         if inst.instance_id == inst.capability_name:
             meta = self.capabilities.get(inst.capability_name)
             if meta is not None:
                 meta.enabled = False
-            self._persist_config(inst.capability_name)
+        # 5daadfc4: per-instance persistence (skips auto-generated ids internally)
+        self._persist_config(inst.instance_id)
         if was_enabled and inst.proxy is not None:
             if inst.instance_id in self._running_executions:
                 self._pending_disable_hooks.add(inst.instance_id)
@@ -2169,10 +2246,9 @@ class CapabilityManager:
                     payload={"phase": "reconfigure",
                              "config_keys": sorted(validated_config or {})},
                 ))
-            # CR-2 + CR-10: persist only for the default instance (persistence is
-            # per-capability, not per-instance).
-            if inst.instance_id == inst.capability_name:
-                self._persist_config(inst.capability_name)
+            # CR-2 + CR-10 + 5daadfc4: persistence is per-instance now;
+            # _persist_config skips non-persistable (auto-generated) ids.
+            self._persist_config(inst.instance_id)
             return True
         except CapabilityConfigError:
             raise

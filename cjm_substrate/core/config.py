@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import yaml
+from cjm_substrate.core.workspace import resolve_workspace
 
 
 class RuntimeMode(str, Enum):
@@ -183,7 +184,18 @@ def load_config(
     conda_prefix:Optional[Path]=None, # CLI --conda-prefix
     conda_type:Optional[str]=None # CLI --conda-type
 ) -> CJMConfig: # Resolved configuration
-    """Load config with layered resolution (CLI > env vars > yaml > defaults)."""
+    """Load config with layered resolution (CLI > env vars > yaml > workspace > defaults).
+
+    5daadfc4: an active WORKSPACE (CJM_WORKSPACE env or upward-walked
+    cjm-workspace.yaml marker) supplies `data_dir` (<root>/.cjm) when no CLI
+    flag, CJM_DATA_DIR, or cjm.yaml set one — the workspace replaces only the
+    ~/.cjm fallback default, explicit settings stay authoritative. 7e0a889f:
+    when the CWD walk finds no cjm.yaml, the workspace root's own cjm.yaml is
+    the fallback yaml candidate, so a workspace launch from anywhere loads the
+    workspace's full project config. Every
+    data_dir consumer (manifests_dir, capability_data_dir, the stores, and the
+    worker-injected CJM_CAPABILITY_DATA_DIR) inherits workspace scoping through
+    this one seam."""
     # 1. Start with defaults
     config = CJMConfig()
 
@@ -197,6 +209,16 @@ def load_config(
             if _cand.exists():
                 yaml_path = _cand
                 break
+    if yaml_path is None:
+        # 7e0a889f: cwd walk missed — an active workspace's root/cjm.yaml is
+        # the fallback candidate, so a workspace launch from anywhere (e.g. a
+        # TUI repo with no cjm.yaml) picks up the workspace's full project
+        # config (runtime, models_dir, capabilities_config) exactly like a
+        # core-repo launch. A cwd-walked cjm.yaml still wins — fallback, not
+        # override.
+        _ws = resolve_workspace()
+        if _ws is not None and (_ws.root / "cjm.yaml").exists():
+            yaml_path = _ws.root / "cjm.yaml"
     if yaml_path is not None and yaml_path.exists():
         config = _load_from_yaml(yaml_path)
 
@@ -222,6 +244,15 @@ def load_config(
         config.runtime.prefix = conda_prefix
     if conda_type:
         config.runtime.conda_type = CondaType(conda_type)
+
+    # 5. 5daadfc4 workspace layer: when data_dir is still the built-in default
+    #    (no CLI flag, no CJM_DATA_DIR, no cjm.yaml data_dir), an active
+    #    workspace supplies it. resolve_workspace is quiet on a walk miss and
+    #    LOUD (WorkspaceError) on a bad explicit CJM_WORKSPACE reference.
+    if config.data_dir == CJMConfig().data_dir:
+        ws = resolve_workspace()
+        if ws is not None:
+            config.data_dir = ws.substrate_data_dir
 
     return config
 
