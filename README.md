@@ -13,7 +13,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.adapter_manifest`** — The ADAPTER unit's registration manifest + the surface-based compatibility matcher (CR-17 pt 2, stage 4). Pass-2 Thread 3: registration/discovery = per-unit manifests generated in-env and found by discover_manifests(); compatibility is DERIVED, not declared — the capability records only its structural surface, the adapter declares its protocol (recorded here as member names + parameter lists), and the substrate matches manifest-vs-manifest. Works against UNLOADED capabilities with zero protocol imports host-side.
 - **`cjm_substrate.core.capability`** — The tool-capability interface — the manage-the-tool half of the capability-unit fracture (pass-2 Thread 3): identity, lifecycle, config, cancellation, and observability for a tool running in a worker process, serving both concrete capabilities (in workers) and remote proxies (in the host). The task channel is deliberately NOT here: typed task contracts live on task adapters (core.adapter + the per-task cjm-<task>-adapter-interface libraries) and results cross the worker boundary through the typed wire layer (core.wire); execute_stream's transitional default remains for fused-era capabilities only. Also home to the CR-12 worker-env contract (EnvVarSpec + the Q1-A template vocabulary), the SG-44/T28 action-dispatcher convention, and the pass-2 Thread-3 structural-surface derivation.
 - **`cjm_substrate.core.config`** — Project-level configuration for paths, runtime settings, and environment management.
-- **`cjm_substrate.core.config_store`** — Persistent storage for per-capability configuration (with enabled flag).
+- **`cjm_substrate.core.config_store`** — Persistent storage for per-instance capability configuration (config + enabled flag + worker-env override), keyed by instance_id.
 - **`cjm_substrate.core.diagnostics_store`** — CR-14 (stage 7): the disposable diagnostic-narrative class. Worker-written
 - **`cjm_substrate.core.empirical_store`** — Persistent store for empirically-observed resource usage per (instance_id, config_hash) pair. CR-7's data foundation — record_sample is called from CapabilityManager.execute_capability* finally blocks; aggregates feed eviction-candidate selection + future UI hints + cost-aware retry decisions.
 - **`cjm_substrate.core.errors`** — Typed exception hierarchy + JobError dataclass + default classification of bare Python exceptions. The substrate's CR-5 implementation per the 2026-05-19 substrate audit.
@@ -29,6 +29,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.secret_store`** — CR-12: project-local secret storage for API-based capabilities (file-backed, 0600).
 - **`cjm_substrate.core.wire`** — Typed data transfer at the worker boundary — the zero-copy FileBackedDTO
 - **`cjm_substrate.core.worker`** — FastAPI server that runs inside isolated capability environments (the Universal Worker): dynamically loads the capability class named on the CLI, exposes the HTTP lifecycle / execute / task / monitor surface for the proxy, monitors the parent process (the suicide-pact watchdog prevents zombie workers), and reports process-subtree telemetry for resource-scheduling decisions. This module is a process ENTRYPOINT (SG-39): host code never imports it.
+- **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
 - **`cjm_substrate.utils.validation`** — Validation helpers for capability configuration dataclasses.
@@ -56,6 +57,8 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `setup_host` _function_ — Install interface libraries in the current Python environment.
 - `setup_runtime` _function_ — Download and setup micromamba runtime for project-local mode.
 - `validate_file` _function_ — SG-6 + T23: validate a manifest / capabilities.yaml / capability source.
+- `workspace_doctor_cmd` _function_ — Run workspace integrity checks; exits non-zero when any check warns.
+- `workspace_init` _function_ — Declare a workspace: write the marker + create the conventional layout (idempotent; an existing marker is left untouched).
 
 ### `cjm_substrate.core._telemetry`
 
@@ -92,18 +95,18 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `RuntimeMode` _class_ — Runtime mode for the capability system.
 - `SubstrateConfig` _class_ — Substrate behavior toggles.
 - `get_config` _function_ — Get current config (loads defaults if not set).
-- `load_config` _function_ — Load config with layered resolution (CLI > env vars > yaml > defaults).
+- `load_config` _function_ — Load config with layered resolution (CLI > env vars > yaml > workspace > defaults).
 - `reset_config` _function_ — Reset to unloaded state (for testing).
 - `set_config` _function_ — Set current config (called by CLI callback).
 
 ### `cjm_substrate.core.config_store`
 
-- `CapabilityConfigRecord` _class_ — Persisted state for a capability: config dict + enabled flag.
-- `CapabilityConfigStore` _class_ — Protocol for persisting per-capability `CapabilityConfigRecord` across sessions.
+- `CapabilityConfigRecord` _class_ — Persisted state for a capability INSTANCE: config + enabled flag + worker-env override.
+- `CapabilityConfigStore` _class_ — Protocol for persisting per-instance `CapabilityConfigRecord` across sessions.
 - `LocalCapabilityConfigStore` _class_ — SQLite-backed default implementation of `CapabilityConfigStore`.
-- `delete` _function_ — Remove the record for a capability.
-- `get` _function_ — Fetch the record for a capability.
-- `list_all` _function_ — Return all stored records keyed by capability name.
+- `delete` _function_ — Remove the record for an instance.
+- `get` _function_ — Fetch the record for an instance.
+- `list_all` _function_ — Return all stored records keyed by instance_id.
 - `set` _function_ — Persist a record. Stamps `updated_at` to the current time.
 
 ### `cjm_substrate.core.diagnostics_store`
@@ -270,6 +273,17 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `parent_monitor` _function_ — Monitor parent process and terminate self if parent dies.
 - `run_worker` _function_ — CLI entry point for running the worker.
 
+### `cjm_substrate.core.workspace`
+
+- `Workspace` _class_ — A resolved workspace: the marker-rooted directory owning pipeline artifacts.
+- `WorkspaceError` _class_ — A workspace was named (flag or env) but could not be resolved.
+- `find_workspace_root` _function_ — Upward walk — the git-style discovery that makes workspace identity launch-cwd-independent.
+- `init_workspace` _function_ — Declare a workspace: write the marker + create the conventional layout.
+- `relativize_recorded` _function_ — Writer half of the 5daadfc4 recording contract (rung f).
+- `resolve_recorded_tree` _function_ — Reader half of the recording contract (rung f; anchor rule ratified 2026-07-19).
+- `resolve_workspace` _function_ — Resolve the active workspace: explicit flag > CJM_WORKSPACE env > upward walk > None.
+- `workspace_doctor` _function_ — Integrity-check skeleton for the workspace doctor verb.
+
 ### `cjm_substrate.utils.cache_paths`
 
 - `cache_dir_for_config` _function_ — Return (and optionally create) a per-(input-content, config) cache directory.
@@ -295,4 +309,4 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 ## Dependencies
 
 **Depends on:** `fastapi`, `fastcore`, `httpx`, `psutil`, `pyyaml`, `typer`, `uvicorn`
-**Used by:** `cjm-capability-demucs`, `cjm-capability-ffmpeg`, `cjm-capability-graph-sqlite`, `cjm-capability-monitor-nvidia`, `cjm-capability-primitives`, `cjm-capability-qwen3-forced-aligner`, `cjm-capability-silero-vad`, `cjm-capability-voxtral-hf`, `cjm-capability-whisper`, `cjm-context-graph-layer`, `cjm-context-graph-primitives`, `cjm-context-graph-projection`, `cjm-markdown-decompose-core`, `cjm-transcript-correction-core`, `cjm-transcript-correction-tui`, `cjm-transcript-decomp-core`, `cjm-transcription-adapter-interface`, `cjm-transcription-core`, `cjm-transcription-tui`, `hf-utils`, `torch-utils`
+**Used by:** `cjm-capability-demucs`, `cjm-capability-ffmpeg`, `cjm-capability-graph-sqlite`, `cjm-capability-monitor-nvidia`, `cjm-capability-primitives`, `cjm-capability-qwen3-forced-aligner`, `cjm-capability-silero-vad`, `cjm-capability-voxtral-hf`, `cjm-capability-whisper`, `cjm-context-graph-layer`, `cjm-context-graph-primitives`, `cjm-context-graph-projection`, `cjm-markdown-decompose-core`, `cjm-transcript-correction-core`, `cjm-transcript-correction-tui`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-tui`, `cjm-transcription-adapter-interface`, `cjm-transcription-core`, `cjm-transcription-tui`, `hf-utils`, `torch-utils`

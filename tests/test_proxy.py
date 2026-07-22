@@ -290,3 +290,74 @@ def test_chunk_unknown_category_is_forensic_runtime_error():
         )
     assert not isinstance(exc_info.value, CapabilityError), \
         "unknown category must NOT raise a CapabilityError subclass"
+
+
+def test_initialize_routes_through_stall_detection(monkeypatch):
+    """555159cd: initialize is where a capability's model load runs, so it must
+    ride the progress-based stall detector, not a fixed HTTP deadline (the old
+    bare httpx.Client() carried the 5s default read timeout — a cold FA model
+    load blew it twice). A False return (worker unreachable) raises loudly
+    instead of being swallowed by the load path."""
+    import cjm_substrate.core.proxy as proxy_mod
+
+    calls = []
+
+    def fake_stall_post(proxy, threshold, poll_interval_seconds, endpoint=None, payload=None):
+        calls.append((endpoint, payload))
+        return True
+
+    monkeypatch.setattr(proxy_mod, "_run_prefetch_with_stall_detection", fake_stall_post)
+    monkeypatch.setattr(proxy_mod, "_resolve_prefetch_stall_threshold", lambda: 60.0)
+
+    p = object.__new__(RemoteCapabilityProxy)  # no worker spawn
+    RemoteCapabilityProxy.initialize(p, {"model": "x"})
+    assert calls == [("initialize", {"model": "x"})]
+
+    monkeypatch.setattr(proxy_mod, "_run_prefetch_with_stall_detection", lambda *a, **k: False)
+    with pytest.raises(RuntimeError):
+        RemoteCapabilityProxy.initialize(p, {"model": "x"})
+
+
+def test_stall_detector_post_carries_no_fixed_deadline(monkeypatch):
+    """The stall detector's lifecycle POST runs with timeout=None — /progress
+    polling is the bound, never a wall-clock deadline — and forwards the
+    parameterized endpoint + JSON payload (555159cd generalization)."""
+    import cjm_substrate.core.proxy as proxy_mod
+
+    seen = {}
+
+    class _StubResp:
+        status_code = 200
+
+    class _StubClient:
+        def __init__(self, timeout="MISSING", **kw):
+            seen.setdefault("timeout", timeout)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def post(self, url, json=None):
+            seen["url"] = url
+            seen["json"] = json
+            return _StubResp()
+
+        def get(self, url):
+            return _StubResp()
+
+    monkeypatch.setattr(proxy_mod.httpx, "Client", _StubClient)
+
+    class _StubP:
+        base_url = "http://127.0.0.1:9"
+        name = "stub"
+        process = None
+
+    # poll_interval > POST duration so the join sees the thread finish first
+    ok = proxy_mod._run_prefetch_with_stall_detection(
+        _StubP(), 60.0, 5.0, endpoint="initialize", payload={"model": "x"})
+    assert ok is True
+    assert seen["timeout"] is None
+    assert seen["url"].endswith("/initialize")
+    assert seen["json"] == {"model": "x"}

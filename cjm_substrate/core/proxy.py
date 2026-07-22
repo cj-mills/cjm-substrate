@@ -122,11 +122,25 @@ class RemoteCapabilityProxy(ToolCapability):
         self,
         config:Optional[Dict[str, Any]]=None # Configuration dictionary
     ) -> None:
-        """Initialize or reconfigure the capability."""
-        with httpx.Client() as client:
-            resp = client.post(f"{self.base_url}/initialize", json=config or {})
-        if resp.status_code != 200:
-            raise RuntimeError(f"Initialize failed: {resp.text}")
+        """Initialize or reconfigure the capability.
+
+        555159cd: initialize is where a capability's model load actually runs,
+        and a cold first touch (fresh cache path, evicted page cache) blows
+        through any fixed HTTP deadline — the old bare-client 5s default timed
+        out the FA cold load twice. Same progress-based stall detection as
+        prefetch: the POST runs unbounded while /progress polling bounds a
+        silent wedge at the substrate's stall threshold (capabilities defeat
+        it via report_progress during long loads).
+        """
+        ok = _run_prefetch_with_stall_detection(
+            self,
+            _resolve_prefetch_stall_threshold(),
+            poll_interval_seconds=1.0,
+            endpoint='initialize',
+            payload=config or {},
+        )
+        if not ok:
+            raise RuntimeError("Initialize failed: worker unreachable or rejected /initialize")
     
     
     def get_config_schema(self) -> Dict[str, Any]: # JSON Schema
@@ -1041,10 +1055,14 @@ def _run_prefetch_with_stall_detection(
     proxy: 'RemoteCapabilityProxy',
     stall_threshold_seconds: float,
     poll_interval_seconds: float,
+    endpoint: str = 'prefetch',
+    payload: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Sync stall-detecting prefetch implementation.
+    """Sync stall-detecting lifecycle POST (prefetch by default; initialize
+    routes here too per 555159cd — any worker call that may run a model load
+    gets progress-bounded waiting instead of a fixed HTTP deadline).
 
-    Runs POST /prefetch in a daemon thread; main thread polls /progress for
+    Runs the POST in a daemon thread; main thread polls /progress for
     a (progress, message) advance every poll_interval_seconds. If no advance
     in stall_threshold_seconds AND the POST is still in-flight, SIGTERMs the
     worker subprocess (so its capability.cleanup() can run via the worker's
@@ -1061,9 +1079,9 @@ def _run_prefetch_with_stall_detection(
     def _post_prefetch() -> None:
         try:
             with httpx.Client(timeout=None) as client:
-                resp = client.post(f"{proxy.base_url}/prefetch")
+                resp = client.post(f"{proxy.base_url}/{endpoint}", json=payload)
             if resp.status_code == 500:
-                state['error'] = RuntimeError(f"Capability prefetch failed: {resp.text}")
+                state['error'] = RuntimeError(f"Capability {endpoint} failed: {resp.text}")
             elif resp.status_code == 200:
                 state['status'] = 'done'
             else:
@@ -1073,7 +1091,7 @@ def _run_prefetch_with_stall_detection(
         except Exception as e:
             state['error'] = e
 
-    t = threading.Thread(target=_post_prefetch, daemon=True, name=f"prefetch-{proxy.name}")
+    t = threading.Thread(target=_post_prefetch, daemon=True, name=f"{endpoint}-{proxy.name}")
     t.start()
 
     last_progress: Tuple[float, str] = (-1.0, '__sentinel__')
