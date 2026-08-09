@@ -86,3 +86,30 @@ def test_recording_contract_round_trip_and_relocation(tmp_path):
     out = resolve_recorded_tree(rec, moved / "runs" / "m.json")
     assert out["capabilities"]["graph"]["db_path"] == str(moved / ".cjm" / "data" / "g.db")
     assert out["sources"][0]["source_path"] == str(outside)
+
+
+def test_recorded_tree_explicit_workspace_override(tmp_path, monkeypatch):
+    """7839fa98: a TWO-LEVEL manifest (training-runs/<run>/manifest.json) anchors
+    its primary candidate one level too deep (<root>/training-runs/training-runs/…),
+    so resolution rides the workspace fallback — which must honor the CALLER's
+    explicitly resolved Workspace instead of silently re-resolving from env/cwd."""
+    from cjm_substrate.core.workspace import (init_workspace, relativize_recorded,
+                                              resolve_recorded_tree)
+    ws = init_workspace(tmp_path / "space")
+    ckpt = ws.root / "training-runs" / "run_001" / "model.ckpt"
+    ckpt.parent.mkdir(parents=True)
+    ckpt.write_text("w")
+    rec = relativize_recorded({"artifact": {"path": str(ckpt)}}, ws)
+    assert rec["artifact"]["path"] == "${WS}/training-runs/run_001/model.ckpt"
+    manifest_path = ckpt.parent / "manifest.json"
+    # Neutral resolution context: no CJM_WORKSPACE, cwd outside any workspace
+    monkeypatch.delenv("CJM_WORKSPACE", raising=False)
+    neutral = tmp_path / "neutral"
+    neutral.mkdir()
+    monkeypatch.chdir(neutral)
+    out = resolve_recorded_tree(rec, manifest_path, workspace=ws)
+    assert out["artifact"]["path"] == str(ckpt)
+    # Without the override the doubled primary candidate comes back unresolved —
+    # the exact checkpoint-not-found symptom the finding recorded.
+    missed = resolve_recorded_tree(rec, manifest_path)
+    assert missed["artifact"]["path"] != str(ckpt)

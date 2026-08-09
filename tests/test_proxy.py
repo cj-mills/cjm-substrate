@@ -361,3 +361,59 @@ def test_stall_detector_post_carries_no_fixed_deadline(monkeypatch):
     assert seen["timeout"] is None
     assert seen["url"].endswith("/initialize")
     assert seen["json"] == {"model": "x"}
+
+
+def test_start_process_injects_resolved_workspace(monkeypatch):
+    """5dcf4b69: the spawn seam threads the HOST-resolved workspace root to the
+    worker as CJM_WORKSPACE (beside CJM_MODELS_DIR), so worker-side
+    resolve_workspace() stops depending on incidental env inheritance / cwd
+    walks. An operator-provided value stays authoritative; no workspace
+    resolved means no key injected."""
+    import socket
+    import cjm_substrate.core.proxy as proxy_mod
+
+    captured = {}
+
+    class _AbortSpawn(Exception):
+        pass
+
+    def _fake_popen(cmd, **kwargs):
+        captured["env"] = kwargs["env"]
+        raise _AbortSpawn()
+
+    class _Ws:
+        root = "/srv/ws-root"
+
+    class _StubProxy:
+        name = "stub-capability"
+        manifest = {"python_path": "/usr/bin/python3", "module": "m", "class": "C"}
+        extra_env = {}
+        adapter_specs = None
+        diagnostics = object()
+        port = 0
+        _start_process = proxy_mod.RemoteCapabilityProxy._start_process
+
+    def _spawn():
+        p = _StubProxy()
+        p._listen_sock = socket.socket()
+        try:
+            with pytest.raises(_AbortSpawn):
+                p._start_process()
+        finally:
+            p._listen_sock.close()
+        return captured.pop("env")
+
+    monkeypatch.setattr(proxy_mod.subprocess, "Popen", _fake_popen)
+    monkeypatch.delenv("CJM_WORKSPACE", raising=False)
+
+    monkeypatch.setattr(proxy_mod, "resolve_workspace", lambda: _Ws())
+    assert _spawn()["CJM_WORKSPACE"] == "/srv/ws-root"
+
+    monkeypatch.setattr(proxy_mod, "resolve_workspace", lambda: None)
+    assert "CJM_WORKSPACE" not in _spawn()
+
+    monkeypatch.setenv("CJM_WORKSPACE", "/operator/says")
+    monkeypatch.setattr(
+        proxy_mod, "resolve_workspace",
+        lambda: (_ for _ in ()).throw(AssertionError("must not resolve when env already set")))
+    assert _spawn()["CJM_WORKSPACE"] == "/operator/says"

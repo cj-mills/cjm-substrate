@@ -27,6 +27,7 @@ from cjm_substrate.core.journal_store import (JournalEvent, JournalStore, LocalJ
 from cjm_substrate.core.platform import get_popen_isolation_kwargs, is_windows, terminate_process
 from cjm_substrate.core.wire import (ACCOUNTS_HEADER, ENVELOPE_BODY_KEY, FileBackedDTO,
                                      get_call_envelope, wire_decode)
+from cjm_substrate.core.workspace import resolve_workspace, WORKSPACE_ENV_VAR
 
 # CR-3 follow-up: module-level logger so the proxy can log close-to-wire
 # misconfiguration signals (e.g. 404 on /get_system_status meaning the
@@ -230,6 +231,14 @@ class RemoteCapabilityProxy(ToolCapability):
         env["CAPABILITY_DATA_DIR"] = str(_pdd)
         if cfg.models_dir:
             env["CJM_MODELS_DIR"] = str(cfg.models_dir)
+        # 5dcf4b69: thread the HOST-resolved workspace to the worker — worker-side
+        # resolve_workspace() otherwise sees only inherited env/cwd, which misses a
+        # marker-walked host workspace; an operator-provided value (inherited env,
+        # manifest env_vars, or the CR-12 overlay) stays authoritative.
+        if WORKSPACE_ENV_VAR not in env:
+            _ws = resolve_workspace()
+            if _ws is not None:
+                env[WORKSPACE_ENV_VAR] = str(_ws.root)
         # CR-14: worker-side diagnostics contract (install_worker_diagnostics):
         # the worker's root logger writes structured records straight to the
         # diagnostics store, stamped with this session id + (via the call

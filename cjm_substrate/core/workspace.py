@@ -228,21 +228,28 @@ def relativize_recorded(
 
 def resolve_recorded_tree(
     data: Any,  # Parsed manifest tree (dicts/lists/str scalars)
-    manifest_path: Path  # Where the manifest was LOADED from (the anchor source)
+    manifest_path: Path,  # Where the manifest was LOADED from (the anchor source)
+    workspace: Optional[Workspace] = None  # Caller-resolved Workspace; None = env/cwd fallback
 ) -> Any:  # Deep copy with "${WS}/..." strings resolved to absolute path strings
     """Reader half of the recording contract (rung f; anchor rule ratified 2026-07-19).
 
     "${WS}/<rel>" resolves against, in order: (1) the manifest's own location —
     its dir's PARENT, since manifests conventionally live in <root>/runs/ — so
     a copied or moved workspace reads correctly with NO workspace resolved;
-    (2) the ACTIVE workspace root, when the location-derived candidate does not
-    exist on disk. Absolute (legacy) recorded paths pass through untouched.
-    Downstream code keeps seeing absolute paths — only load seams call this."""
+    (2) the workspace root — the caller's `workspace=` when given (7839fa98: an
+    explicitly resolved Workspace must reach this fallback; env/cwd resolution
+    loses it), else the ACTIVE workspace — when the location-derived candidate
+    does not exist on disk. Absolute (legacy) recorded paths pass through
+    untouched. Downstream code keeps seeing absolute paths — only load seams
+    call this."""
     primary = Path(manifest_path).resolve().parent.parent
-    try:
-        ws = resolve_workspace()
-    except WorkspaceError:
-        ws = None
+    if workspace is not None:
+        ws = workspace
+    else:
+        try:
+            ws = resolve_workspace()
+        except WorkspaceError:
+            ws = None
     token_prefix = WS_TOKEN + "/"
 
     def resolve_one(v: str) -> str:
