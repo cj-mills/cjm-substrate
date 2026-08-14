@@ -1263,3 +1263,36 @@ def test_idle_eviction_excludes_inflight_and_pending_targets():
             await queue.stop()
 
     asyncio.run(scenario())
+
+
+def test_fast_job_pays_zero_progress_polls():
+    """865e6a33: _poll_progress sleeps BEFORE the first poll, so a job that
+    completes inside progress_poll_interval never pays a worker /progress
+    round-trip (the old immediate first poll cost one per job — 24 per warm
+    portfolio pull, every one raced by completion)."""
+    class CountingProxy:
+        def __init__(self):
+            self.progress_calls = 0
+
+        def get_progress(self):
+            self.progress_calls += 1
+            return {'progress': 0.5, 'message': 'working'}
+
+    async def scenario():
+        proxy = CountingProxy()
+        queue = JobQueue(deps=ProxySysmonDeps(worker_proxy=proxy),
+                         max_history=10, progress_poll_interval=0.5)
+        job = Job(id="j-fast", capability_instance_id="plug-b", args=(), kwargs={})
+        queue._jobs[job.id] = job
+
+        poll_task = asyncio.create_task(queue._poll_progress(job, proxy))
+        await asyncio.sleep(0.05)  # the "fast job" completes here, well under the interval
+        poll_task.cancel()
+        try:
+            await poll_task
+        except asyncio.CancelledError:
+            pass
+        assert proxy.progress_calls == 0, \
+            f"fast job paid {proxy.progress_calls} progress polls; sleep-first should pay zero"
+
+    asyncio.run(scenario())

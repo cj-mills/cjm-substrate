@@ -417,3 +417,25 @@ def test_start_process_injects_resolved_workspace(monkeypatch):
         proxy_mod, "resolve_workspace",
         lambda: (_ for _ in ()).throw(AssertionError("must not resolve when env already set")))
     assert _spawn()["CJM_WORKSPACE"] == "/operator/says"
+
+
+def test_sync_client_persists_across_calls():
+    """865e6a33: the sync per-call surface rides ONE persistent httpx.Client —
+    a fresh client per call paid an SSL-context build + TCP setup for localhost
+    worker traffic. `_ensure_sync_client` returns the same client until it is
+    closed (worker respawn / cleanup), then transparently rebuilds."""
+    import threading
+
+    p = object.__new__(RemoteCapabilityProxy)  # no worker spawn
+    p._sync_client = None
+    p._sync_client_lock = threading.Lock()
+
+    c1 = p._ensure_sync_client()
+    c2 = p._ensure_sync_client()
+    assert c1 is c2, "per-call surface must reuse one persistent sync client"
+
+    c1.close()
+    c3 = p._ensure_sync_client()
+    assert c3 is not c1 and not c3.is_closed, \
+        "a closed client must be transparently rebuilt"
+    c3.close()

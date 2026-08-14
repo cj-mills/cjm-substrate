@@ -1931,6 +1931,13 @@ class JobQueue:
         last_message = job.status_message
         poll_count = 0
         while True:
+            # Sleep FIRST (865e6a33): most queue ops (e.g. graph reads) complete
+            # well inside one interval, and an immediate first poll paid a worker
+            # /progress round-trip per job for progress nobody could observe
+            # (24 per warm portfolio pull, every one raced by completion). A job
+            # finishing inside the interval now pays ZERO progress polls; long
+            # jobs see their first PROGRESS_CHANGED at ~interval.
+            await asyncio.sleep(self.progress_poll_interval)
             try:
                 if hasattr(capability, 'get_progress_async'):
                     progress_info = await capability.get_progress_async()
@@ -1986,8 +1993,6 @@ class JobQueue:
 
             except Exception:
                 pass  # Ignore polling errors
-
-            await asyncio.sleep(self.progress_poll_interval)
 
 
 def _subscriber_keys_for(event: JobEvent) -> List[str]:

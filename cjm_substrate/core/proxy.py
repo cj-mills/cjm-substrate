@@ -88,6 +88,14 @@ class RemoteCapabilityProxy(ToolCapability):
         # ~10ms of per-request client setup. Dropped on worker (re)spawn.
         self._async_client: Optional[httpx.AsyncClient] = None
         self._async_client_loop: Optional[Any] = None
+        # 865e6a33: persistent client for the per-call SYNC surface (execute,
+        # get_progress, get_stats, is_alive, ...). A fresh httpx.Client per call
+        # paid an SSL-context build + TCP setup for localhost plain-HTTP worker
+        # traffic. httpx.Client is thread-safe; the lock guards creation only.
+        # No default timeout — call sites pass per-request timeouts. Dropped on
+        # worker (re)spawn like the async client.
+        self._sync_client: Optional[httpx.Client] = None
+        self._sync_client_lock = threading.Lock()
         # SG-4: bind the listening socket in the parent and (on Unix) pass the
         # FD to the worker via subprocess inheritance, closing the
         # bind-then-close-then-reopen TOCTOU race that would otherwise let
@@ -146,13 +154,13 @@ class RemoteCapabilityProxy(ToolCapability):
     
     def get_config_schema(self) -> Dict[str, Any]: # JSON Schema
         """Get the capability's configuration schema."""
-        with httpx.Client() as client:
-            return client.get(f"{self.base_url}/config_schema").json()
+        return self._ensure_sync_client().get(
+            f"{self.base_url}/config_schema", timeout=5).json()
     
     def get_current_config(self) -> Dict[str, Any]: # Current config values
         """Get the capability's current configuration."""
-        with httpx.Client() as client:
-            return client.get(f"{self.base_url}/config").json()
+        return self._ensure_sync_client().get(
+            f"{self.base_url}/config", timeout=5).json()
 
     def _bind_listen_socket(self) -> Tuple[socket.socket, int]:
         """Bind a listening socket on a kernel-chosen ephemeral port.
@@ -183,9 +191,18 @@ class RemoteCapabilityProxy(ToolCapability):
         self.worker_session_id = str(uuid.uuid4())
 
         # A fresh worker means any pooled keep-alive connections are dead — drop
-        # the cached async client so the next execute_async builds a new pool.
+        # the cached clients so the next call builds a new pool.
         self._async_client = None
         self._async_client_loop = None
+        # getattr: stub proxies drive this method without __init__ (see the
+        # adapter_specs access below).
+        _stale_sync = getattr(self, '_sync_client', None)
+        if _stale_sync is not None:
+            try:
+                _stale_sync.close()
+            except Exception:
+                pass
+        self._sync_client = None
 
         # SG-4: prefer FD inheritance over bind-then-close. `pass_fds` is
         # Unix-only; Windows falls back to the legacy port-handoff (TOCTOU
@@ -302,8 +319,7 @@ class RemoteCapabilityProxy(ToolCapability):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                with httpx.Client() as client:
-                    client.get(f"{self.base_url}/health")
+                self._ensure_sync_client().get(f"{self.base_url}/health", timeout=5)
                 print(f"[{self.name}] Worker ready.", file=sys.stderr)
                 # CR-14: readiness is a journal event (startup latency rides along).
                 self._journal_event(SubstrateEventType.WORKER_READY.value, {
@@ -342,17 +358,28 @@ class RemoteCapabilityProxy(ToolCapability):
         dynamic field, JSON-serialized to dicts). Empty dict when the capability
         exposes no dynamic options.
         """
-        with httpx.Client() as client:
-            return client.get(f"{self.base_url}/config_options").json()
+        return self._ensure_sync_client().get(
+            f"{self.base_url}/config_options", timeout=5).json()
 
     def cleanup(self) -> None:
         """Clean up capability resources and terminate worker process."""
         # Send cleanup request to worker
         try:
-            with httpx.Client(timeout=2) as client:
-                client.post(f"{self.base_url}/cleanup")
+            self._ensure_sync_client().post(f"{self.base_url}/cleanup", timeout=2)
         except Exception:
             pass  # Worker may already be gone
+
+        # Drop the persistent clients — pooled connections die with the worker.
+        # The sync client closes here; the async one is only dropped (no loop to
+        # await aclose in a sync teardown — matches the respawn path).
+        if self._sync_client is not None:
+            try:
+                self._sync_client.close()
+            except Exception:
+                pass
+            self._sync_client = None
+        self._async_client = None
+        self._async_client_loop = None
 
         # Terminate the subprocess using cross-platform utility
         proc = self.process
@@ -472,6 +499,22 @@ class RemoteCapabilityProxy(ToolCapability):
             self._async_client_loop = loop
         return self._async_client
 
+    def _ensure_sync_client(self) -> httpx.Client:
+        """The persistent client behind the sync per-call surface (865e6a33).
+
+        Same keep-alive contract as `_ensure_async_client`: `keepalive_expiry`
+        stays UNDER uvicorn's 5s keep-alive timeout so an idle connection
+        retires before the worker closes it. Built with no default timeout —
+        every call site passes its own per-request timeout. Creation is
+        lock-guarded (sync callers may race from manager threadpools); the
+        client itself is thread-safe."""
+        if self._sync_client is None or self._sync_client.is_closed:
+            with self._sync_client_lock:
+                if self._sync_client is None or self._sync_client.is_closed:
+                    self._sync_client = httpx.Client(
+                        timeout=None, limits=httpx.Limits(keepalive_expiry=4.0))
+        return self._sync_client
+
     def execute_stream_sync(self, *args, **kwargs) -> Generator[Any, None, None]:
         """Synchronous wrapper for streaming (blocking)."""
         # This is tricky without "httpx.stream" in sync mode.
@@ -550,8 +593,8 @@ class RemoteCapabilityProxy(ToolCapability):
         """
         payload = self._prepare_payload(args, kwargs)
         try:
-            with httpx.Client(timeout=None) as client:
-                resp = client.post(f"{self.base_url}/execute", json=payload)
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/execute", json=payload)
         except (httpx.ConnectError, httpx.RemoteProtocolError,
                 httpx.ReadError, httpx.WriteError):
             # CR-7 Track A: worker may have died mid-call. Classify or re-raise.
@@ -619,8 +662,8 @@ class RemoteCapabilityProxy(ToolCapability):
         """
         payload = self._prepare_task_payload(task_name, method, kwargs)
         try:
-            with httpx.Client(timeout=None) as client:
-                resp = client.post(f"{self.base_url}/task", json=payload)
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/task", json=payload)
         except (httpx.ConnectError, httpx.RemoteProtocolError,
                 httpx.ReadError, httpx.WriteError):
             self._check_worker_death()
@@ -650,17 +693,17 @@ class RemoteCapabilityProxy(ToolCapability):
 
     def get_stats(self) -> Dict[str, Any]: # Process telemetry
         """Get worker process resource usage."""
-        with httpx.Client() as client:
-            return client.get(f"{self.base_url}/stats").json()
+        return self._ensure_sync_client().get(
+            f"{self.base_url}/stats", timeout=5).json()
 
     def is_alive(self) -> bool: # True if worker is responsive
         """Check if the worker process is still running and responsive."""
         if not self.process or self.process.poll() is not None:
             return False
         try:
-            with httpx.Client(timeout=2) as client:
-                resp = client.get(f"{self.base_url}/health")
-                return resp.status_code == 200
+            resp = self._ensure_sync_client().get(
+                f"{self.base_url}/health", timeout=2)
+            return resp.status_code == 200
         except Exception:
             return False
 
@@ -673,8 +716,8 @@ class RemoteCapabilityProxy(ToolCapability):
         treat None as "skip the drift check", never as an empty surface.
         """
         try:
-            with httpx.Client(timeout=5) as client:
-                resp = client.get(f"{self.base_url}/structural_surface")
+            resp = self._ensure_sync_client().get(
+                f"{self.base_url}/structural_surface", timeout=5)
             if resp.status_code != 200:
                 return None
             return resp.json()
@@ -684,8 +727,8 @@ class RemoteCapabilityProxy(ToolCapability):
     def cancel(self) -> bool: # True if cancel request was sent
         """Request cancellation of running execution."""
         try:
-            with httpx.Client(timeout=2) as client:
-                resp = client.post(f"{self.base_url}/cancel")
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/cancel", timeout=2)
             return resp.status_code == 200
         except httpx.ConnectError:
             return False  # Worker may have died
@@ -693,8 +736,8 @@ class RemoteCapabilityProxy(ToolCapability):
     async def cancel_async(self) -> bool: # True if cancel request was sent
         """Request cancellation asynchronously."""
         try:
-            async with httpx.AsyncClient(timeout=2) as client:
-                resp = await client.post(f"{self.base_url}/cancel")
+            resp = await self._ensure_async_client().post(
+                f"{self.base_url}/cancel", timeout=2)
             return resp.status_code == 200
         except httpx.ConnectError:
             return False
@@ -702,8 +745,8 @@ class RemoteCapabilityProxy(ToolCapability):
     def get_progress(self) -> Dict[str, Any]: # {progress: float, message: str}
         """Get current execution progress from worker."""
         try:
-            with httpx.Client(timeout=2) as client:
-                resp = client.get(f"{self.base_url}/progress")
+            resp = self._ensure_sync_client().get(
+                f"{self.base_url}/progress", timeout=2)
             if resp.status_code == 200:
                 return resp.json()
             return {"progress": 0.0, "message": ""}
@@ -713,8 +756,8 @@ class RemoteCapabilityProxy(ToolCapability):
     async def get_progress_async(self) -> Dict[str, Any]: # {progress: float, message: str}
         """Get current execution progress asynchronously."""
         try:
-            async with httpx.AsyncClient(timeout=2) as client:
-                resp = await client.get(f"{self.base_url}/progress")
+            resp = await self._ensure_async_client().get(
+                f"{self.base_url}/progress", timeout=2)
             if resp.status_code == 200:
                 return resp.json()
             return {"progress": 0.0, "message": ""}
@@ -731,8 +774,8 @@ class RemoteCapabilityProxy(ToolCapability):
         hook actually firing.
         """
         try:
-            with httpx.Client(timeout=5) as client:
-                resp = client.post(f"{self.base_url}/on_disable")
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/on_disable", timeout=5)
             return resp.status_code == 200
         except httpx.ConnectError:
             return False  # Worker may have died; substrate carries on
@@ -745,8 +788,8 @@ class RemoteCapabilityProxy(ToolCapability):
         re-acquire resources or rely on lazy re-load at next execute().
         """
         try:
-            with httpx.Client(timeout=5) as client:
-                resp = client.post(f"{self.base_url}/on_enable")
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/on_enable", timeout=5)
             return resp.status_code == 200
         except httpx.ConnectError:
             return False
@@ -764,8 +807,8 @@ class RemoteCapabilityProxy(ToolCapability):
               degrades to empty stats)
         """
         try:
-            with httpx.Client(timeout=5) as client:
-                resp = client.post(f"{self.base_url}/get_system_status")
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/get_system_status", timeout=5)
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code == 404:
@@ -787,8 +830,8 @@ class RemoteCapabilityProxy(ToolCapability):
     async def get_system_status_async(self) -> Optional[Dict[str, Any]]:  # SystemStats dict, or None on transport / config failure
         """Async variant of `get_system_status`. Same 200/404/500/ConnectError semantics."""
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.post(f"{self.base_url}/get_system_status")
+            resp = await self._ensure_async_client().post(
+                f"{self.base_url}/get_system_status", timeout=5)
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code == 404:
@@ -812,8 +855,8 @@ class RemoteCapabilityProxy(ToolCapability):
         per-process visibility yield a 200 with an empty list.
         """
         try:
-            with httpx.Client(timeout=5) as client:
-                resp = client.post(f"{self.base_url}/list_processes")
+            resp = self._ensure_sync_client().post(
+                f"{self.base_url}/list_processes", timeout=5)
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code == 404:
@@ -832,8 +875,8 @@ class RemoteCapabilityProxy(ToolCapability):
     async def list_processes_async(self) -> Optional[List[Dict[str, Any]]]:  # ProcessStats dict list, or None on transport / config failure
         """Async variant of `list_processes`. Same semantics."""
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.post(f"{self.base_url}/list_processes")
+            resp = await self._ensure_async_client().post(
+                f"{self.base_url}/list_processes", timeout=5)
             if resp.status_code == 200:
                 return resp.json()
             if resp.status_code == 404:
