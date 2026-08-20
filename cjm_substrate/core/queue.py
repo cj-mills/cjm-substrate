@@ -590,12 +590,16 @@ class JobQueue:
                 return job
             raise ValueError(f"Unknown job: {job_id}")
 
+        # Hold the reference across the wait: history overflow may evict the
+        # job from `_jobs` before the waiter wakes (the 984aa2d4 leak fix made
+        # eviction real), and the held object is the same record either way.
+        job = self._jobs.get(job_id)
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             raise TimeoutError(f"Timeout waiting for job {job_id}")
 
-        return self._jobs[job_id]
+        return self._jobs.get(job_id, job)
 
     def get_pending(self) -> List[Job]:  # Pending jobs, priority-sorted
         """Get pending jobs, priority-sorted (higher priority first, then FIFO)."""
@@ -717,7 +721,7 @@ class JobQueue:
         drop — publisher never blocks. Each subscriber tracks `dropped_count` so
         operators / future telemetry can surface backpressure visibility.
         """
-        if event.type.value not in LIVENESS_EVENT_TYPES:
+        if event.type.value not in LIVENESS_EVENT_TYPES and self._journal_admits(event):
             self._journal_append_guarded(JournalEvent(
                 event_type=event.type.value,
                 ts=event.timestamp,
@@ -744,6 +748,50 @@ class JobQueue:
                         f"(dropped_count={sub.dropped_count}); subscriber is "
                         f"falling behind."
                     )
+
+    def _instance_observability(
+        self,
+        capability_instance_id: str,               # The instance whose class applies
+        control: Optional[Dict[str, Any]] = None,  # Per-submit override (Job.control)
+    ) -> str:  # "full" | "ambient"
+        """An instance's observability class (DEC 8bf656c0), override-aware.
+
+        Resolution: a per-submit `control={"observability": ...}` wins, then the
+        deps' declared class (`get_observability_class`, consumed defensively
+        like the stage-3 surface — a deps without it means FULL), then "full".
+        The HOST declares ambient at load time (e.g. the projection runtime
+        marks its graph-storage instance) — the queue never guesses."""
+        override = (control or {}).get("observability")
+        if override in ("full", "ambient"):
+            return override
+        fn = getattr(self._deps, "get_observability_class", None)
+        got = fn(capability_instance_id) if callable(fn) else None
+        return got if got in ("full", "ambient") else "full"
+
+    def _journal_admits(
+        self,
+        event: JobEvent,  # A journal-class event at the single emission path
+    ) -> bool:
+        """Observability-class journal gate (DEC 8bf656c0).
+
+        FULL instances journal every journal-class event — the pre-gate
+        behavior. AMBIENT instances (compute-light, re-derivable work: the
+        graph-storage ops behind the workbench live feed and cg-rebuild) skip
+        per-job SUCCESS accounting — the tiny synchronous inserts whose
+        WAL/fsync amplification dominated process disk writes at poll cadence —
+        but keep the PRECIOUS rows: failed/cancelled terminal transitions,
+        cancel phases, block reasons, retries. Errors never degrade quietly."""
+        job = self._jobs.get(event.job_id)
+        cls = self._instance_observability(
+            event.capability_instance_id,
+            job.control if job is not None else None)
+        if cls == "full":
+            return True
+        if event.type == JobEventType.STATE_TRANSITION:
+            return event.payload.get("to") in ("failed", "cancelled")
+        return event.type in (JobEventType.CANCEL_PHASE_CHANGED,
+                              JobEventType.BLOCK_REASON_CHANGED,
+                              JobEventType.RETRY_STARTED)
 
     async def _subscribe(
         self,
@@ -1293,6 +1341,10 @@ class JobQueue:
             evicted = self._job_completed_events.pop(old_job.id, None)
             if evicted is not None:
                 evicted.set()
+            # History eviction is THE _jobs eviction (finding 984aa2d4): a Job
+            # retains args/kwargs/result, so a long-lived queue host that never
+            # dropped lookup entries grew RSS on every job forever.
+            self._jobs.pop(old_job.id, None)
 
     def _signal_job_completed(self, job_id: str) -> None:
         """Signal that a job has completed."""
@@ -1714,6 +1766,10 @@ class JobQueue:
 
             task = asyncio.create_task(self._execute_job(job))
             self._running_tasks[job.id] = task
+
+            if self._instance_observability(job.capability_instance_id,
+                                            job.control) != "full":
+                continue  # AMBIENT (DEC 8bf656c0): success accounting skipped
 
             # CR-14 follow-up: the admission decision is an account-of-action.
             # Pure journal row (no bus fan-out — it is not a JobEventType);

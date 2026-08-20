@@ -228,6 +228,49 @@ def test_sg13_eviction_signals_waiters():
 
 
 # ---------------------------------------------------------------------------
+# 984aa2d4 regression: history eviction must bound _jobs (long-lived hosts)
+# ---------------------------------------------------------------------------
+
+def test_history_eviction_bounds_jobs_dict():
+    async def scenario():
+        queue = JobQueue(deps=MagicMock(), max_history=2)
+
+        for i in range(10):
+            j = Job(id=f"job-{i}", capability_instance_id="p", args=(), kwargs={},
+                    status=JobStatus.completed)
+            j.result = {"payload": "x" * 64}  # results are what made the leak fat
+            queue._jobs[j.id] = j
+            queue._job_completed_events[j.id] = asyncio.Event()
+            queue._move_to_history(j)
+
+        # _jobs holds exactly the retained history working set — evicted jobs
+        # (and their result payloads) must not accumulate for the process lifetime.
+        assert len(queue._history) == 2
+        assert set(queue._jobs) == {"job-8", "job-9"}
+
+        # A waiter holding an evicted job's identity still resolves: the held
+        # reference is returned even though the lookup entry is gone.
+        j = Job(id="job-w", capability_instance_id="p", args=(), kwargs={})
+        queue._jobs[j.id] = j
+        queue._job_completed_events[j.id] = asyncio.Event()
+        waiter = asyncio.create_task(queue.wait_for_job("job-w", timeout=1.0))
+        await asyncio.sleep(0)  # waiter captures its reference + blocks on the event
+        j.status = JobStatus.completed
+        queue._signal_job_completed(j.id)
+        queue._move_to_history(j)
+        for i in range(10, 13):  # overflow history so job-w evicts from _jobs too
+            jx = Job(id=f"job-{i}", capability_instance_id="p", args=(), kwargs={},
+                     status=JobStatus.completed)
+            queue._jobs[jx.id] = jx
+            queue._job_completed_events[jx.id] = asyncio.Event()
+            queue._move_to_history(jx)
+        assert "job-w" not in queue._jobs
+        assert (await waiter) is j
+
+    asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
 # CR-6 stage 1: event bus fan-out + Protocol satisfaction
 # ---------------------------------------------------------------------------
 
@@ -1294,5 +1337,54 @@ def test_fast_job_pays_zero_progress_polls():
             pass
         assert proxy.progress_calls == 0, \
             f"fast job paid {proxy.progress_calls} progress polls; sleep-first should pay zero"
+
+    asyncio.run(scenario())
+
+
+def test_ambient_observability_skips_success_journal_rows(tmp_path):
+    # DEC 8bf656c0: an AMBIENT instance journals no rows for a successful job
+    # (state transitions + admission decision all skipped — the poll-cadence
+    # write-amplification class), while failures still land as terminal
+    # state_transition rows, and a per-submit override restores full accounting.
+    class AmbientDeps(ProxySysmonDeps):
+        def get_observability_class(self, name_or_id):
+            return "ambient"
+
+        async def execute_capability_async(self, name_or_id, *args, **kwargs):
+            if args and args[0] == "boom":
+                raise RuntimeError("boom")
+            return await super().execute_capability_async(name_or_id, *args, **kwargs)
+
+    async def scenario():
+        journal = LocalJournalStore(tmp_path / "journal.db")
+        queue = JobQueue(deps=AmbientDeps(worker_proxy=FakeWorkerProxy()),
+                         max_history=10, journal=journal,
+                         progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            ok = await queue.submit("plug-a", "hello")
+            done = await queue.wait_for_job(ok, timeout=5.0)
+            assert done.status == JobStatus.completed
+            assert journal.query(job_id=ok) == [], \
+                "ambient success must journal NOTHING (no transitions, no admission)"
+
+            bad = await queue.submit("plug-a", "boom")
+            failed = await queue.wait_for_job(bad, timeout=5.0)
+            assert failed.status == JobStatus.failed
+            rows = journal.query(job_id=bad)
+            assert [r.event_type for r in rows] == ["state_transition"], \
+                f"ambient failure must keep exactly the terminal row: {rows}"
+            assert rows[0].payload.get("to") == "failed"
+
+            forced = await queue.submit("plug-a", "hello",
+                                        control={"observability": "full"})
+            done2 = await queue.wait_for_job(forced, timeout=5.0)
+            assert done2.status == JobStatus.completed
+            types = [r.event_type for r in journal.query(job_id=forced)]
+            assert types.count("state_transition") == 2, \
+                f"per-submit full override must restore success accounting: {types}"
+            assert "admission_decided" in types
+        finally:
+            await queue.stop()
 
     asyncio.run(scenario())

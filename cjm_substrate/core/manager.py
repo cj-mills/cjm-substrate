@@ -132,6 +132,11 @@ class CapabilityManager:
         # invocation. The journal is never swept.
         self._start_diagnostics_retention_sweep()
 
+        # DEC 8bf656c0: per-instance observability classes, declared by the
+        # HOST after load ("ambient" = compute-light re-derivable work whose
+        # per-op success accounting skips the journal; failures still land).
+        self._observability_classes: Dict[str, str] = {}
+
         # CR-7: empirical resource tracking. The store is lazy-init'd only when
         # cfg.substrate.empirical_tracking is True (default). Hosts that want
         # the substrate to skip recording entirely set empirical_tracking=False
@@ -568,6 +573,42 @@ class CapabilityManager:
     ) -> Optional[CapabilityMeta]: # Capability metadata or None
         """Get metadata for a loaded capability by name."""
         return self.capabilities.get(capability_name)
+
+    def set_observability_class(
+        self,
+        name_or_id:str, # Capability instance id (same key space as get_capability)
+        observability_class:Optional[str] # "full" | "ambient" | None to clear
+    ) -> None:
+        """Declare an instance's observability class (DEC 8bf656c0).
+
+        The HOST declares its workload: "ambient" marks compute-light,
+        re-derivable work (the context-graph ops behind the workbench live feed
+        and cg-rebuild) whose per-op SUCCESS accounting should skip the durable
+        journal and the worker-account harvest; failures still journal.
+        Consumed defensively (getattr) by JobQueue and the proxy account
+        harvest, so hosts that never declare see exact pre-gate behavior.
+        Stamps a live proxy when one is loaded — call after load_capability."""
+        # Defensive against test fixtures that bypass __init__ (the
+        # `empirical_store` / `manifest_v2` getattr pattern).
+        if not hasattr(self, '_observability_classes'):
+            self._observability_classes = {}
+        if observability_class is None:
+            self._observability_classes.pop(name_or_id, None)
+        else:
+            self._observability_classes[name_or_id] = observability_class
+        cap = self.get_capability(name_or_id)
+        if cap is not None:
+            try:
+                cap.observability_class = observability_class or "full"
+            except (AttributeError, TypeError):
+                pass  # exotic proxy doubles without settable attrs: queue gate still applies
+
+    def get_observability_class(
+        self,
+        name_or_id:str # Capability instance id
+    ) -> Optional[str]: # "full" | "ambient" | None (undeclared = full)
+        """The declared observability class for an instance (DEC 8bf656c0)."""
+        return getattr(self, '_observability_classes', {}).get(name_or_id)
 
     def get_discovered_meta(
         self,
@@ -1436,6 +1477,14 @@ class CapabilityManager:
             # No config_hash means the instance wasn't loaded through load_capability
             # (test fixtures with manual self.instances[...] = CapabilityInstance(...)
             # populate). Skip recording rather than keying records by empty string.
+            return
+        if (self.get_observability_class(inst.instance_id) == "ambient"
+                and store.get_record(inst.instance_id, inst.config_hash) is not None):
+            # DEC 8bf656c0 rider: an AMBIENT instance keeps its MEASUREMENT run
+            # (the first sample records, so admission still gains a profile) but
+            # stops per-op sample INSERTs — the empirical store was the last
+            # poll-cadence write sink after the journal gate, and skipping here
+            # also drops the per-op /stats round-trip to the worker.
             return
         try:
             worker_stats: Dict[str, Any] = {}

@@ -464,6 +464,11 @@ class RemoteCapabilityProxy(ToolCapability):
         raw = resp.headers.get(ACCOUNTS_HEADER)
         if not raw:
             return
+        if getattr(self, "observability_class", "full") == "ambient":
+            # DEC 8bf656c0: ambient instances skip worker-account rows — the
+            # per-op success accounting is exactly their exempt class (failures
+            # still journal via the queue's terminal transition).
+            return
         try:
             env = get_call_envelope()
             for acct in json.loads(raw):
