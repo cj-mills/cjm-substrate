@@ -638,6 +638,16 @@ try:
 except Exception:
     version = "0.0.0"
 
+# The adapter's config schema rides the manifest (DEC 48eff28b): host-side
+# UIs generate task-launch forms from it without importing the worker env.
+config_schema = {{}}
+try:
+    getter = getattr(cls(), "get_config_schema", None)
+    if callable(getter):
+        config_schema = getter() or {{}}
+except Exception:
+    config_schema = {{}}
+
 print(json.dumps({{
     "unit": "adapter",
     "name": "{module_name}.{class_name}",
@@ -647,6 +657,7 @@ print(json.dumps({{
     "class": "{class_name}",
     "required_tool_protocol": proto.__module__ + "." + proto.__qualname__,
     "protocol_members": {{"methods": methods, "properties": properties}},
+    "config_schema": config_schema,
 }}, indent=2))
 """
     introspection_fd, introspection_path = tempfile.mkstemp(

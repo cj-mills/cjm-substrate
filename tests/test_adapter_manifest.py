@@ -68,8 +68,13 @@ def test_manifest_round_trip_and_kind_check():
         class_name="GenericGraphStorageAdapter",
         required_tool_protocol="cjm_graph_storage_adapter_interface.adapter.GraphStorageToolProtocol",
         protocol_members={"methods": [{"name": "add_nodes", "params": ["nodes"]}],
-                          "properties": ["name"]})
+                          "properties": ["name"]},
+        config_schema={"properties": {"depth": {"type": "integer", "default": 2}}})
     d = am.to_dict()
     assert is_adapter_manifest(d) and d["class"] == "GenericGraphStorageAdapter"
+    assert d["config_schema"]["properties"]["depth"]["default"] == 2
     assert adapter_manifest_from_dict(d) == am
     assert not is_adapter_manifest({"name": "x"})  # capability manifests lack "unit"
+    # pre-upgrade manifests (no config_schema key) read back as {}
+    d.pop("config_schema")
+    assert adapter_manifest_from_dict(d).config_schema == {}

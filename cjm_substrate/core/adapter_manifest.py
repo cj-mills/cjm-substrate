@@ -20,6 +20,7 @@ class AdapterManifest:
     class_name: str  # Impl class name
     required_tool_protocol: str  # Protocol FQN (semantic contract; host never imports it)
     protocol_members: Dict[str, Any] = field(default_factory=dict)  # {"methods": [{"name","signature","params"}], "properties": [...]}
+    config_schema: Dict[str, Any] = field(default_factory=dict)  # The adapter's get_config_schema() JSON Schema ({} = none/pre-upgrade) — the form-generation seam (DEC 48eff28b)
     conda_env: str = ""  # Env the manifest was generated from
     generated_at: str = ""  # ISO timestamp
     unit: str = "adapter"  # Manifest-kind discriminator
@@ -35,6 +36,7 @@ class AdapterManifest:
             "class": self.class_name,
             "required_tool_protocol": self.required_tool_protocol,
             "protocol_members": self.protocol_members,
+            "config_schema": self.config_schema,
             "conda_env": self.conda_env,
             "generated_at": self.generated_at,
         }
@@ -52,6 +54,7 @@ def adapter_manifest_from_dict(
         class_name=d["class"],
         required_tool_protocol=d.get("required_tool_protocol", ""),
         protocol_members=d.get("protocol_members", {}),
+        config_schema=d.get("config_schema", {}),
         conda_env=d.get("conda_env", ""),
         generated_at=d.get("generated_at", ""),
     )
