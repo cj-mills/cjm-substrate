@@ -6,8 +6,10 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ## Modules
 
+- **`cjm_substrate`**
 - **`cjm_substrate.bootstrap`** — One-call factory that assembles a CapabilityManager + JobQueue + capability
 - **`cjm_substrate.cli`** — CLI tool for declarative capability management.
+- **`cjm_substrate.core`**
 - **`cjm_substrate.core._telemetry`** — Shared GPU/CPU attribution helpers used by both JobQueue._sample_resource_snapshot (CR-6 Stage 3) and CapabilityManager._record_sample_safe (CR-7).
 - **`cjm_substrate.core.adapter`** — The typed-task half of the capability-unit fracture (pass-2 Thread 3) —
 - **`cjm_substrate.core.adapter_manifest`** — The ADAPTER unit's registration manifest + the surface-based compatibility matcher (CR-17 pt 2, stage 4). Pass-2 Thread 3: registration/discovery = per-unit manifests generated in-env and found by discover_manifests(); compatibility is DERIVED, not declared — the capability records only its structural surface, the adapter declares its protocol (recorded here as member names + parameter lists), and the substrate matches manifest-vs-manifest. Works against UNLOADED capabilities with zero protocol imports host-side.
@@ -30,8 +32,10 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.wire`** — Typed data transfer at the worker boundary — the zero-copy FileBackedDTO
 - **`cjm_substrate.core.worker`** — FastAPI server that runs inside isolated capability environments (the Universal Worker): dynamically loads the capability class named on the CLI, exposes the HTTP lifecycle / execute / task / monitor surface for the proxy, monitors the parent process (the suicide-pact watchdog prevents zombie workers), and reports process-subtree telemetry for resource-scheduling decisions. This module is a process ENTRYPOINT (SG-39): host code never imports it.
 - **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
+- **`cjm_substrate.utils`**
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
+- **`cjm_substrate.utils.sidecar`** — JSON sidecar for shell view-state — settings and bookmarks that persist
 - **`cjm_substrate.utils.validation`** — Validation helpers for capability configuration dataclasses.
 
 ## API
@@ -297,6 +301,10 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `hash_file` _function_ — Stream-hash a file without loading it entirely into memory.
 - `verify_hash` _function_ — Verify content against an expected hash string.
 
+### `cjm_substrate.utils.sidecar`
+
+- `SidecarState` _class_ — One JSON sidecar file: never-raise load, merge-on-save, best-effort write.
+
 ### `cjm_substrate.utils.validation`
 
 - `config_to_dict` _function_ — Convert a configuration dataclass instance to a dictionary.
@@ -309,4 +317,4 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 ## Dependencies
 
 **Depends on:** `fastapi`, `fastcore`, `httpx`, `psutil`, `pyyaml`, `typer`, `uvicorn`
-**Used by:** `cjm-capability-demucs`, `cjm-capability-ffmpeg`, `cjm-capability-graph-sqlite`, `cjm-capability-monitor-nvidia`, `cjm-capability-primitives`, `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-capability-qwen3-forced-aligner`, `cjm-capability-silero-vad`, `cjm-capability-voxtral-hf`, `cjm-capability-whisper`, `cjm-context-graph-layer`, `cjm-context-graph-primitives`, `cjm-context-graph-projection`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-tui`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-tui`, `cjm-transcription-adapter-interface`, `cjm-transcription-core`, `cjm-transcription-tui`, `cjm-workflow-hub-tui`, `hf-utils`, `torch-utils`
+**Used by:** `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-context-graph-projection`, `cjm-graph-storage-adapter-interface`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-qt`, `cjm-transcript-correction-tui`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-qt`, `cjm-transcript-decomp-tui`, `cjm-transcription-core`, `cjm-transcription-qt`, `cjm-transcription-tui`, `cjm-vad-adapter-interface`, `cjm-workflow-hub-qt`, `cjm-workflow-hub-tui`
