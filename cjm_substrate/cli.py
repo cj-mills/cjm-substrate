@@ -448,6 +448,8 @@ print(json.dumps(meta, indent=2))
                     regenerated_at=now_iso,
                     worker_env=intro_worker_env,
                     structural_surface=intro_surface,
+                    observability_class=(meta_json.get("observability_class")
+                                         if meta_json.get("observability_class") in ("full", "ambient") else None),
                 ),
                 drift_tracking=DriftTracking(
                     config_schema_hash=compute_config_schema_hash(config_schema),

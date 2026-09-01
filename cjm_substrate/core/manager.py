@@ -624,16 +624,7 @@ class CapabilityManager:
         cap_name = inst.capability_name if inst is not None else name_or_id
         if cap_name in declared:
             return declared[cap_name]
-        meta = getattr(self, 'capabilities', {}).get(cap_name)
-        if meta is None:
-            return None
-        v2 = getattr(meta, 'manifest_v2', None)
-        override = ((getattr(v2, 'overrides', None) or {}).get('observability_class')
-                    if v2 is not None else None)
-        if override in ("full", "ambient"):
-            return override
-        code_declared = (getattr(meta, 'manifest', None) or {}).get('observability_class')
-        return code_declared if code_declared in ("full", "ambient") else None
+        return _manifest_observability_class(getattr(self, 'capabilities', {}).get(cap_name))
 
     def get_discovered_meta(
         self,
@@ -1253,7 +1244,9 @@ class CapabilityManager:
                                       adapter_specs=adapter_specs,
                                       journal=self.journal_store,
                                       diagnostics=self.diagnostics_store,
-                                      observability_class=self.get_observability_class(capability_meta.name) or "full")
+                                      observability_class=(self.get_observability_class(capability_meta.name)
+                                                           or _manifest_observability_class(capability_meta)
+                                                           or "full"))
 
             config_schema = capability_meta.manifest.get("config_schema")
         
@@ -2680,3 +2673,23 @@ class CapabilityBinding:
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Resource telemetry for the bound capability's worker process."""
         return self.manager.get_capability_stats(self.capability_name)
+
+
+def _manifest_observability_class(
+    meta: Any,  # CapabilityMeta (duck-typed: `.manifest_v2.overrides` + `.manifest` flat view)
+) -> Optional[str]:  # "full" | "ambient" | None (undeclared)
+    """The observability class a capability's MANIFEST declares (finding 0d886ffe B).
+
+    Workspace operator override (`overrides.observability_class`) beats the code
+    section's capability-declared value; anything but "full"/"ambient" is ignored.
+    Module-level so `load_capability` can consult the meta it HOLDS at proxy
+    construction — before `self.capabilities` is populated for a first load."""
+    if meta is None:
+        return None
+    v2 = getattr(meta, 'manifest_v2', None)
+    override = ((getattr(v2, 'overrides', None) or {}).get('observability_class')
+                if v2 is not None else None)
+    if override in ("full", "ambient"):
+        return override
+    code_declared = (getattr(meta, 'manifest', None) or {}).get('observability_class')
+    return code_declared if code_declared in ("full", "ambient") else None
