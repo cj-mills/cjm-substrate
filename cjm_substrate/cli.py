@@ -1834,3 +1834,20 @@ def workspace_doctor_cmd(
         warned = warned or line.startswith("warn:")
     if warned:
         raise typer.Exit(code=1)
+
+
+@app.command("envs-for")
+def envs_for_cmd(
+    lib:Annotated[str, typer.Argument(help="Capability dist name, e.g. cjm-capability-graph-sqlite")],
+    root:Annotated[Optional[Path], typer.Option(
+        "--root", help="Workspaces root to scan (default: parent of the enclosing workspace)")]=None,
+    as_json:bool=typer.Option(False, "--json", help="Machine rows instead of the report"),
+):
+    """Env-truth sweep (work item 424b9781): every env the workspace manifests say serves
+    LIB, vs what that env's interpreter would actually import — the manifest is the ONLY
+    authority on which env serves a lib, and same-named worker envs across workspaces
+    prove nothing. Green = editable from package_source (edits live on next process);
+    flagged rows print their exact refresh recipe."""
+    from cjm_substrate.utils.envtruth import main as _envtruth_main
+    argv = [lib] + (["--root", str(root)] if root else []) + (["--json"] if as_json else [])
+    raise typer.Exit(code=_envtruth_main(argv))
