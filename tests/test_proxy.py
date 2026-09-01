@@ -439,3 +439,27 @@ def test_sync_client_persists_across_calls():
     assert c3 is not c1 and not c3.is_closed, \
         "a closed client must be transparently rebuilt"
     c3.close()
+
+
+def test_ambient_proxy_gates_routine_lifecycle_rows():
+    """Finding 0d886ffe (B): an AMBIENT worker journals no routine lifecycle rows
+    (spawned / adapter_bound / ready / died-at-cleanup); an abnormal death still
+    lands; a FULL proxy keeps the pre-gate behavior. The class is a constructor
+    input so the gate holds from the very first (spawn) row."""
+    from cjm_substrate.core.journal_store import SubstrateEventType
+    p = RemoteCapabilityProxy.__new__(RemoteCapabilityProxy)
+    p.journal = ListJournal()
+    p.manifest = {"name": "graph-stub"}
+    p.worker_session_id = "ws-amb"
+    p.observability_class = "ambient"
+    p._journal_event(SubstrateEventType.WORKER_SPAWNED.value, {"pid": 1})
+    p._journal_event(SubstrateEventType.ADAPTER_BOUND.value, {})
+    p._journal_event(SubstrateEventType.WORKER_READY.value, {})
+    p._journal_event(SubstrateEventType.WORKER_DIED.value, {"phase": "cleanup", "returncode": 0})
+    assert p.journal.rows == [], "ambient routine life must journal NOTHING"
+    p._journal_event(SubstrateEventType.WORKER_DIED.value, {"phase": "startup_timeout", "timeout_seconds": 5})
+    assert [r.event_type for r in p.journal.rows] == ["worker_died"]  # abnormal death is precious
+    assert p.journal.rows[0].capability_name == "graph-stub"
+    p.observability_class = "full"
+    p._journal_event(SubstrateEventType.WORKER_SPAWNED.value, {"pid": 2})
+    assert [r.event_type for r in p.journal.rows] == ["worker_died", "worker_spawned"]

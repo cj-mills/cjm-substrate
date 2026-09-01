@@ -60,6 +60,7 @@ class CodeSection:
     regenerated_at: Optional[str] = None              # ISO-8601 UTC of last regen
     worker_env: Optional[List[Dict[str, Any]]] = None # CR-12 spawn-env contract: asdict(EnvVarSpec) list
     structural_surface: Optional[Dict[str, Any]] = None  # Pass-2 Thread 3: public surface recorded in-env (methods/properties/attributes)
+    observability_class: Optional[str] = None  # "full" | "ambient" — capability-DECLARED journal class (DEC 8bf656c0 as manifest data, finding 0d886ffe B); regenerate-manifest records the class attribute; None = full
 
 
 @dataclass
@@ -162,6 +163,7 @@ def _from_v2_dict(
         regenerated_at=code_d.get("regenerated_at"),
         worker_env=code_d.get("worker_env"),
         structural_surface=code_d.get("structural_surface"),
+        observability_class=code_d.get("observability_class"),
     )
     drift = DriftTracking(
         config_schema_hash=drift_d.get("config_schema_hash"),
@@ -232,6 +234,8 @@ def _code_section_to_dict(c: CodeSection) -> Dict[str, Any]:
         d["regenerated_at"] = c.regenerated_at
     if c.structural_surface is not None:
         d["structural_surface"] = c.structural_surface
+    if c.observability_class is not None:
+        d["observability_class"] = c.observability_class
     return d
 
 

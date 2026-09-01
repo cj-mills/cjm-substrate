@@ -259,6 +259,13 @@ meta["version"] = _dm.get("Version", "") or ""
 meta["description"] = _dm.get("Summary", "") or ""
 meta["module"] = _pmod.__name__
 meta["class"] = _cap.__name__
+# DEC 8bf656c0 as manifest DATA (finding 0d886ffe B): a capability declares its own
+# journal class on the class (`observability_class = "ambient"` = compute-light,
+# re-derivable work whose routine rows are noise); the manifest carries it so every
+# host gates lifecycle + task rows without a set_observability_class call.
+_oc = getattr(_cap, "observability_class", None)
+if _oc in ("full", "ambient"):
+    meta["observability_class"] = _oc
 meta["python_path"] = _sys.executable  # the worker-env interpreter (proxy spawns it)
 
 # Try to get config_schema from capability instance if not in metadata

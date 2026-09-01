@@ -60,7 +60,8 @@ class RemoteCapabilityProxy(ToolCapability):
         extra_env:Optional[Dict[str, str]]=None, # CR-12: resolved worker-env overlay (secrets + visible overrides) injected at spawn
         adapter_specs:Optional[List[str]]=None, # CR-17 pt 2: host-matched adapter impl specs ("module:ClassName") bound in-worker at spawn
         journal:Optional[JournalStore]=None, # CR-14: journal sink for worker-lifecycle events; lazy LocalJournalStore at cfg.journal_db_path when None
-        diagnostics:Optional[DiagnosticsStore]=None # CR-14: diagnostics sink (raw-stream pump + worker env contract); lazy LocalDiagnosticsStore when None
+        diagnostics:Optional[DiagnosticsStore]=None, # CR-14: diagnostics sink (raw-stream pump + worker env contract); lazy LocalDiagnosticsStore when None
+        observability_class:str="full" # DEC 8bf656c0 / 0d886ffe(B): "full" | "ambient" — known BEFORE spawn so lifecycle rows are gated (manager resolves it from host declaration > manifest override > code-declared)
     ):
         """Initialize proxy and start the worker process."""
         self.manifest = manifest
@@ -102,6 +103,9 @@ class RemoteCapabilityProxy(ToolCapability):
         # another process steal the port between parent close and worker bind.
         self._listen_sock, self.port = self._bind_listen_socket()
         self.base_url = f"http://127.0.0.1:{self.port}"
+        # DEC 8bf656c0 / 0d886ffe(B): the class is set BEFORE spawn — _journal_event
+        # gates the lifecycle rows on it (a host declaration after load misses them).
+        self.observability_class: str = observability_class if observability_class in ("full", "ambient") else "full"
         self._start_process()
 
     @property
@@ -119,7 +123,19 @@ class RemoteCapabilityProxy(ToolCapability):
         event_type:str, # SubstrateEventType value
         payload:Optional[Dict[str, Any]]=None # Per-event structured detail
     ) -> None:
-        """Append a worker-lifecycle journal event with this proxy's identity."""
+        """Append a worker-lifecycle journal event with this proxy's identity.
+
+        AMBIENT gate (DEC 8bf656c0 + finding 0d886ffe B): an ambient worker's
+        ROUTINE life — spawned / adapter_bound / ready / config / died-at-cleanup —
+        is re-derivable noise (a per-invocation CLI worker journaled 5 rows per
+        call: 97% of journal.db); only an ABNORMAL death (startup timeout, any
+        non-cleanup phase) stays precious. Failed JOBS still journal via the
+        queue's terminal-transition gate, independent of this one."""
+        if getattr(self, "observability_class", "full") == "ambient":
+            abnormal_death = (event_type == SubstrateEventType.WORKER_DIED.value
+                              and (payload or {}).get("phase") != "cleanup")
+            if not abnormal_death:
+                return
         self.journal.append(JournalEvent(
             event_type=event_type,
             capability_name=self.name,

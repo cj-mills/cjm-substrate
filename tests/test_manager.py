@@ -1392,3 +1392,29 @@ def test_5daadfc4_worker_env_override_precedence(tmp_path):
     )
     assert pm.set_worker_env_override("weplug-abc123", {"WE_DEVICE": "3"}) is False
     assert pm.config_store.get("weplug-abc123") is None
+
+
+def test_observability_class_resolves_as_manifest_data():
+    """Finding 0d886ffe (B): the class is DATA — host declaration > workspace
+    override > code-declared (manifest) > None; resolvable by capability NAME
+    before load (the proxy needs it at construction) and by instance id after."""
+    pm = CapabilityManager.__new__(CapabilityManager)
+    pm.capabilities = {}
+    pm.instances = {}
+    meta = CapabilityMeta(name="graph", version="0.0.28")
+    meta.manifest = {"name": "graph", "observability_class": "ambient"}  # the flat view carries the code key
+    meta.manifest_v2 = ManifestV2(code=CodeSection(name="graph", observability_class="ambient"))
+    pm.capabilities["graph"] = meta
+    assert pm.get_observability_class("graph") == "ambient"           # code-declared, by name
+    assert pm.get_observability_class("whisper") is None               # unknown = undeclared = full
+    pm.instances["graph-1"] = CapabilityInstance(instance_id="graph-1", capability_name="graph", proxy=object())
+    assert pm.get_observability_class("graph-1") == "ambient"         # by instance id -> its capability
+    meta.manifest_v2.overrides["observability_class"] = "full"         # workspace operator override wins
+    assert pm.get_observability_class("graph-1") == "full"
+    pm._observability_classes = {"graph": "ambient"}                   # host declaration (by name) wins over all
+    assert pm.get_observability_class("graph-1") == "ambient"
+    pm._observability_classes = {"graph-1": "full"}                    # host declaration by id wins first
+    assert pm.get_observability_class("graph-1") == "full"
+    meta.manifest_v2.overrides["observability_class"] = "bogus"        # invalid values are ignored, not trusted
+    pm._observability_classes = {}
+    assert pm.get_observability_class("graph") == "ambient"

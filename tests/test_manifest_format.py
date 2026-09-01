@@ -141,3 +141,20 @@ def test_manifest_to_dict_omits_unpopulated_optionals():
     d = manifest_to_dict(ManifestV2())
     assert d["format_version"] == "2.0"
     assert set(d["code"]) == {"name", "version", "description", "module", "class"}
+
+
+def test_observability_class_round_trips_through_code_section():
+    """Finding 0d886ffe (B): the capability-declared journal class is manifest DATA.
+
+    `regenerate-manifest` records the capability class attribute under
+    `code.observability_class`; the v2 parse must carry it to the typed section and
+    `manifest_to_dict` must emit it (only when set — unpopulated manifests stay legible)."""
+    from cjm_substrate.core.manifest_format import (CodeSection, ManifestV2, _from_v2_dict,
+                                                    manifest_to_dict)
+    d = manifest_to_dict(ManifestV2(code=CodeSection(name="graph", observability_class="ambient")))
+    assert d["code"]["observability_class"] == "ambient"
+    parsed = _from_v2_dict(d)
+    assert parsed.code.observability_class == "ambient"
+    # The manager's flat view is {**install, **code} — the key must ride the code dict.
+    assert "observability_class" in {**d["install"], **d["code"]}
+    assert "observability_class" not in manifest_to_dict(ManifestV2())["code"]

@@ -607,8 +607,33 @@ class CapabilityManager:
         self,
         name_or_id:str # Capability instance id
     ) -> Optional[str]: # "full" | "ambient" | None (undeclared = full)
-        """The declared observability class for an instance (DEC 8bf656c0)."""
-        return getattr(self, '_observability_classes', {}).get(name_or_id)
+        """The observability class for an instance (DEC 8bf656c0), resolved as DATA.
+
+        Resolution order (finding 0d886ffe part B — the class is manifest data,
+        not only a host call): (1) a HOST declaration (`set_observability_class`)
+        by instance id, then by capability name; (2) the workspace manifest's
+        `overrides.observability_class` (operator-set data); (3) the CODE section's
+        `observability_class` (capability-declared — `regenerate-manifest` records
+        the capability class attribute); else None = full. Consulted at proxy
+        CONSTRUCTION (load_capability) so worker-lifecycle rows are gated too —
+        a host declaration after load used to miss the spawn/ready/bound rows."""
+        declared = getattr(self, '_observability_classes', {})
+        if name_or_id in declared:
+            return declared[name_or_id]
+        inst = getattr(self, 'instances', {}).get(name_or_id)
+        cap_name = inst.capability_name if inst is not None else name_or_id
+        if cap_name in declared:
+            return declared[cap_name]
+        meta = getattr(self, 'capabilities', {}).get(cap_name)
+        if meta is None:
+            return None
+        v2 = getattr(meta, 'manifest_v2', None)
+        override = ((getattr(v2, 'overrides', None) or {}).get('observability_class')
+                    if v2 is not None else None)
+        if override in ("full", "ambient"):
+            return override
+        code_declared = (getattr(meta, 'manifest', None) or {}).get('observability_class')
+        return code_declared if code_declared in ("full", "ambient") else None
 
     def get_discovered_meta(
         self,
@@ -1221,10 +1246,14 @@ class CapabilityManager:
             # CR-17 pt 2: resolve adapter impls (auto-bind compatibles, or verify
             # the explicit list with loud refusal) and bind them in-worker at spawn.
             adapter_specs = self._resolve_adapter_specs(capability_meta, adapters)
+            # DEC 8bf656c0 as DATA (0d886ffe B): resolve the class BEFORE spawn so the
+            # proxy gates its own lifecycle rows — host declaration (by name) >
+            # manifest override > code-declared; the instance-id re-stamp lands below.
             proxy = RemoteCapabilityProxy(capability_meta.manifest, extra_env=extra_env,
                                       adapter_specs=adapter_specs,
                                       journal=self.journal_store,
-                                      diagnostics=self.diagnostics_store)
+                                      diagnostics=self.diagnostics_store,
+                                      observability_class=self.get_observability_class(capability_meta.name) or "full")
 
             config_schema = capability_meta.manifest.get("config_schema")
         
@@ -1310,7 +1339,9 @@ class CapabilityManager:
             # Defensive getattr: test fixtures construct via __new__ without the
             # observability stores (the CR-7 fixture pattern).
             _journal = getattr(self, 'journal_store', None)
-            if _journal is not None:
+            # 0d886ffe(B): an AMBIENT instance skips the per-load config row too — a
+            # per-invocation worker re-journaled the same config hash 6,967 times.
+            if _journal is not None and self.get_observability_class(resolved_id) != "ambient":
                 _journal.append(JournalEvent(
                     event_type=SubstrateEventType.CONFIG_APPLIED.value,
                     capability_instance_id=resolved_id,
@@ -2286,7 +2317,8 @@ class CapabilityManager:
             # CR-14: reconfigure is a journal event (the substrate boundary sees
             # it). Defensive getattr for __new__-style test fixtures.
             _journal = getattr(self, 'journal_store', None)
-            if _journal is not None:
+            # 0d886ffe(B): ambient instances skip the reconfigure row as well.
+            if _journal is not None and self.get_observability_class(inst.instance_id) != "ambient":
                 _journal.append(JournalEvent(
                     event_type=SubstrateEventType.CONFIG_APPLIED.value,
                     capability_instance_id=inst.instance_id,
