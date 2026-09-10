@@ -6,7 +6,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ## Modules
 
-- **`cjm_substrate`**
+- **`cjm_substrate.__init__`**
 - **`cjm_substrate.bootstrap`** — One-call factory that assembles a CapabilityManager + JobQueue + capability
 - **`cjm_substrate.cli`** — CLI tool for declarative capability management.
 - **`cjm_substrate.core`**
@@ -34,7 +34,9 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
 - **`cjm_substrate.utils`**
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
+- **`cjm_substrate.utils.envtruth`** — Env truth for capability-served libs — the ONE sweep the six sightings demanded
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
+- **`cjm_substrate.utils.lifecycle`** — Artifact lifecycle sidecar — the ONE seam every picker filters through
 - **`cjm_substrate.utils.sidecar`** — JSON sidecar for shell view-state — settings and bookmarks that persist
 - **`cjm_substrate.utils.validation`** — Validation helpers for capability configuration dataclasses.
 
@@ -47,6 +49,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ### `cjm_substrate.cli`
 
+- `envs_for_cmd` _function_ — Env-truth sweep (work item 424b9781): every env the workspace manifests say serves
 - `generate_adapter_manifest` _function_ — CR-17 pt 2 (stage 4): introspect a task-adapter impl in-env and write its adapter manifest.
 - `install_all` _function_ — Install and register all capabilities defined in capabilities.yaml.
 - `list_capabilities` _function_ — List installed capabilities from manifest directory.
@@ -294,12 +297,33 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `list_cache_entries` _function_ — Enumerate all per-config cache directories for a given (input, action).
 - `prune_cache_for_input` _function_ — Delete per-config cache directories for `(input, action)`, optionally
 
+### `cjm_substrate.utils.envtruth`
+
+- `envs_for` _function_ — Every env the manifests say serves `lib`, with what that env actually holds.
+- `main` _function_
+- `render_rows` _function_ — The human sweep report + the post-edit checklist verdict line.
+
 ### `cjm_substrate.utils.hashing`
 
 - `hash_bytes` _function_ — Compute a hash of byte content.
 - `hash_dict_canonical` _function_ — Hash a dict via canonical JSON encoding.
 - `hash_file` _function_ — Stream-hash a file without loading it entirely into memory.
 - `verify_hash` _function_ — Verify content against an expected hash string.
+
+### `cjm_substrate.utils.lifecycle`
+
+- `ArtifactLifecycle` _class_ — One artifact directory's lifecycle sidecar: forgiving reads (absent /
+- `LifecycleRefusal` _class_ — A lifecycle verb refused LOUDLY (not an artifact dir, an unknown
+- `artifact_id` _function_ — Every artifact class names its directory by the id its manifest
+- `build_parser` _function_
+- `default_actor` _function_ — CJM_ACTOR when the environment carries one (the wrappers stamp
+- `find_holders` _function_ — Every manifest/marker under the workspace that names the artifact —
+- `lifecycle_state` _function_ — The index-row question: given a row's manifest path, its state.
+- `list_artifacts` _function_ — Every artifact directory under a class dir (a dir with a manifest)
+- `main` _function_
+- `partition_lifecycle` _function_ — Stamp + split: the active side is what a picker lists by default,
+- `stamp_lifecycle` _function_ — Stamp each row's `_lifecycle` in place (rows without a path read active).
+- `workspace_root_for` _function_
 
 ### `cjm_substrate.utils.sidecar`
 
@@ -317,4 +341,4 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 ## Dependencies
 
 **Depends on:** `fastapi`, `fastcore`, `httpx`, `psutil`, `pyyaml`, `typer`, `uvicorn`
-**Used by:** `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-context-graph-projection`, `cjm-graph-storage-adapter-interface`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-qt`, `cjm-transcript-correction-tui`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-qt`, `cjm-transcript-decomp-tui`, `cjm-transcription-core`, `cjm-transcription-qt`, `cjm-transcription-tui`, `cjm-vad-adapter-interface`, `cjm-workflow-hub-qt`, `cjm-workflow-hub-tui`
+**Used by:** `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-context-graph-projection`, `cjm-graph-storage-adapter-interface`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-qt`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-qt`, `cjm-transcription-core`, `cjm-transcription-qt`, `cjm-vad-adapter-interface`, `cjm-workflow-hub-qt`

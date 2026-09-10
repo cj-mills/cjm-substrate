@@ -175,3 +175,30 @@ def test_map_bare_exception_to_job_error_structured_data_and_policy():
         err = map_bare_exception_to_job_error(e, traceback_policy=TracebackPolicy.NONE)
     assert err.traceback is None and err.message == ""
     assert err.original_exc_repr
+
+
+def test_map_bare_exception_message_less_exception_carries_type_and_frame():
+    # Sighted 2026-09-10: demucs failed on a bare `assert` and the host saw
+    # CapabilityFatalError('') — nothing to act on. A message-less exception now
+    # carries its TYPE and the innermost frame; a real message is untouched, and
+    # TracebackPolicy.NONE still blanks it.
+    def _inner():
+        raise AssertionError()   # what a bare `assert` raises outside pytest's rewriting: str(exc) == ""
+    try:
+        _inner()
+    except AssertionError as e:
+        err = map_bare_exception_to_job_error(e, capability_name="demucs")
+    assert err.category == 'fatal'
+    assert err.message.startswith("AssertionError (no message) at test_errors.py:")
+    assert "in _inner (raise AssertionError()" in err.message
+    assert err.original_exc_repr == "AssertionError()"
+    try:
+        raise TimeoutError()
+    except Exception as e:
+        err = map_bare_exception_to_job_error(e, traceback_policy=TracebackPolicy.NONE)
+    assert err.message == ""   # the policy still wins
+    try:
+        raise RuntimeError("kept")
+    except Exception as e:
+        err = map_bare_exception_to_job_error(e)
+    assert err.message == "kept"

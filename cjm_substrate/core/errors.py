@@ -1,5 +1,6 @@
 """Typed exception hierarchy + JobError dataclass + default classification of bare Python exceptions. The substrate's CR-5 implementation per the 2026-05-19 substrate audit."""
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -335,9 +336,23 @@ def map_bare_exception_to_job_error(
     resource_shortfall = getattr(exc, 'resource_shortfall', None) if isinstance(exc, CapabilityResourceError) else None
     retry_after = getattr(exc, 'retry_after_seconds', None) if isinstance(exc, CapabilityTransientError) else None
     
+    # A message-less exception (a bare `assert`, `TimeoutError()`, `KeyError` on a falsy
+    # key) used to reach the host as `CapabilityFatalError('')` — nothing to act on and the
+    # worker's own traceback gone with the process (sighted 2026-09-10: demucs asserting on
+    # a zero-sample decode). Fall back to the exception TYPE plus the innermost frame so
+    # the wire carries the one line a reader needs.
+    message = str(exc)
+    if not message and traceback_policy is not TracebackPolicy.NONE:
+        import traceback as _tb
+        frames = _tb.extract_tb(exc.__traceback__)
+        where = ""
+        if frames:
+            f = frames[-1]
+            where = f" at {os.path.basename(f.filename)}:{f.lineno} in {f.name}" + (f" ({f.line})" if f.line else "")
+        message = f"{type(exc).__name__} (no message){where}"
     return JobError(
         category=category,
-        message=str(exc) if traceback_policy is not TracebackPolicy.NONE else "",
+        message=message if traceback_policy is not TracebackPolicy.NONE else "",
         retriable=retriable,
         original_exc_repr=repr(exc),
         traceback=tb,
