@@ -119,6 +119,10 @@ class JobQueueDependencies(Protocol):
     # like the rest of stage 3: a deps without it leaves blocked jobs blocked
     # (visible via BLOCK_REASON_CHANGED), exactly the pre-A behavior.
     def evict_idle_gpu(self, shortfall_mb: float, exclude_instance_ids: List[str]) -> float: ...
+    # Self-residency credit (finding 3993a755) — consumed defensively: a deps
+    # without it (or one answering None) leaves the peak uncredited, i.e. the
+    # pre-fix comparison of the raw empirical peak against live free VRAM.
+    def get_instance_live_gpu_mb(self, name_or_id: str) -> Optional[float]: ...
     # Stage 4 (CR-17 pt 2) task channel — invoked only for task-addressed jobs
     # (Job.task_name set); execute-channel jobs never touch it, so older test
     # doubles keep working unchanged.
@@ -1454,9 +1458,27 @@ class JobQueue:
             return {}
         try:
             stats = await fn()
-            return stats if isinstance(stats, dict) else {}
         except Exception:
             return {}
+        if not isinstance(stats, dict):
+            return {}
+        stats = dict(stats)  # never mutate the deps' own dict
+        # Self-residency credit (finding 3993a755): what each PENDING instance's
+        # own worker already holds on the GPU, read OUTSIDE the scan lock (a
+        # worker /stats + sysmon round-trip per instance). Only asked when the
+        # GPU rung will actually compare against live free VRAM.
+        live_fn = getattr(self._deps, 'get_instance_live_gpu_mb', None)
+        if callable(live_fn) and stats.get('gpu_free_memory_mb') is not None:
+            live: Dict[str, float] = {}
+            for iid in {j.capability_instance_id for j in list(self._pending)}:
+                try:
+                    mb = await asyncio.to_thread(live_fn, iid)
+                except Exception:
+                    mb = None
+                if mb is not None:
+                    live[iid] = float(mb)
+            stats['instance_live_gpu_mb'] = live
+        return stats
 
     def _pop_next_admissible(
         self,
@@ -1482,7 +1504,9 @@ class JobQueue:
            against BOTH a reservation ledger (sum of running GPU peaks ≤ total ×
            `gpu_headroom_fraction`; covers admitted-but-not-yet-loaded models)
            AND live free VRAM (covers resident idle models + external GPU
-           users); `memory_mb_peak_max` against live `memory_available_mb`.
+           users), the peak CREDITED with the instance's own live residency
+           (a worker reuses what it already holds — finding 3993a755);
+           `memory_mb_peak_max` against live `memory_available_mb`.
            Without sysmon stats, GPU-profiled jobs run exclusive.
 
         The manifest's `requires_gpu` is deliberately NOT consumed — whether a
@@ -1548,7 +1572,21 @@ class JobQueue:
                 reserved = sum(self._gpu_reservations.values())
                 if reserved + gpu_peak > budget:
                     continue
-                if gpu_peak > float(gpu_free):
+                # Self-residency credit (finding 3993a755): the empirical peak is
+                # the worker's TOTAL GPU footprint at its worst job, and a worker
+                # keeps that memory in torch's caching allocator afterwards —
+                # memory its own next job REUSES rather than adds. Comparing the
+                # raw peak against live free VRAM blocked the head job on memory
+                # held by ITSELF, and the eviction lever (which rightly excludes
+                # the requester, 489bcdf0) could never free it: the forced aligner
+                # pended forever on every decomp run over the GPU MODE lectures.
+                # Credit what the instance already holds; None (no sysmon /
+                # unreachable) leaves the raw comparison in place.
+                own_live = (stats.get('instance_live_gpu_mb') or {}).get(
+                    job.capability_instance_id)
+                gpu_need = (max(gpu_peak - float(own_live), 0.0)
+                            if own_live is not None else gpu_peak)
+                if gpu_need > float(gpu_free):
                     # Blocked on RESIDENT-held VRAM (c5bbd511): fits the budget
                     # but not live free memory. Surface the reason (stable
                     # string; _emit_block_reason dedups the per-scan repeats)
@@ -1558,8 +1596,10 @@ class JobQueue:
                     # target are excluded — skip-ahead drains those jobs first,
                     # then their models become evictable. The per-job cooldown
                     # keeps a still-blocked job from busy-firing requests.
+                    credit = (f" ({gpu_peak:.0f}MB peak, {own_live:.0f}MB already "
+                              f"held by its own worker)" if own_live else "")
                     self._block_updates.append((job, (
-                        f"awaiting GPU VRAM: needs {gpu_peak:.0f}MB, held by "
+                        f"awaiting GPU VRAM: needs {gpu_need:.0f}MB{credit}, held by "
                         f"resident idle models (idle eviction requested — "
                         f"eviction-v2)")))
                     now = time.monotonic()
@@ -1576,7 +1616,7 @@ class JobQueue:
                         # first live firing "evicted" the blocked model itself,
                         # freeing nothing (the 8687082e hollow-worker gap).
                         self._evict_request = (
-                            job, gpu_peak - float(gpu_free),
+                            job, gpu_need - float(gpu_free),
                             sorted(busy | pending_targets
                                    | {job.capability_instance_id}))
                         self._evict_last_request[job.id] = now

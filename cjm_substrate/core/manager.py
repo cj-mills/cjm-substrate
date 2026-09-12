@@ -1683,21 +1683,6 @@ class CapabilityManager:
                 return 0.0
             return float(rec.gpu_memory_mb_peak_max) if rec is not None else 0.0
 
-        def _live_gpu_mb(inst) -> Optional[float]:
-            # None = cannot measure (no sysmon / stats unreachable) -> peak fallback.
-            if sysmon is None or inst.proxy is None:
-                return None
-            try:
-                stats = inst.proxy.get_stats()
-            except Exception:
-                return None
-            if not isinstance(stats, dict):
-                return None
-            attribution = attribute_gpu_to_worker_subtree(stats, sysmon)
-            if attribution is None:
-                return None
-            return float(attribution.get('gpu_memory_mb') or 0.0)
-
         exclude = exclude or set()
         candidates = []
         for inst in self.instances.values():
@@ -1707,7 +1692,7 @@ class CapabilityManager:
                 continue  # never evict a mid-execute instance
             if inst.proxy is None:
                 continue  # not actually resident
-            live = _live_gpu_mb(inst)
+            live = self._instance_live_gpu_mb(inst, sysmon)
             if live is not None and live < 64.0:
                 continue  # measured HOLLOW (no CUDA residency) — nothing to free
             footprint = live if live is not None else _gpu_peak(inst)
@@ -1736,6 +1721,52 @@ class CapabilityManager:
             if target is not None and freed >= target:
                 break
         return freed, evicted
+
+    def _instance_live_gpu_mb(
+        self,
+        inst:Any,              # A loaded CapabilityInstance (its proxy may be None)
+        sysmon:Optional[Any],  # The resolved monitor capability, or None
+    ) -> Optional[float]:  # Live GPU MB held by the worker subtree; None = cannot measure
+        """LIVE per-PID GPU residency of one instance's worker subtree (489bcdf0).
+
+        None means "cannot measure" (no sysmon / no proxy / stats unreachable) so
+        callers fall back to the empirical peak; 0.0 means sysmon answered and
+        the subtree holds no CUDA memory (a lazy, hollow worker). Shared by the
+        eviction sizing (candidate footprints + stop condition) and the admission
+        self-residency credit (get_instance_live_gpu_mb, finding 3993a755)."""
+        if sysmon is None or getattr(inst, 'proxy', None) is None:
+            return None
+        try:
+            stats = inst.proxy.get_stats()
+        except Exception:
+            return None
+        if not isinstance(stats, dict):
+            return None
+        attribution = attribute_gpu_to_worker_subtree(stats, sysmon)
+        if attribution is None:
+            return None
+        return float(attribution.get('gpu_memory_mb') or 0.0)
+
+    def get_instance_live_gpu_mb(
+        self,
+        name_or_id:str,  # Capability name (default instance) or instance_id (multi-instance)
+    ) -> Optional[float]:  # Live GPU MB the instance's own worker holds now; None = unknown
+        """Admission seam for the self-residency credit (finding 3993a755).
+
+        The resources rung compares an instance's empirical GPU peak against
+        live free VRAM, but a worker KEEPS its spiked memory in torch's caching
+        allocator after the job that spiked it — memory its own next job reuses
+        rather than adds. Without this credit the head job blocks on VRAM held
+        by itself, and the eviction lever cannot touch it (the requester is
+        structurally excluded, 489bcdf0), so the queue pends forever — the
+        forced aligner deadlocked every decomp run over the GPU MODE lectures
+        this way. The queue subtracts this value from the peak before the
+        free-VRAM comparison; None leaves the comparison uncredited."""
+        inst = self.instances.get(name_or_id)
+        if inst is None:
+            return None
+        sysmon = self._get_sysmon_capability() if hasattr(self, '_get_sysmon_capability') else None
+        return self._instance_live_gpu_mb(inst, sysmon)
 
     def evict_idle_gpu(
         self,

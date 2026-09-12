@@ -1418,3 +1418,42 @@ def test_observability_class_resolves_as_manifest_data():
     meta.manifest_v2.overrides["observability_class"] = "bogus"        # invalid values are ignored, not trusted
     pm._observability_classes = {}
     assert pm.get_observability_class("graph") == "ambient"
+
+
+def test_get_instance_live_gpu_mb_reads_worker_subtree_residency():
+    """3993a755 admission seam: the manager reports what an instance's OWN
+    worker subtree holds on the GPU (sysmon per-PID attribution, the same
+    plumbing eviction sizing uses) so the queue can credit it against the
+    empirical peak; None when it cannot measure (no sysmon / unknown instance /
+    no worker yet), never a guess — 0.0 is a measured hollow worker."""
+    pm = _build_cr7_test_pm()
+
+    class _StatsProxy(_CR7StubProxy):
+        def __init__(self, name, pid):
+            super().__init__(name)
+            self.pid = pid
+        def get_stats(self):
+            return {"pid": self.pid}
+
+    class _SysmonStub:
+        def list_processes(self):
+            return [{"pid": 201, "gpu_memory_mb": 16000.0, "gpu_index": 0}]
+
+    pm.instances["aligner"] = CapabilityInstance(
+        instance_id="aligner", capability_name="cjm-capability-qwen3-forced-aligner",
+        proxy=_StatsProxy("aligner", 201), config_hash="sha256:aligner")
+    pm.instances["hollow"] = CapabilityInstance(
+        instance_id="hollow", capability_name="cjm-capability-whisper",
+        proxy=_StatsProxy("hollow", 202), config_hash="sha256:hollow")
+    pm.instances["lazy"] = CapabilityInstance(
+        instance_id="lazy", capability_name="cjm-capability-whisper",
+        proxy=None, config_hash="sha256:lazy")
+
+    pm._get_sysmon_capability = lambda: None
+    assert pm.get_instance_live_gpu_mb("aligner") is None  # no sysmon: unmeasurable
+
+    pm._get_sysmon_capability = lambda: _SysmonStub()
+    assert pm.get_instance_live_gpu_mb("aligner") == 16000.0
+    assert pm.get_instance_live_gpu_mb("hollow") == 0.0   # measured: holds nothing
+    assert pm.get_instance_live_gpu_mb("lazy") is None    # no worker yet
+    assert pm.get_instance_live_gpu_mb("unknown") is None

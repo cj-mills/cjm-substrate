@@ -56,6 +56,7 @@ class FakeDeps:
     def get_instance_concurrency_cap(self, name_or_id): return None
     async def get_global_stats(self): return {}
     def evict_idle_gpu(self, shortfall_mb, exclude_instance_ids): return 0.0
+    def get_instance_live_gpu_mb(self, name_or_id): return None
     async def execute_capability_task_async(self, name_or_id, task_name, method, **kwargs): return None
 
 
@@ -1384,6 +1385,81 @@ def test_ambient_observability_skips_success_journal_rows(tmp_path):
             assert types.count("state_transition") == 2, \
                 f"per-submit full override must restore success accounting: {types}"
             assert "admission_decided" in types
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())
+
+
+def test_self_resident_job_is_credited_its_own_residency():
+    # 3993a755: the forced aligner's empirical peak ratcheted to 15.2GB and its
+    # own worker KEPT that memory (torch caching allocator), so free VRAM sat
+    # near 8GB with the aligner alone on the card; the raw peak-vs-free check
+    # blocked every later aligner job on memory held by ITSELF, and eviction
+    # (which rightly excludes the requester, 489bcdf0) could free nothing —
+    # decomp over the GPU MODE lectures pended forever. The scan now credits
+    # the head instance's own live residency: need = peak - own_live.
+    async def scenario():
+        prof = {"gpu_memory_mb_peak_max": 15202.0, "memory_mb_peak_max": 100.0,
+                "sample_count": 6735}
+        deps = AdmissionDeps(profiles={"aligner": prof},
+                             stats=dict(SYS_STATS, gpu_free_memory_mb=8030.0))
+        deps.register("aligner", _slow)
+        evictions = []
+        deps.evict_idle_gpu = lambda shortfall_mb, exclude_instance_ids: (
+            evictions.append(shortfall_mb) or 0.0)
+        deps.get_instance_live_gpu_mb = lambda name_or_id: (
+            16000.0 if name_or_id == "aligner" else None)
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            jid = await queue.submit("aligner")
+            done = await queue.wait_for_job(jid, timeout=5.0)
+            assert done.status == JobStatus.completed
+            assert done.block_reason is None
+            assert evictions == []  # nothing to evict: the holder WAS the requester
+        finally:
+            await queue.stop()
+
+    asyncio.run(scenario())
+
+
+def test_partial_self_residency_credit_shapes_reason_and_shortfall():
+    # The credit is partial when the worker holds less than the peak: the
+    # block reason names the credited need and what the worker already holds,
+    # and the eviction request is sized from the credited need, not the raw
+    # peak. An unmeasurable residency (deps without the seam, or None) leaves
+    # the raw comparison in place — the c5bbd511 / 9b0c8eb1 tests above.
+    async def scenario():
+        prof = {"gpu_memory_mb_peak_max": 15000.0, "memory_mb_peak_max": 100.0,
+                "sample_count": 2}
+        deps = AdmissionDeps(profiles={"aligner": prof},
+                             stats=dict(SYS_STATS, gpu_free_memory_mb=8000.0))
+        deps.register("aligner", _slow)
+        calls = []
+
+        def evict_idle_gpu(shortfall_mb, exclude_instance_ids):
+            calls.append((shortfall_mb, list(exclude_instance_ids)))
+            return 0.0  # nothing else resident: the requester holds the rest
+
+        deps.evict_idle_gpu = evict_idle_gpu
+        deps.get_instance_live_gpu_mb = lambda name_or_id: 4000.0
+        queue = JobQueue(deps=deps, max_history=20, progress_poll_interval=0.01)
+        await queue.start()
+        try:
+            jid = await queue.submit("aligner")
+            await asyncio.sleep(0.1)  # scan + block-reason emit + one eviction request
+            job = queue.get_job(jid)
+            assert job.status == JobStatus.pending
+            assert "needs 11000MB" in job.block_reason
+            assert "4000MB already held by its own worker" in job.block_reason
+            assert calls == [(3000.0, ["aligner"])]  # 11000 credited need - 8000 free
+
+            deps.stats = dict(SYS_STATS)  # 20000MB free: admits on the re-scan
+            queue._job_available.set()
+            done = await queue.wait_for_job(jid, timeout=5.0)
+            assert done.status == JobStatus.completed
+            assert done.block_reason is None
         finally:
             await queue.stop()
 
