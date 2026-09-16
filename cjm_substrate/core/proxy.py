@@ -335,14 +335,23 @@ class RemoteCapabilityProxy(ToolCapability):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                self._ensure_sync_client().get(f"{self.base_url}/health", timeout=5)
+                # The worker inherits a PRE-BOUND listening socket (--fd), so a
+                # probe CONNECTS the instant the process exists and then waits
+                # for uvicorn to serve — a cold worker (torch / transformers
+                # imports) takes longer than one probe's read timeout. Every
+                # transport failure keeps polling; only the startup BUDGET
+                # decides (2026-09-16: the forced aligner failed at exactly
+                # 5.0 s on a ReadTimeout the ConnectError-only except let escape).
+                remaining = max(0.5, timeout - (time.time() - start))
+                self._ensure_sync_client().get(f"{self.base_url}/health",
+                                               timeout=min(5.0, remaining))
                 print(f"[{self.name}] Worker ready.", file=sys.stderr)
                 # CR-14: readiness is a journal event (startup latency rides along).
                 self._journal_event(SubstrateEventType.WORKER_READY.value, {
                     "wait_seconds": round(time.time() - start, 3),
                 })
                 return
-            except httpx.ConnectError:
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
                 time.sleep(0.5)
 
         # Timeout. The death rattle (argparse/import/startup failures) was pumped

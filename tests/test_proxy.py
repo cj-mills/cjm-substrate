@@ -463,3 +463,59 @@ def test_ambient_proxy_gates_routine_lifecycle_rows():
     p.observability_class = "full"
     p._journal_event(SubstrateEventType.WORKER_SPAWNED.value, {"pid": 2})
     assert [r.event_type for r in p.journal.rows] == ["worker_died", "worker_spawned"]
+
+
+def test_wait_for_ready_keeps_polling_through_read_timeouts():
+    """2026-09-16 field failure: the worker inherits a PRE-BOUND listening socket, so
+    the first health probe CONNECTS immediately and then waits for uvicorn; a cold
+    worker exceeded one probe's 5 s read timeout and the ConnectError-only except let
+    the ReadTimeout escape — the load failed at exactly 5.0 s with 25 s of budget
+    left. Any transport failure must keep polling; only the budget decides."""
+    import httpx
+    from cjm_substrate.core.journal_store import SubstrateEventType
+
+    class Client:
+        def __init__(self, failures):
+            self.failures = list(failures)
+            self.timeouts = []
+
+        def get(self, url, timeout=None):
+            self.timeouts.append(timeout)
+            if self.failures:
+                raise self.failures.pop(0)
+            return object()
+
+    p = RemoteCapabilityProxy.__new__(RemoteCapabilityProxy)
+    p.base_url = "http://127.0.0.1:1"
+    p.manifest = {"name": "fa-stub"}  # `name` is a read-only property over the manifest
+    p.worker_session_id = "ws-ready"
+    p.observability_class = "full"
+    p.journal = ListJournal()
+    client = Client([httpx.ReadTimeout("slow start"), httpx.ConnectError("not yet"),
+                     httpx.RemoteProtocolError("half-up")])
+    p._ensure_sync_client = lambda: client
+    import time as _t
+    sleeps = []
+    orig = _t.sleep
+    _t.sleep = lambda s: sleeps.append(s)
+    try:
+        p._wait_for_ready(timeout=30.0)
+    finally:
+        _t.sleep = orig
+    assert len(client.timeouts) == 4 and all(t <= 5.0 for t in client.timeouts)
+    assert [r.event_type for r in p.journal.rows] == [SubstrateEventType.WORKER_READY.value]
+    assert sleeps == [0.5, 0.5, 0.5]
+    # the budget still decides: a worker that never answers dies with startup_timeout
+    p2 = RemoteCapabilityProxy.__new__(RemoteCapabilityProxy)
+    p2.base_url, p2.manifest = "http://127.0.0.1:1", {"name": "fa-stub"}
+    p2.worker_session_id, p2.observability_class, p2.journal = "ws-dead", "full", ListJournal()
+    p2.process = None
+    p2.diagnostics = None
+    p2._ensure_sync_client = lambda: Client([httpx.ReadTimeout("never")] * 50)
+    _t.sleep = lambda s: None
+    try:
+        with pytest.raises(TimeoutError, match="failed to start within"):
+            p2._wait_for_ready(timeout=0.01)
+    finally:
+        _t.sleep = orig
+    assert p2.journal.rows[-1].event_type == SubstrateEventType.WORKER_DIED.value
