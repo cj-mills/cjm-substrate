@@ -42,6 +42,37 @@ def test_absent_sidecar_is_active_and_transitions_land_history(tmp_path):
     assert json.loads((d / "manifest.json").read_text())["id"] == "trainrun_1_aaaa"
 
 
+def test_record_backup_is_kept_across_state_changes_and_dedups(tmp_path):
+    # A backup is a durability fact ABOUT the artifact (DEC 0b3c1044): it rides the
+    # sidecar beside state + history, survives archive/unarchive, dedups the same push
+    # and appends a new revision; a non-artifact dir refuses loud.
+    d = _artifact(tmp_path, "training-runs", "trainrun_2_bbbb")
+    lc = ArtifactLifecycle(d)
+    assert lc.backups == []
+    rec, added = lc.record_backup(target="huggingface", repo_id="acct/cjm-flywheel-training-runs",
+                                  path_in_repo="trainrun_2_bbbb", revision="abc123",
+                                  content_hash="sha256:ff", actor="user:test", at=50.0)
+    assert added and lc.state == ACTIVE and rec["history"] == []      # a backup is not a state
+    assert rec["backups"] == [{"target": "huggingface", "repo_id": "acct/cjm-flywheel-training-runs",
+                               "repo_type": "model", "path_in_repo": "trainrun_2_bbbb",
+                               "revision": "abc123", "content_hash": "sha256:ff",
+                               "at": 50.0, "actor": "user:test"}]
+    rec, added = lc.record_backup(target="huggingface", repo_id="acct/cjm-flywheel-training-runs",
+                                  path_in_repo="trainrun_2_bbbb", revision="abc123")
+    assert not added and len(rec["backups"]) == 1                      # the same push twice: no-op
+    lc.archive(actor="user:test", at=60.0)                             # a state change keeps the backups
+    assert lc.state == ARCHIVED and len(lc.backups) == 1
+    rec, added = lc.record_backup(target="huggingface", repo_id="acct/cjm-flywheel-training-runs",
+                                  path_in_repo="trainrun_2_bbbb", revision="def456")
+    assert added and [b["revision"] for b in lc.backups] == ["abc123", "def456"]  # a new revision appends
+    assert lc.state == ARCHIVED                                        # …and touches no state
+    with pytest.raises(LifecycleRefusal):
+        ArtifactLifecycle(tmp_path / "nowhere").record_backup(
+            target="huggingface", repo_id="x/y", path_in_repo="z", revision="r")
+    rows = list_artifacts(tmp_path / "training-runs")
+    assert rows[0]["backups"][-1]["revision"] == "def456"
+
+
 def test_forgiving_reads_and_loud_refusals(tmp_path):
     d = _artifact(tmp_path, "proposals", "propset_1_bbbb")
     lc = ArtifactLifecycle(d)
@@ -52,7 +83,8 @@ def test_forgiving_reads_and_loud_refusals(tmp_path):
     lc.path.write_text(json.dumps({"format": "cjm-substrate/artifact-lifecycle",
                                    "state": "bogus", "history": "nope"}))
     assert lc.load() == {"format": "cjm-substrate/artifact-lifecycle",
-                         "version": "0.1.0", "state": ACTIVE, "history": []}
+                         "version": "0.2.0", "state": ACTIVE, "history": [],
+                             "backups": []}
     with pytest.raises(LifecycleRefusal, match="unknown lifecycle state"):
         lc.set_state("deleted")
     empty = tmp_path / "proposals" / "not_an_artifact"

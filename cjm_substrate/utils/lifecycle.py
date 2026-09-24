@@ -10,7 +10,10 @@ CAPABILITY OUTPUT and stays immutable; the sidecar travels with the
 directory; an absent sidecar reads as active.
 
 Deliberately a LEAF fact: the sidecar records state + history (at / actor /
-reason) and nothing else — no identity, no cross-references. When the
+reason) and, since 0.2.0, where the artifact is BACKED UP (target / repo /
+path / revision / content hash — a durability fact ABOUT this artifact, so
+the backup is discoverable from the artifact; DEC 0b3c1044) — no identity,
+no cross-references to other artifacts. When the
 flywheel's artifacts earn graph identity (discussion item 03cc8e2e) the
 sidecars ingest as assertions and the indexes swap this seam's store;
 nothing here prejudices that design. Who holds a reference to an artifact
@@ -36,7 +39,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 FORMAT = "cjm-substrate/artifact-lifecycle"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SIDECAR_NAME = "lifecycle.json"
 MANIFEST_NAME = "manifest.json"
 ACTIVE = "active"
@@ -73,7 +76,12 @@ class ArtifactLifecycle:
     """One artifact directory's lifecycle sidecar: forgiving reads (absent /
     corrupt / foreign = active with no history), deliberate writes (a
     lifecycle change is a verb, so a write failure RAISES — unlike view
-    state, silently losing it would lie to the next picker)."""
+    state, silently losing it would lie to the next picker). Since 0.2.0 the
+    sidecar also carries `backups`: where this artifact has been pushed off
+    the machine (target / repo / path / revision / content hash — DEC
+    0b3c1044, the flywheel's local-only artifacts backed up to private
+    Hugging Face repos), kept across state changes, deduplicated, and never
+    a state of its own."""
 
     def __init__(self, artifact_dir):  # The <class-dir>/<artifact-id>/ directory (str or Path)
         self.dir = Path(artifact_dir)
@@ -86,9 +94,9 @@ class ArtifactLifecycle:
     def exists(self) -> bool:  # Whether the dir is an artifact at all (has a manifest)
         return self.manifest_path.is_file()
 
-    def load(self) -> Dict[str, Any]:  # {format, version, state, history} — never raises
+    def load(self) -> Dict[str, Any]:  # {format, version, state, history, backups} — never raises
         rec: Dict[str, Any] = {"format": FORMAT, "version": VERSION,
-                               "state": ACTIVE, "history": []}
+                               "state": ACTIVE, "history": [], "backups": []}
         try:
             got = json.loads(self.path.read_text())
         except (OSError, ValueError):
@@ -100,11 +108,18 @@ class ArtifactLifecycle:
         hist = got.get("history")
         rec["history"] = [h for h in hist if isinstance(h, dict)] \
             if isinstance(hist, list) else []
+        bk = got.get("backups")
+        rec["backups"] = [b for b in bk if isinstance(b, dict)] \
+            if isinstance(bk, list) else []
         return rec
 
     @property
     def state(self) -> str:  # active | archived
         return str(self.load()["state"])
+
+    @property
+    def backups(self) -> List[Dict[str, Any]]:  # Every recorded push, oldest first
+        return list(self.load()["backups"])
 
     def set_state(
         self,
@@ -138,6 +153,39 @@ class ArtifactLifecycle:
 
     def unarchive(self, **kw: Any) -> Tuple[Dict[str, Any], bool]:  # set_state(ACTIVE)
         return self.set_state(ACTIVE, **kw)
+
+    def record_backup(
+        self,
+        *,
+        target: str,                    # The backup target ("huggingface")
+        repo_id: str,                   # The repo the artifact was pushed to (e.g. "acct/cjm-flywheel-training-runs")
+        path_in_repo: str,              # Where in the repo (the artifact id — its provenance id IS the path)
+        revision: str,                  # The commit the push landed as (the fresh-pull handle)
+        repo_type: str = "model",       # model | dataset
+        content_hash: str = "",         # The artifact's content hash at push time (the idempotence key)
+        actor: Optional[str] = None,    # Who (default: CJM_ACTOR / user:cli)
+        at: Optional[float] = None,     # Event time (default: now)
+    ) -> Tuple[Dict[str, Any], bool]:  # (the record as written, whether a backup was appended)
+        """Record a push that LANDED (never a plan): the same (target, repo, type, path,
+        revision) twice is a no-op; a new revision of the same path appends, so the
+        history of pushes stays readable. State and history are untouched — a backup
+        is a durability fact about the artifact, not a lifecycle state."""
+        if not self.exists():
+            raise LifecycleRefusal(f"{self.dir} is not an artifact directory "
+                                   f"(no {MANIFEST_NAME})")
+        rec = self.load()
+        key = (target, repo_id, repo_type, path_in_repo, revision)
+        for b in rec["backups"]:
+            if (b.get("target"), b.get("repo_id"), b.get("repo_type"),
+                    b.get("path_in_repo"), b.get("revision")) == key:
+                return rec, False
+        rec["backups"].append({"target": target, "repo_id": repo_id, "repo_type": repo_type,
+                               "path_in_repo": path_in_repo, "revision": revision,
+                               "content_hash": content_hash,
+                               "at": float(at if at is not None else time.time()),
+                               "actor": actor or default_actor()})
+        self.path.write_text(json.dumps(rec, indent=2) + "\n")
+        return rec, True
 
     def delete(
         self,
@@ -239,7 +287,7 @@ def list_artifacts(
     class_dir,                       # proposals/ | training-runs/ | datasets/ …
     *,
     include_archived: bool = True,
-) -> List[Dict[str, Any]]:  # [{id, path, state, history}] in name order
+) -> List[Dict[str, Any]]:  # [{id, path, state, history, backups}] in name order
     """Every artifact directory under a class dir (a dir with a manifest)
     with its lifecycle — the CLI's list and a picker's audit view."""
     out: List[Dict[str, Any]] = []
@@ -255,7 +303,8 @@ def list_artifacts(
         if rec["state"] == ARCHIVED and not include_archived:
             continue
         out.append({"id": artifact_id(d), "path": str(d),
-                    "state": rec["state"], "history": rec["history"]})
+                    "state": rec["state"], "history": rec["history"],
+                    "backups": rec["backups"]})
     return out
 
 
@@ -266,6 +315,16 @@ def _fmt_history(hist: List[Dict[str, Any]]) -> str:
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(h.get("at") or 0)))
     why = f" — {h['reason']}" if h.get("reason") else ""
     return f" ({h.get('state')} {when} by {h.get('actor')}{why})"
+
+
+def _fmt_backups(backups: List[Dict[str, Any]]) -> str:
+    """The list line's backup tag: the LATEST push as ` ⇑ target:repo/path@rev8`
+    (empty when the artifact was never pushed — the visible gap)."""
+    if not backups:
+        return ""
+    b = backups[-1]
+    rev = str(b.get("revision") or "")[:8]
+    return f" ⇑ {b.get('target')}:{b.get('repo_id')}/{b.get('path_in_repo')}@{rev}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,7 +363,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if args.active_only:
                 rows = [r for r in rows if r["state"] == ACTIVE]
             for r in rows:
-                out.write(f"{r['state']:<8} {r['id']}{_fmt_history(r['history'])}\n")
+                out.write(f"{r['state']:<8} {r['id']}{_fmt_history(r['history'])}"
+                          f"{_fmt_backups(r.get('backups') or [])}\n")
             out.write(f"{len(rows)} artifact(s) under {args.class_dir}\n")
             return 0
         lc = ArtifactLifecycle(args.artifact_dir)
