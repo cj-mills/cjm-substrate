@@ -11,7 +11,14 @@ ritual's later rungs cover: version-equal CONTENT drift and undeclared dependenc
     python scripts/pypi_sweep.py        # unpublished rows only
     python scripts/pypi_sweep.py -v     # every repo
 """
-import json, re, subprocess, sys, tomllib, urllib.request, urllib.error
+
+import json
+import re
+import subprocess
+import sys
+import tomllib
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path("/mnt/SN850X_8TB_EXT4/Projects/GitHub/cj-mills")
