@@ -118,3 +118,22 @@ algorithm change) get propagated across the ecosystem.
   independent — each plugin's regenerate output depends only on its own
   introspection script, not on any other plugin's manifest. Order doesn't
   matter.
+
+## `pypi_sweep.py` — the release-rung sweep (PyPI window-close ritual, rung 1)
+
+Walks every `cjm-*` repo beside this one that carries a `pyproject.toml`,
+reads its version (static `version`, else the package `__version__`) and asks
+the PyPI JSON API whether that exact release exists. Each unpublished repo is
+classed `BUMP-UNPUBLISHED` (an existing package — rides the uncapped lane) or
+`FIRST-PUBLISH` (404 — counts against the ~4/week new-project cap). Repos
+archived on GitHub are skipped (one `gh repo list` call): their local deltas
+are deliberate non-publishes.
+
+```bash
+python scripts/pypi_sweep.py       # unpublished rows + the cap tally
+python scripts/pypi_sweep.py -v    # every repo, including the ones in sync
+```
+
+Blind spots by design, covered by the ritual's later rungs: version-equal
+content drift (a symbol added after the bump) and undeclared dependencies —
+those need the fresh-venv install gate, not a version scan.
