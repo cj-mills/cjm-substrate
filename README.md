@@ -9,7 +9,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.__init__`**
 - **`cjm_substrate.bootstrap`** — One-call factory that assembles a CapabilityManager + JobQueue + capability
 - **`cjm_substrate.cli`** — CLI tool for declarative capability management.
-- **`cjm_substrate.core`**
+- **`cjm_substrate.core.__init__`**
 - **`cjm_substrate.core._telemetry`** — Shared GPU/CPU attribution helpers used by both JobQueue._sample_resource_snapshot (CR-6 Stage 3) and CapabilityManager._record_sample_safe (CR-7).
 - **`cjm_substrate.core.adapter`** — The typed-task half of the capability-unit fracture (pass-2 Thread 3) —
 - **`cjm_substrate.core.adapter_manifest`** — The ADAPTER unit's registration manifest + the surface-based compatibility matcher (CR-17 pt 2, stage 4). Pass-2 Thread 3: registration/discovery = per-unit manifests generated in-env and found by discover_manifests(); compatibility is DERIVED, not declared — the capability records only its structural surface, the adapter declares its protocol (recorded here as member names + parameter lists), and the substrate matches manifest-vs-manifest. Works against UNLOADED capabilities with zero protocol imports host-side.
@@ -32,13 +32,16 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.wire`** — Typed data transfer at the worker boundary — the zero-copy FileBackedDTO
 - **`cjm_substrate.core.worker`** — FastAPI server that runs inside isolated capability environments (the Universal Worker): dynamically loads the capability class named on the CLI, exposes the HTTP lifecycle / execute / task / monitor surface for the proxy, monitors the parent process (the suicide-pact watchdog prevents zombie workers), and reports process-subtree telemetry for resource-scheduling decisions. This module is a process ENTRYPOINT (SG-39): host code never imports it.
 - **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
-- **`cjm_substrate.utils`**
+- **`cjm_substrate.utils.__init__`**
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
 - **`cjm_substrate.utils.envtruth`** — Env truth for capability-served libs — the ONE sweep the six sightings demanded
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
 - **`cjm_substrate.utils.lifecycle`** — Artifact lifecycle sidecar — the ONE seam every picker filters through
 - **`cjm_substrate.utils.sidecar`** — JSON sidecar for shell view-state — settings and bookmarks that persist
 - **`cjm_substrate.utils.validation`** — Validation helpers for capability configuration dataclasses.
+- **`scripts.cascade_manifests`** — cascade_manifests.py
+- **`scripts.flywheel_backup`** — flywheel_backup.py
+- **`scripts.model_cache_inventory`** — model_cache_inventory.py
 
 ## API
 
@@ -337,6 +340,35 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `extract_defaults` _function_ — Extract default values from a configuration dataclass type.
 - `validate_config` _function_ — Validate all fields in a configuration dataclass against their metadata constraints.
 - `validate_field_value` _function_ — Validate a value against field metadata constraints.
+
+### `scripts.cascade_manifests`
+
+- `ProjectScope` _class_ — One substrate-installation scope: a cjm.yaml + the manifests_dir it resolves to.
+- `classify_manifest` _function_ — Return (status, reason) for a single manifest file.
+- `discover_ecosystem` _function_ — Ecosystem mode: walk `base_path/cjm-*/` and collect per-project scopes.
+- `discover_single_project` _function_ — Single-project mode: resolve one ProjectScope from cwd or override.
+- `format_only_upgrade` _function_ — Load via load_manifest (handles v1.0 shim) and re-write as v2.0.
+- `main` _function_
+- `run_regenerate` _function_ — Invoke `cjm-ctl regenerate-manifest <capability_name>` as a subprocess.
+
+### `scripts.flywheel_backup`
+
+- `already_backed_up` _function_ — The sidecar's backup record for this repo at the artifact's CURRENT content hash,
+- `discover_artifacts` _function_ — Every flywheel artifact dir whose manifest carries a known format: its id, class,
+- `main` _function_ — CLI: discover, push (skipping what the sidecars already record), verify, record.
+- `push_artifact` _function_ — Upload the artifact dir under <id>/ in the repo as ONE commit; returns the commit
+- `verify_artifact` _function_ — A FRESH download of <id>/ at the pushed revision into a temp dir (its own cache —
+
+### `scripts.model_cache_inventory`
+
+- `build_manifest` _function_ — The whole manifest: every cache entry across the stores, the flywheel's local-only
+- `flat_entries` _function_ — The flat checkpoint stores: whisper `<name>.pt` (re-pull by name through the whisper
+- `flywheel_entries` _function_ — The LOCAL-ONLY class the cache walk cannot see: the data flywheel's training runs
+- `hub_entries` _function_ — One entry per Hugging Face hub repo cache dir (`models--org--name` / `datasets--…`):
+- `main` _function_ — CLI: inventory the cache root (+ the flywheel workspace) into the three manifest files.
+- `ollama_entries` _function_ — One entry per Ollama model manifest (`manifests/<registry>/<ns>/<model>/<tag>`); the
+- `render_markdown` _function_ — The manifest as a size-sorted table (largest first) with the totals and caveats;
+- `render_repull` _function_ — A shell script that re-pulls every entry at its recorded revision (HF_HOME must point
 
 ## Dependencies
 
