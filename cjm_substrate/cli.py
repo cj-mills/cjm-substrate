@@ -27,6 +27,7 @@ from cjm_substrate.core.platform import (build_conda_command, conda_env_exists, 
                                          run_shell_command)
 from cjm_substrate.core.workspace import (init_workspace, resolve_workspace, workspace_doctor,
                                           WorkspaceError)
+from cjm_substrate.utils.envtruth import derive_mode, read_cjm_set
 
 app = typer.Typer(help="cjm-substrate CLI", no_args_is_help=True)
 
@@ -218,7 +219,12 @@ def _generate_manifest(
     elif "/" in package_name or "\\" in package_name:
         module_name = Path(package_name).name.replace('-', '_')
     else:
-        module_name = package_name.replace('-', '_')
+        # DEC f282571c: a PyPI spec carries a version clause (`cjm-capability-x>=0.0.27`,
+        # the public yaml's shape) — the module name is the dist name before it.
+        dist = package_name
+        for sep in "=<>!~[; ":
+            dist = dist.split(sep, 1)[0]
+        module_name = dist.strip().replace('-', '_')
 
     print(f"[{env_name}] Introspecting module: {module_name}")
     
@@ -436,6 +442,13 @@ print(json.dumps(meta, indent=2))
                     installed_at=now_iso,
                     installer_version=f"cjm-ctl {_substrate_version}",
                     package_source=package_name,
+                    # DEC f282571c: the WHOLE env is recorded here, so install-all,
+                    # regenerate-manifest and refresh write the same facts — mode from
+                    # the spec's shape, resolved = every cjm-* dist the env holds now
+                    # (in distribution mode these are the pins env truth checks).
+                    mode=derive_mode(package_name),
+                    resolved=({n: t["version"] for n, t in read_cjm_set(Path(str(meta_json["python_path"]))).items()}
+                              if meta_json.get("python_path") else {}),
                 ),
                 code=CodeSection(
                     name=str(meta_json.get("name", "") or ""),
@@ -579,10 +592,15 @@ def regenerate_manifest(
     # regenerations the install timestamp should be the original install moment.
     # If the original manifest had no installed_at (very old legacy), let
     # _generate_manifest's "now" stand — better than empty.
-    if original_installed_at:
+    # DEC f282571c: refreshed_at is a refresh fact, not an introspection fact — it
+    # survives a regenerate the same way installed_at does.
+    original_refreshed_at = existing.install.refreshed_at
+    if original_installed_at or original_refreshed_at:
         try:
             refreshed = load_manifest(out_path)
-            refreshed.install.installed_at = original_installed_at
+            if original_installed_at:
+                refreshed.install.installed_at = original_installed_at
+            refreshed.install.refreshed_at = original_refreshed_at
             write_manifest(out_path, refreshed)
         except (json.JSONDecodeError, ValueError, IOError) as e:
             typer.echo(f"Warning: failed to restore installed_at on {out_path}: {e}")
@@ -1422,11 +1440,22 @@ def _validate_manifest_v2_dict(
         errors.append(f"manifest: 'install.python_path' must be a string, got {type(py_path).__name__}")
     
     # Optional install.* fields — type-check only
-    for key in ("conda_env", "db_path", "installed_at", "installer_version", "package_source"):
+    for key in ("conda_env", "db_path", "installed_at", "installer_version", "package_source",
+                "mode", "refreshed_at"):
         if isinstance(install, dict) and key in install and not isinstance(install[key], str):
             errors.append(f"manifest: 'install.{key}' must be a string when present")
     if isinstance(install, dict) and "env_vars" in install and not isinstance(install["env_vars"], dict):
         errors.append("manifest: 'install.env_vars' must be an object when present")
+    # DEC f282571c: the whole-env record — mode is a closed vocabulary ("" = a
+    # pre-refresh manifest), resolved maps dist name -> installed version.
+    if isinstance(install, dict) and isinstance(install.get("mode"), str) and install["mode"] not in ("", "dev", "distribution"):
+        errors.append(f"manifest: 'install.mode' must be 'dev', 'distribution' or empty, got {install['mode']!r}")
+    if isinstance(install, dict) and "resolved" in install:
+        resolved = install["resolved"]
+        if not isinstance(resolved, dict):
+            errors.append("manifest: 'install.resolved' must be an object when present")
+        elif not all(isinstance(k, str) and isinstance(v, str) for k, v in resolved.items()):
+            errors.append("manifest: 'install.resolved' must map dist names to version strings")
     
     # Optional code.* fields
     if isinstance(code, dict) and "regenerated_at" in code and code["regenerated_at"] is not None:
@@ -1847,16 +1876,157 @@ def workspace_doctor_cmd(
 
 @app.command("envs-for")
 def envs_for_cmd(
-    lib:Annotated[str, typer.Argument(help="Capability dist name, e.g. cjm-capability-graph-sqlite")],
+    lib:Annotated[Optional[str], typer.Argument(
+        help="Dist name, e.g. cjm-capability-graph-sqlite or cjm-substrate (omit = every worker env's whole cjm-* set)")]=None,
     root:Annotated[Optional[Path], typer.Option(
         "--root", help="Workspaces root to scan (default: parent of the enclosing workspace)")]=None,
+    mode:Optional[str]=typer.Option(None, "--mode", help="Judge every env as dev | distribution (default: each manifest's recorded / derived mode)"),
     as_json:bool=typer.Option(False, "--json", help="Machine rows instead of the report"),
+    strict:bool=typer.Option(False, "--strict", help="Exit 2 when any env is flagged (a gate)"),
 ):
-    """Env-truth sweep (work item 424b9781): every env the workspace manifests say serves
-    LIB, vs what that env's interpreter would actually import — the manifest is the ONLY
-    authority on which env serves a lib, and same-named worker envs across workspaces
-    prove nothing. Green = editable from package_source (edits live on next process);
-    flagged rows print their exact refresh recipe."""
+    """Env-truth sweep (work item 424b9781; MODE-AWARE per DEC f282571c): every env the
+    workspace manifests say serves LIB — or whose interpreter would import it (the substrate
+    is in every worker env yet named by no manifest) — vs what that env actually holds, the
+    whole cjm-* set included. dev green = editable from the checkouts; distribution green =
+    installed == the manifest's recorded pins; both flag a substrate gap against the host
+    (the launch check refuses it). Flagged rows name their recipe (`cjm-ctl refresh`)."""
     from cjm_substrate.utils.envtruth import main as _envtruth_main
-    argv = [lib] + (["--root", str(root)] if root else []) + (["--json"] if as_json else [])
+    argv = (([lib] if lib else []) + (["--root", str(root)] if root else [])
+            + (["--mode", mode] if mode else []) + (["--json"] if as_json else [])
+            + (["--strict"] if strict else []))
     raise typer.Exit(code=_envtruth_main(argv))
+
+
+@app.command("refresh")
+def refresh_cmd(
+    capabilities_path:Optional[str]=typer.Option(None, "--capabilities", help="capabilities.yaml whose specs distribution mode installs (default: cjm.yaml capabilities_config)"),
+    mode:Optional[str]=typer.Option(None, "--mode", help="dev | distribution (default: each manifest's recorded mode, else derived from its package_source)"),
+    only:Optional[List[str]]=typer.Option(None, "--only", help="Refresh only this capability (manifest name or conda env); repeatable"),
+    substrate_source:Optional[str]=typer.Option(None, "--substrate-source", help="Substrate for the worker envs (default — dev: the substrate's own checkout; distribution: cjm-substrate==<host version>)"),
+    root:Optional[Path]=typer.Option(None, "--root", help="Dev mode: the checkouts root for dists without an editable origin (default: the parent of the host substrate's checkout)"),
+    dry_run:bool=typer.Option(False, "--dry-run", help="Print every env's plan, run nothing"),
+    verify:bool=typer.Option(False, "--verify", help="After the refresh, import every cjm-* top-level module in the env from a neutral cwd (rung 3 of the window-close ritual)"),
+) -> None:
+    """Refresh every worker env from the closure it was installed from (DEC f282571c, work
+    item dbbaa8b4): dev = editable from the checkouts, distribution = pinned PyPI releases.
+    Re-records each manifest (code + the whole-env resolved set + mode + refreshed_at) and
+    names every RUNNING worker that still serves the old code (a host owns its workers —
+    relaunch it). `cjm-ctl envs-for` is the read side of the same facts."""
+    from cjm_substrate.utils.envrefresh import (default_checkouts_root, execute_plan, import_sweep,
+                                                plan_env, running_workers, yaml_entry_for)
+    from cjm_substrate.utils.envtruth import env_mode, host_substrate
+    cfg = get_config()
+    if mode is not None and mode not in ("dev", "distribution"):
+        typer.echo(f"--mode must be dev or distribution, got {mode!r}", err=True)
+        raise typer.Exit(code=2)
+    yaml_cfg = None
+    yaml_path = capabilities_path or str(cfg.capabilities_config)
+    if os.path.exists(yaml_path):
+        with open(yaml_path) as f:
+            yaml_cfg = yaml.safe_load(f) or {}
+    checkouts_root = root or default_checkouts_root()
+    host = host_substrate()
+    wanted = {w.strip() for w in (only or []) if w.strip()}
+    failed, seen = 0, 0
+    for mf in sorted(Path(cfg.manifests_dir).glob("*.json")):
+        try:
+            data = json.loads(mf.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict) or is_adapter_manifest(data):
+            continue
+        install, code = data.get("install") or {}, data.get("code") or {}
+        cap, env_name = str(code.get("name") or mf.stem), str(install.get("conda_env") or "")
+        if wanted and not ({cap, env_name, mf.stem} & wanted):
+            continue
+        seen += 1
+        py = str(install.get("python_path") or "")
+        if not py or not Path(py).exists():
+            typer.echo(f"[{env_name or mf.stem}] {cap}: python_path missing ({py or '-'}) — reinstall with install-all")
+            failed += 1
+            continue
+        eff_mode = mode or env_mode(install)
+        plan = plan_env(data, eff_mode, read_cjm_set(Path(py)), yaml_entry=yaml_entry_for(yaml_cfg, env_name),
+                        substrate_spec=substrate_source, root=checkouts_root, host_version=host["version"])
+        typer.echo(plan.render())
+        if plan.refusal:
+            failed += 1
+            continue
+        if dry_run:
+            continue
+        results = execute_plan(plan)
+        for note, rc, out in results:
+            if rc != 0:
+                typer.echo(f"   ✗ {note} (rc {rc}){': ' + out[-400:] if out else ''}", err=True)
+        if any(rc != 0 for note, rc, _out in results if note != "dependency check"):
+            failed += 1
+            continue
+        # Re-record: code section from a fresh introspection + the whole-env resolved set
+        # and mode (both written by _generate_manifest); installed_at stays the install
+        # moment (regenerate-manifest's rule), refreshed_at is now.
+        original_installed_at = str(install.get("installed_at") or "")
+        out_path = _generate_manifest(env_name, plan.package_source, cfg.manifests_dir)
+        if out_path is None:
+            typer.echo(f"   ✗ manifest re-record failed for {cap}", err=True)
+            failed += 1
+            continue
+        refreshed = load_manifest(out_path)
+        if original_installed_at:
+            refreshed.install.installed_at = original_installed_at
+        if mode is not None:
+            refreshed.install.mode = mode
+        refreshed.install.refreshed_at = datetime.now(timezone.utc).isoformat()
+        write_manifest(out_path, refreshed)
+        typer.echo("   now: " + " ".join(f"{k}={v}" for k, v in sorted(refreshed.install.resolved.items())))
+        live = running_workers(py)
+        if live:
+            typer.echo(f"   ⚠ {len(live)} running worker(s) still serve the OLD code — relaunch their host: "
+                       + ", ".join(f"pid {w['pid']}" for w in live))
+        if verify:
+            sweep = import_sweep(py)
+            fails = sweep.get("failures") or []
+            total = sweep.get("total", 0)
+            typer.echo(f"   import sweep: {total - len(fails)}/{total} clean"
+                       + "".join(f"\n      ✗ {f}" for f in fails))
+            if fails:
+                failed += 1
+    if seen == 0:
+        typer.echo("no capability manifests matched" + (f" --only {sorted(wanted)}" if wanted else "")
+                   + f" under {cfg.manifests_dir}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"\nrefresh {'planned' if dry_run else 'done'}: {seen} env(s), {failed} flagged")
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command("derive-public-capabilities")
+def derive_public_capabilities_cmd(
+    source:Path=typer.Argument(..., help="The dev capabilities yaml (checkout paths)"),
+    out:Path=typer.Option(..., "--out", help="Where to write the public yaml"),
+    no_floor:bool=typer.Option(False, "--no-floor", help="Bare dist names instead of >=<checkout version> floors"),
+    check_pypi:bool=typer.Option(False, "--check-pypi", help="Refuse to write when any floor is not live on PyPI (per-release endpoint)"),
+) -> None:
+    """Project the dev capabilities yaml to its PUBLIC form (ruling 8299fb9d, DEC f282571c):
+    every checkout path becomes a PyPI spec with a floor, every env_file path the capability
+    repo's raw GitHub URL. A projection — regenerate it after every publish window; the dev
+    yaml stays the --capabilities override on a machine with checkouts."""
+    from cjm_substrate.utils.envrefresh import (derive_public_capabilities, pypi_release_exists,
+                                                render_public_yaml, spec_floors)
+    with open(source) as f:
+        dev = yaml.safe_load(f) or {}
+    try:
+        public = derive_public_capabilities(dev, floor=not no_floor)
+    except ValueError as e:
+        typer.echo(f"derive failed: {e}", err=True)
+        raise typer.Exit(code=1)
+    if check_pypi:
+        floors = spec_floors(public)
+        missing = [(n, v) for n, v in floors if not pypi_release_exists(n, v)]
+        for n, v in missing:
+            typer.echo(f"   ✗ {n} {v} is NOT live on PyPI", err=True)
+        if missing:
+            typer.echo(f"{len(missing)} floor(s) unpublished — publish first (the pin-bridge gate)", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"every floor is live on PyPI ({len(floors)} checked)")
+    out.write_text(render_public_yaml(public, source.name))
+    typer.echo(f"wrote {out} ({len(public.get('capabilities', []))} capabilities)")

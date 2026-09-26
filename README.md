@@ -34,6 +34,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
 - **`cjm_substrate.utils.__init__`**
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
+- **`cjm_substrate.utils.envrefresh`**
 - **`cjm_substrate.utils.envtruth`** — Env truth for capability-served libs — the ONE sweep the six sightings demanded
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
 - **`cjm_substrate.utils.lifecycle`** — Artifact lifecycle sidecar — the ONE seam every picker filters through
@@ -52,6 +53,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ### `cjm_substrate.cli`
 
+- `derive_public_capabilities_cmd` _function_ — Project the dev capabilities yaml to its PUBLIC form (ruling 8299fb9d, DEC f282571c):
 - `envs_for_cmd` _function_ — Env-truth sweep (work item 424b9781): every env the workspace manifests say serves
 - `generate_adapter_manifest` _function_ — CR-17 pt 2 (stage 4): introspect a task-adapter impl in-env and write its adapter manifest.
 - `install_all` _function_ — Install and register all capabilities defined in capabilities.yaml.
@@ -59,6 +61,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `list_secrets` _function_ — List the secret KEY NAMES stored for a capability — never the values (CR-12).
 - `logs_command` _function_ — Tail / follow the observability stores (CR-14).
 - `main` _function_ — cjm-substrate CLI for managing isolated capability environments.
+- `refresh_cmd` _function_ — Refresh every worker env from the closure it was installed from (DEC f282571c, work
 - `regenerate_manifest` _function_ — Re-run introspection for an installed capability and rewrite its manifest.
 - `remove_capability` _function_ — Remove a capability's manifest and conda environment.
 - `retention_command` _function_ — Apply the diagnostics retention policy now (CR-14).
@@ -234,6 +237,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 ### `cjm_substrate.core.proxy`
 
 - `RemoteCapabilityProxy` _class_ — Proxy that forwards capability calls to an isolated Worker subprocess.
+- `substrate_mismatch` _function_ — DEC f282571c: compare the substrate the worker RUNS (its /health
 
 ### `cjm_substrate.core.queue`
 
@@ -302,9 +306,15 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ### `cjm_substrate.utils.envtruth`
 
+- `checkouts_root` _function_ — Dev mode's checkouts root: the parent of the host substrate's own editable
+- `derive_mode` _function_ — Mode from a package spec (DEC f282571c): a filesystem path or an `-e `
+- `env_mode` _function_ — The env's mode: the manifest's recorded `install.mode` when it is one of
 - `envs_for` _function_ — Every env the manifests say serves `lib`, with what that env actually holds.
+- `host_substrate` _function_ — The host side of the launch-time check (DEC f282571c): the substrate this
 - `main` _function_
+- `read_cjm_set` _function_ — The WHOLE cjm-* set the interpreter at `python_path` would import — the
 - `render_rows` _function_ — The human sweep report + the post-edit checklist verdict line.
+- `source_version` _function_ — The version an editable install really runs: a static `project.version`
 
 ### `cjm_substrate.utils.hashing`
 

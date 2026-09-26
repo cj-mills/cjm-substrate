@@ -137,3 +137,19 @@ python scripts/pypi_sweep.py -v    # every repo, including the ones in sync
 Blind spots by design, covered by the ritual's later rungs: version-equal
 content drift (a symbol added after the bump) and undeclared dependencies —
 those need the fresh-venv install gate, not a version scan.
+
+## The other window-close rungs, and what became a verb
+
+- `pypi_pin_bridge.py` — rung 2: every `cjm-*` floor vs PyPI, ordered into
+  publish waves so no consumer publishes before its floors are live.
+- `pypi_build_all.sh` — build + `twine check` every repo, wheel version ==
+  local.
+- `pypi_install_truth.sh` — rung 3: the fresh-venv install-truth gate (PyPI
+  only + a neutral-cwd import sweep of every `cjm-*` top-level module).
+- `worker_envs_refresh_dev.py` — RETIRED 2026-09-25 (DEC f282571c). The
+  interim dev-mode refresh of every worker env is now the substrate verb
+  `cjm-ctl refresh` (dev = editable from the checkouts, distribution = pinned
+  PyPI releases from the public capabilities yaml; `--verify` runs the rung-3
+  import sweep inside each worker env; `cjm-ctl envs-for` is the read side,
+  mode-aware). The public yaml itself is projected by
+  `cjm-ctl derive-public-capabilities <dev.yaml> --out capabilities.yaml --check-pypi`.

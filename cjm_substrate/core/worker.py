@@ -17,6 +17,7 @@ from typing import Any, AsyncIterator, Dict, Generator
 
 import psutil
 import uvicorn
+from cjm_substrate import __version__ as _substrate_version
 from cjm_substrate.core.capability import derive_structural_surface
 from cjm_substrate.core.diagnostics_store import install_worker_diagnostics
 from cjm_substrate.core.errors import CapabilityCancelledError, map_bare_exception_to_job_error
@@ -154,11 +155,17 @@ def _register_identity_endpoints(
     @app.get("/health")
     def health_check() -> Dict[str, Any]:
         """Health check endpoint."""
+        # DEC f282571c: the worker names the substrate it RUNS — the seam is
+        # HTTP + JSON, so a stale worker env answers a newer host until the wire
+        # shape changes; the proxy compares this against its own version at
+        # ready and refuses with the refresh recipe instead of failing mid-request.
         return {
             "status": "running",
             "pid": os.getpid(),
             "name": getattr(capability_instance, "name", "unknown"),
-            "version": getattr(capability_instance, "version", "unknown")
+            "version": getattr(capability_instance, "version", "unknown"),
+            "substrate_version": _substrate_version,
+            "python_executable": sys.executable,
         }
 
     # Closure-captured Process instance + per-child baseline cache (SG-40 pattern).

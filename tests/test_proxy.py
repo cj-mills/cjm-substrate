@@ -483,7 +483,9 @@ def test_wait_for_ready_keeps_polling_through_read_timeouts():
             self.timeouts.append(timeout)
             if self.failures:
                 raise self.failures.pop(0)
-            return object()
+            # DEC f282571c: a ready probe now carries the worker's substrate version.
+            from cjm_substrate import __version__ as host_version
+            return type("Resp", (), {"json": lambda self: {"substrate_version": host_version}})()
 
     p = RemoteCapabilityProxy.__new__(RemoteCapabilityProxy)
     p.base_url = "http://127.0.0.1:1"
@@ -519,3 +521,59 @@ def test_wait_for_ready_keeps_polling_through_read_timeouts():
     finally:
         _t.sleep = orig
     assert p2.journal.rows[-1].event_type == SubstrateEventType.WORKER_DIED.value
+
+
+def test_wait_for_ready_refuses_a_substrate_mismatch(monkeypatch):
+    """DEC f282571c: the worker names the substrate it runs; a mismatch (or a
+    pre-check worker with no key) dies at launch with the refresh recipe instead
+    of failing mid-request; CJM_SUBSTRATE_MISMATCH=warn logs and proceeds."""
+    from cjm_substrate import __version__ as host_version
+    from cjm_substrate.core import proxy as proxy_mod
+    from cjm_substrate.core.errors import CapabilityFatalError
+    from cjm_substrate.core.journal_store import SubstrateEventType
+
+    class Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    def mk(payload):
+        p = RemoteCapabilityProxy.__new__(RemoteCapabilityProxy)
+        p.base_url, p.manifest = "http://127.0.0.1:1", {"name": "stale-stub", "python_path": "/envs/x/bin/python"}
+        p.worker_session_id, p.observability_class, p.journal = "ws-stale", "full", ListJournal()
+        p.process = None
+        p._ensure_sync_client = lambda: type("C", (), {"get": lambda self, url, timeout=None: Resp(payload)})()
+        return p
+
+    killed = []
+    monkeypatch.setattr(proxy_mod, "terminate_process", lambda proc, timeout=2.0: killed.append(proc))
+    monkeypatch.delenv("CJM_SUBSTRATE_MISMATCH", raising=False)
+    # a stale worker env: version differs
+    p = mk({"status": "running", "substrate_version": "0.0.50", "python_executable": "/envs/x/bin/python"})
+    with pytest.raises(CapabilityFatalError, match="worker env runs cjm-substrate 0.0.50") as ei:
+        p._wait_for_ready(timeout=5.0)
+    assert "cjm-ctl refresh --only stale-stub" in str(ei.value) and "/envs/x/bin/python" in str(ei.value)
+    assert f"cjm-substrate=={host_version}" in str(ei.value)
+    assert killed == [None]
+    died = [r for r in p.journal.rows if r.event_type == SubstrateEventType.WORKER_DIED.value]
+    assert died and died[0].payload == {"phase": "substrate_mismatch", "host_substrate": host_version,
+                                        "worker_substrate": "0.0.50"}
+    # a pre-check worker: no key at all
+    with pytest.raises(CapabilityFatalError, match="without a substrate_version"):
+        mk({"status": "running"})._wait_for_ready(timeout=5.0)
+    # the matching worker is ready, and the ready row carries the version
+    ok = mk({"status": "running", "substrate_version": host_version})
+    ok._wait_for_ready(timeout=5.0)
+    assert [r.event_type for r in ok.journal.rows] == [SubstrateEventType.WORKER_READY.value]
+    assert ok.journal.rows[0].payload["substrate_version"] == host_version
+    # the escape hatch: warn and proceed
+    monkeypatch.setenv("CJM_SUBSTRATE_MISMATCH", "warn")
+    warned = mk({"status": "running", "substrate_version": "0.0.50"})
+    warned._wait_for_ready(timeout=5.0)
+    assert [r.event_type for r in warned.journal.rows] == [SubstrateEventType.WORKER_READY.value]
+    # the pure check
+    assert proxy_mod.substrate_mismatch({"substrate_version": "1"}, "1") is None
+    assert "pre-0.0.70" in proxy_mod.substrate_mismatch({}, "1")
+    assert proxy_mod._health_payload(object()) == {} and proxy_mod._health_payload(Resp([1])) == {}

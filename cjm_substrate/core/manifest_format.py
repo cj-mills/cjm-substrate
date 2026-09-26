@@ -22,12 +22,19 @@ CURRENT_FORMAT_VERSION = "2.0"  # Emitted on every freshly-written manifest
 @dataclass
 class InstallSection:
     """Deployment-specific facts populated at install time.
-    
+
     These fields are written by `install_all` (paths, conda env, env vars)
     plus `_generate_manifest`'s post-introspection step (installed_at,
     installer_version, package_source). `regenerate-manifest` preserves
     the install section across regeneration so paths survive code-side
     refreshes.
+
+    DEC f282571c (the refresh verb): `mode`, `resolved` and `refreshed_at`
+    record the WHOLE env, not the capability alone — `mode` is derived from
+    `package_source` (a path or an `-e ` spec = "dev", anything else =
+    "distribution"); `resolved` maps every cjm-* dist the env holds to its
+    installed version (in distribution mode these ARE the pins env truth
+    checks against); `refreshed_at` is the last `cjm-ctl refresh` moment.
     """
     python_path: str = ""        # Absolute path to the capability env's python interpreter
     conda_env: str = ""          # Conda environment name
@@ -36,6 +43,9 @@ class InstallSection:
     installed_at: str = ""       # ISO-8601 UTC timestamp of install/regen
     installer_version: str = ""  # "cjm-ctl <version>" that wrote this manifest
     package_source: str = ""     # Original install input (git URL or pip spec)
+    mode: str = ""               # "dev" (editable from a checkout) | "distribution" (pinned releases) | "" (pre-f282571c manifest)
+    resolved: Dict[str, str] = field(default_factory=dict)  # Every cjm-* dist in the env -> installed version at the last install/refresh
+    refreshed_at: str = ""       # ISO-8601 UTC of the last `cjm-ctl refresh` ("" until the first)
 
 
 @dataclass
@@ -151,6 +161,9 @@ def _from_v2_dict(
         installed_at=install_d.get("installed_at", "") or "",
         installer_version=install_d.get("installer_version", "") or "",
         package_source=install_d.get("package_source", "") or "",
+        mode=install_d.get("mode", "") or "",
+        resolved=dict(install_d.get("resolved", {}) or {}),
+        refreshed_at=install_d.get("refreshed_at", "") or "",
     )
     code = CodeSection(
         name=code_d.get("name", "") or "",
@@ -258,6 +271,9 @@ def manifest_to_dict(
             "installed_at": m.install.installed_at,
             "installer_version": m.install.installer_version,
             "package_source": m.install.package_source,
+            "mode": m.install.mode,
+            "resolved": dict(m.install.resolved),
+            "refreshed_at": m.install.refreshed_at,
         },
         "code": _code_section_to_dict(m.code),
         "drift_tracking": {

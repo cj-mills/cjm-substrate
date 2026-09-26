@@ -158,3 +158,31 @@ def test_observability_class_round_trips_through_code_section():
     # The manager's flat view is {**install, **code} — the key must ride the code dict.
     assert "observability_class" in {**d["install"], **d["code"]}
     assert "observability_class" not in manifest_to_dict(ManifestV2())["code"]
+
+
+def test_install_mode_resolved_refreshed_at_round_trip_and_defaults(tmp_path):
+    """DEC f282571c: the install section records the WHOLE env — mode, the
+    resolved cjm-* set and the last refresh — and a pre-refresh manifest parses
+    to the empty defaults."""
+    m = ManifestV2(
+        install=InstallSection(python_path="/envs/x/bin/python", package_source="cjm-capability-x>=0.0.1",
+                               mode="distribution", refreshed_at="2026-09-25T16:30:00+00:00",
+                               resolved={"cjm-substrate": "0.0.70", "cjm-capability-x": "0.0.1"}),
+        code=CodeSection(name="cjm-capability-x", version="0.0.1", description="d", module="m", class_name="C"),
+    )
+    d = manifest_to_dict(m)
+    assert d["install"]["mode"] == "distribution"
+    assert d["install"]["resolved"] == {"cjm-substrate": "0.0.70", "cjm-capability-x": "0.0.1"}
+    assert d["install"]["refreshed_at"] == "2026-09-25T16:30:00+00:00"
+    path = tmp_path / "x.json"
+    write_manifest(path, m)
+    back = load_manifest(path)
+    assert back.install.mode == "distribution" and back.install.refreshed_at == m.install.refreshed_at
+    assert back.install.resolved == m.install.resolved
+    # a manifest written before the fields existed
+    legacy = json.loads(path.read_text())
+    for key in ("mode", "resolved", "refreshed_at"):
+        legacy["install"].pop(key)
+    path.write_text(json.dumps(legacy))
+    old = load_manifest(path)
+    assert old.install.mode == "" and old.install.resolved == {} and old.install.refreshed_at == ""

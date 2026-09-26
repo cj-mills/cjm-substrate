@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
 import httpx
+from cjm_substrate import __version__ as _substrate_version
 from cjm_substrate.core.capability import ToolCapability
 from cjm_substrate.core.config import get_config
 from cjm_substrate.core.diagnostics_store import (DiagnosticsStore, LocalDiagnosticsStore,
@@ -331,7 +332,17 @@ class RemoteCapabilityProxy(ToolCapability):
         self,
         timeout:float=30.0 # Max seconds to wait for worker startup
     ) -> None:
-        """Wait for worker to become responsive."""
+        """Wait for worker to become responsive, then verify it runs THIS substrate.
+
+        DEC f282571c: the seam is HTTP + JSON, so a worker env on a stale
+        substrate answers a newer host until a wire shape changes and then
+        fails mid-request. /health names the substrate the worker imports; a
+        mismatch (or a pre-check worker answering without the key) terminates
+        the worker just spawned, journals the death (phase substrate_mismatch)
+        and refuses with the refresh recipe — the manager's load path surfaces
+        it as "Failed to load capability …". CJM_SUBSTRATE_MISMATCH=warn
+        downgrades the refusal to a logged warning for deliberate cross-version
+        probes; never the default."""
         start = time.time()
         while time.time() - start < timeout:
             try:
@@ -343,12 +354,30 @@ class RemoteCapabilityProxy(ToolCapability):
                 # decides (2026-09-16: the forced aligner failed at exactly
                 # 5.0 s on a ReadTimeout the ConnectError-only except let escape).
                 remaining = max(0.5, timeout - (time.time() - start))
-                self._ensure_sync_client().get(f"{self.base_url}/health",
-                                               timeout=min(5.0, remaining))
+                resp = self._ensure_sync_client().get(f"{self.base_url}/health",
+                                                      timeout=min(5.0, remaining))
+                health = _health_payload(resp)
+                problem = substrate_mismatch(health, _substrate_version)
+                if problem is not None:
+                    recipe = _refresh_recipe(self.manifest, health, _substrate_version)
+                    if os.environ.get("CJM_SUBSTRATE_MISMATCH", "").lower() == "warn":
+                        _logger.warning("[%s] %s — proceeding (CJM_SUBSTRATE_MISMATCH=warn). %s",
+                                        self.name, problem, recipe)
+                    else:
+                        self._journal_event(SubstrateEventType.WORKER_DIED.value, {
+                            "phase": "substrate_mismatch",
+                            "host_substrate": _substrate_version,
+                            "worker_substrate": health.get("substrate_version"),
+                        })
+                        terminate_process(self.process, timeout=2.0)
+                        self.process = None
+                        raise CapabilityFatalError(
+                            f"Capability '{self.name}' refused at launch: {problem}. {recipe}")
                 print(f"[{self.name}] Worker ready.", file=sys.stderr)
                 # CR-14: readiness is a journal event (startup latency rides along).
                 self._journal_event(SubstrateEventType.WORKER_READY.value, {
                     "wait_seconds": round(time.time() - start, 3),
+                    "substrate_version": health.get("substrate_version"),
                 })
                 return
             except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError):
@@ -1283,3 +1312,36 @@ async def _run_prefetch_with_stall_detection_async(
     if result['status'] == 'connect_error':
         return False
     return result['status'] == 'done'
+
+
+def _health_payload(resp: Any) -> Dict[str, Any]:  # the /health JSON, or {} when the response carries none
+    """The worker's /health body as a dict — a stub or a non-JSON body reads as
+    empty, which `substrate_mismatch` treats as a pre-check worker."""
+    try:
+        payload = resp.json()
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def substrate_mismatch(health: Dict[str, Any], host_version: str) -> Optional[str]:  # the refusal reason, or None when the worker runs the host's substrate
+    """DEC f282571c: compare the substrate the worker RUNS (its /health
+    `substrate_version`) with the host's. A worker answering without the key
+    predates the check, which makes it stale by definition."""
+    worker_version = health.get("substrate_version")
+    if worker_version is None:
+        return (f"worker answered /health without a substrate_version — its env runs a "
+                f"pre-0.0.70 cjm-substrate while the host runs {host_version}")
+    if str(worker_version) != str(host_version):
+        return f"worker env runs cjm-substrate {worker_version}, host runs {host_version}"
+    return None
+
+
+def _refresh_recipe(manifest: Dict[str, Any], health: Dict[str, Any], host_version: str) -> str:
+    """The operator's next command, named at the refusal (the launcher item
+    5ee9cbb0 shows the same recipe in the UI later)."""
+    python = health.get("python_executable") or manifest.get("python_path") or "<worker python>"
+    name = manifest.get("name", "unknown")
+    return (f"Refresh the worker env ({python}): `cjm-ctl refresh --only {name}` "
+            f"(dev: editable from the checkout; distribution: cjm-substrate=={host_version}), "
+            f"then relaunch the host. `cjm-ctl envs-for cjm-substrate` shows every env's gap.")
