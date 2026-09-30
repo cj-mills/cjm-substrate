@@ -82,6 +82,12 @@ def kind(block: str, removed: bool) -> str:
         return "author strip"
     if block.startswith(("d:", "p:")) and QUESTIONS_LINE and text.startswith(QUESTIONS_LINE):
         return "questions line"
+    # Related posts and the Reuse appendix (design 39c51c15 (4) / (6))
+    if block == "p:Related" or (block.startswith("u:") and re.search(
+            r" — (Linked from this post|Links here|Next step: |Previous step: |Shared topics: )", text)):
+        return "related posts"
+    if block == "h:Reuse" or (block.startswith("p:") and re.match(r"^Text: .+ · Code samples: ", text)):
+        return "reuse appendix"
     return ""
 
 
