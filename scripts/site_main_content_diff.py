@@ -19,6 +19,11 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+# The end matter's leading words (--strip-byline / --questions-line): the author strip and the
+# questions line are recognized by the copy the site config gives them
+STRIP_BYLINE = ""
+QUESTIONS_LINE = ""
+
 LEAF = {"p", "ul", "ol", "pre", "table", "h1", "h2", "h3", "h4", "h5", "h6", "hr",
         "blockquote", "figure", "dl"}
 
@@ -65,8 +70,19 @@ def kind(block: str, removed: bool) -> str:
             return "nav line"
         if block.startswith("u:"):
             return "list (hand TOC)"
+        # The site-chrome includes the author strip replaces (design 39c51c15 (5))
+        if text.startswith("About Me:"):
+            return "about-author callout"
+        if text.startswith("Questions:"):
+            return "questions callout"
         return ""
-    return "navigation" if text.startswith(("Part ", "In the collection")) else ""
+    if text.startswith(("Part ", "In the collection")):
+        return "navigation"
+    if block.startswith("d:") and STRIP_BYLINE and text.startswith(STRIP_BYLINE):
+        return "author strip"
+    if block.startswith(("d:", "p:")) and QUESTIONS_LINE and text.startswith(QUESTIONS_LINE):
+        return "questions line"
+    return ""
 
 
 def main() -> None:
@@ -74,7 +90,11 @@ def main() -> None:
     ap.add_argument("before", type=Path)
     ap.add_argument("after", type=Path)
     ap.add_argument("--show", type=int, default=40, help="unexplained rows to print")
+    ap.add_argument("--strip-byline", default="", help="the author strip's leading words, as rendered")
+    ap.add_argument("--questions-line", default="", help="the questions line's leading words, as rendered")
     args = ap.parse_args()
+    global STRIP_BYLINE, QUESTIONS_LINE
+    STRIP_BYLINE, QUESTIONS_LINE = args.strip_byline, args.questions_line
     tally, odd = Counter(), []
     for a in sorted((args.after / "posts").rglob("index.html")):
         rel = a.relative_to(args.after)
