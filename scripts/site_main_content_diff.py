@@ -57,6 +57,11 @@ def blocks(path: Path):
     return out
 
 
+# A related-posts item's reason (39c51c15 (4); the judged reasons of amendment e09e262b)
+RELATED = re.compile(r" — (Linked from this post|Links here|Next step|Previous step: |Shared topics: |"
+                     r"Same technique|Background|Same tool|Same subject)")
+
+
 def kind(block: str, removed: bool) -> str:
     """A known derived-block kind, or '' (unexplained)."""
     if block == "<hr>":
@@ -68,13 +73,15 @@ def kind(block: str, removed: bool) -> str:
             return "series callout"
         if re.match(r"^(Previous|Next):", text):
             return "nav line"
-        if block.startswith("u:"):
-            return "list (hand TOC)"
         # The site-chrome includes the author strip replaces (design 39c51c15 (5))
         if text.startswith("About Me:"):
             return "about-author callout"
         if text.startswith("Questions:"):
             return "questions callout"
+        if block == "p:Related" or (block.startswith("u:") and RELATED.search(text)):
+            return "related posts"
+        if block.startswith("u:"):
+            return "list (hand TOC)"
         return ""
     if text.startswith(("Part ", "In the collection")):
         return "navigation"
@@ -83,8 +90,7 @@ def kind(block: str, removed: bool) -> str:
     if block.startswith(("d:", "p:")) and QUESTIONS_LINE and text.startswith(QUESTIONS_LINE):
         return "questions line"
     # Related posts and the Reuse appendix (design 39c51c15 (4) / (6))
-    if block == "p:Related" or (block.startswith("u:") and re.search(
-            r" — (Linked from this post|Links here|Next step: |Previous step: |Shared topics: )", text)):
+    if block == "p:Related" or (block.startswith("u:") and RELATED.search(text)):
         return "related posts"
     if block == "h:Reuse" or (block.startswith("p:") and re.match(r"^Text: .+ · Code samples: ", text)):
         return "reuse appendix"
