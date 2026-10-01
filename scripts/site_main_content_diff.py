@@ -7,7 +7,7 @@ in both, the page's <main> is reduced to its top-level LEAF blocks (paragraph, l
 code, table, rule, figure, blockquote, callout) as normalized text, and the multiset difference
 is reported: what left the page and what arrived. Known derived-block shapes (design 253ac996:
 the series callout, the hand TOC list, its closing rule, the hand Previous / Next lines, the
-projected navigation) are tallied by kind; anything else is UNEXPLAINED and listed. The proof
+projected navigation; the end matter's blocks, the sources block among them) are tallied by kind; anything else is UNEXPLAINED and listed. The proof
 of the derived-blocks build (DEC 7421d013): 0 unexplained. The listing-level twin is
 scripts/site_listing_items.py.
 """
@@ -52,8 +52,12 @@ def blocks(path: Path):
                 break
             anc = anc.parent
         if not nested:
-            out.append("<hr>" if el.name == "hr" else
-                       el.name[:1] + ":" + re.sub(r"\s+", " ", el.get_text(" ")).strip())
+            text = "<hr>" if el.name == "hr" else el.name[:1] + ":" + re.sub(r"\s+", " ", el.get_text(" ")).strip()
+            # a leaf of the sources block (amendment 722a8232) is known by its container: its
+            # citations carry no marker of their own
+            if el.find_parent("div", class_="post-sources") is not None:
+                text = "src:" + text
+            out.append(text)
     return out
 
 
@@ -94,6 +98,9 @@ def kind(block: str, removed: bool) -> str:
         return "related posts"
     if block == "h:Reuse" or (block.startswith("p:") and re.match(r"^Text: .+ · Code samples: ", text)):
         return "reuse appendix"
+    # The sources block (39c51c15 (3), amendment 722a8232): its heading and its citations
+    if block.startswith("src:"):
+        return "sources block"
     # The comments block's link to a page's earlier threads (design 39c51c15 (1)); its widget is
     # no leaf block
     if block.startswith("p:") and re.match(r"^Earlier comments: #\d+", text):
