@@ -94,6 +94,10 @@ def kind(block: str, removed: bool) -> str:
         return "related posts"
     if block == "h:Reuse" or (block.startswith("p:") and re.match(r"^Text: .+ · Code samples: ", text)):
         return "reuse appendix"
+    # The comments block's link to a page's earlier threads (design 39c51c15 (1)); its widget is
+    # no leaf block
+    if block.startswith("p:") and re.match(r"^Earlier comments: #\d+", text):
+        return "earlier comments"
     return ""
 
 
