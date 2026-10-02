@@ -82,6 +82,10 @@ def kind(block: str, removed: bool) -> str:
             return "about-author callout"
         if text.startswith("Questions:"):
             return "questions callout"
+        # A projected navigation an earlier build placed, replaced by this one's (a notes post's
+        # series moving to its work page, design 638b7b85 (5))
+        if block.startswith("d:") and text.startswith(("Part ", "In the collection")):
+            return "navigation"
         if block == "p:Related" or (block.startswith("u:") and RELATED.search(text)):
             return "related posts"
         if block.startswith("u:"):
