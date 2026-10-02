@@ -88,6 +88,10 @@ def kind(block: str, removed: bool) -> str:
             return "navigation"
         if block == "p:Related" or (block.startswith("u:") and RELATED.search(text)):
             return "related posts"
+        # A sources block an earlier build placed, replaced by this one's draws-on block (design
+        # 37f82f72 (2): the same container, named from the Library)
+        if block.startswith("src:"):
+            return "sources block"
         if block.startswith("u:"):
             return "list (hand TOC)"
         return ""
@@ -102,7 +106,7 @@ def kind(block: str, removed: bool) -> str:
         return "related posts"
     if block == "h:Reuse" or (block.startswith("p:") and re.match(r"^Text: .+ · Code samples: ", text)):
         return "reuse appendix"
-    # The sources block (39c51c15 (3), amendment 722a8232): its heading and its citations
+    # The draws-on block (design 37f82f72, in the sources block's container): its heading and lines
     if block.startswith("src:"):
         return "sources block"
     # The comments block's link to a page's earlier threads (design 39c51c15 (1)); its widget is
