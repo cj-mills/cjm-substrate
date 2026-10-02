@@ -7,7 +7,9 @@ whose install pulls the rest from PyPI — plus every first publish and every ca
 worker or adapter interface this window publishes, at their local versions).
 
     python scripts/pypi_pin_bridge.py                 # unmet floors + the waves
-    python scripts/pypi_pin_bridge.py --install-set   # name==version per line (install-truth reads it)
+    python scripts/pypi_pin_bridge.py --install-set [--since YYYY-MM-DD]
+        # name==version per line (install-truth reads it); --since keeps the window's own
+        # releases in the set after they are live (PyPI's upload dates)
 """
 
 import re
@@ -16,7 +18,7 @@ import tomllib
 from pathlib import Path
 from typing import Dict, List, Set
 
-from pypi_sweep import local_version, pypi_releases, ROOT, sweep, vkey
+from pypi_sweep import local_version, pypi_releases, ROOT, sweep, uploaded, vkey
 
 # run as a script, Python puts this directory first on sys.path, so pypi_sweep imports as a sibling
 
@@ -56,14 +58,21 @@ def main(argv: List[str]) -> int:
                 unmet.setdefault(r["repo"], set()).add(dep)
     if "--install-set" in argv:
         pinned = {dep for r in rows for dep, _, _ in cjm_pins(ROOT / r["repo"])}
+        # THE WINDOW = what this run publishes (unpublished now) or what PyPI received on or
+        # after --since (so the set is the same before and after the uploads)
+        since = argv[argv.index("--since") + 1] if "--since" in argv else None
         for r in rows:
+            in_window = r["state"] != "ok" or bool(
+                since and (uploaded(r["name"], r["version"]) or "") >= since)
+            first = r["state"] == "FIRST-PUBLISH" or bool(
+                since and (uploaded(r["name"]) or "") >= since)
             # capability workers and adapter interfaces load through manifests and are never
             # pinned, so every one reads as a leaf -- but each runs in its own worker env and
             # co-installing them all would pull several model stacks into one venv: they join
             # the set only when this window publishes them
             worker = r["repo"].startswith("cjm-capability-") or r["repo"].endswith("-adapter-interface")
             leaf = r["repo"] not in pinned and not worker
-            if leaf or r["state"] == "FIRST-PUBLISH" or (worker and r["state"] != "ok"):
+            if leaf or (in_window and (first or worker)):
                 print(f"{r['name']}=={r['version']}")
         return 0
     print(f"{'repo':44} {'dep':44} {'pin':10} {'local':8} {'pypi':8} state")

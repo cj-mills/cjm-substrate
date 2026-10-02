@@ -30,6 +30,7 @@ from typing import Dict, List, Optional
 ROOT = Path("/mnt/SN850X_8TB_EXT4/Projects/GitHub/cj-mills")
 OWNER = "cj-mills"
 _releases: Dict[str, List[str]] = {}
+_uploaded: Dict[str, Dict[str, str]] = {}   # name -> {version: its first file's upload date (ISO)}
 
 
 def vkey(v: str) -> list:
@@ -64,12 +65,27 @@ def pypi_releases(name: str) -> Optional[List[str]]:
     if name not in _releases:
         try:
             with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=15) as r:
-                _releases[name] = sorted(json.load(r)["releases"], key=vkey)
+                info = json.load(r)["releases"]
+            _releases[name] = sorted(info, key=vkey)
+            _uploaded[name] = {v: min(f["upload_time_iso_8601"] for f in files)[:10]
+                               for v, files in info.items() if files}
         except urllib.error.HTTPError as e:
             if e.code != 404:
                 raise
             _releases[name] = None
     return _releases[name]
+
+
+def uploaded(name: str, version: Optional[str] = None) -> Optional[str]:
+    """The ISO date PyPI first received `version` (None = the distribution's FIRST release), or
+    None when it never did -- how a later rung tells which releases a window put up, even after
+    the sweep reads them all as published."""
+    if pypi_releases(name) is None:
+        return None
+    dates = _uploaded.get(name) or {}
+    if version is None:
+        return min(dates.values()) if dates else None
+    return dates.get(version)
 
 
 def sweep() -> List[dict]:

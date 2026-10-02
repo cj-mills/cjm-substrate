@@ -7,7 +7,9 @@ set -u
 # bridge (the leaf apps + this window's first publishes + its bumped workers), never retyped.
 V="${1:-$(mktemp -d)}/venv-truth"
 HOSTPY=/home/innom-dt/miniforge3/envs/cjm-substrate/bin/python
-PKGS=$($HOSTPY "$(dirname "$(readlink -f "$0")")/pypi_pin_bridge.py" --install-set | tr "\n" " ") || { echo "PIN BRIDGE FAILED"; exit 1; }
+# $2 = the window's first upload date (default today, UTC): its releases stay in the set once live
+SINCE="${2:-$(date -u +%Y-%m-%d)}"
+PKGS=$($HOSTPY "$(dirname "$(readlink -f "$0")")/pypi_pin_bridge.py" --install-set --since "$SINCE" | tr "\n" " ") || { echo "PIN BRIDGE FAILED"; exit 1; }
 echo "install set: $PKGS"
 rm -rf "$V"; python3 -m venv "$V" >/dev/null || { echo "venv FAILED"; exit 1; }
 PIP="$V/bin/pip"; PY="$V/bin/python"

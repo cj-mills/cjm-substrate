@@ -22,6 +22,10 @@ print(v)
 EOF
 )
   tc=$($PY -m twine check dist/* 2>&1 | grep -cE "PASSED"); n=$(ls dist | wc -l)
-  printf "%-46s local=%-8s wheel=%-8s twine=%s/%s  %s\n" "$r" "$lv" "$wv" "$tc" "$n" "$(basename "$whl")"
+  # PyPI refuses a summary over 512 characters at upload (HTTP 400) -- twine check does not
+  # test it, so the build rung does (the kit's 888-character description, 2026-10-02 window)
+  sl=$($PY -c 'import tomllib; print(len(tomllib.load(open("pyproject.toml","rb"))["project"].get("description","")))')
+  [ "$sl" -le 512 ] && sv="ok" || sv="TOO-LONG($sl>512)"
+  printf "%-46s local=%-8s wheel=%-8s twine=%s/%s summary=%s  %s\n" "$r" "$lv" "$wv" "$tc" "$n" "$sv" "$(basename "$whl")"
 done
 echo BUILD-ALL-DONE
