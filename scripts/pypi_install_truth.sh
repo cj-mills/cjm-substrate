@@ -1,13 +1,17 @@
 #!/bin/bash
-# Window-close ritual rung 3: the fresh-venv INSTALL-TRUTH gate — pip install the leaf apps
-# + the four first-publishes from PyPI ONLY into a throwaway venv, then a neutral-cwd import
+# Window-close ritual rung 4: the fresh-venv INSTALL-TRUTH gate — pip install the leaf apps
+# + the window's first publishes and bumped workers from PyPI ONLY into a throwaway venv, then a neutral-cwd import
 # sweep. Catches version-equal content drift and undeclared deps that rungs 1-2 cannot.
 set -u
-V=/tmp/claude-1000/-mnt-SN850X-8TB-EXT4-Projects-GitHub-cj-mills-cjm-substrate/75535c01-aefb-456a-a900-a5cdd492d9ab/scratchpad/venv-truth
+# The venv lives under $1 (a scratch dir) or a fresh temp dir; the set comes from the pin
+# bridge (the leaf apps + this window's first publishes + its bumped workers), never retyped.
+V="${1:-$(mktemp -d)}/venv-truth"
+HOSTPY=/home/innom-dt/miniforge3/envs/cjm-substrate/bin/python
+PKGS=$($HOSTPY "$(dirname "$(readlink -f "$0")")/pypi_pin_bridge.py" --install-set | tr "\n" " ") || { echo "PIN BRIDGE FAILED"; exit 1; }
+echo "install set: $PKGS"
 rm -rf "$V"; python3 -m venv "$V" >/dev/null || { echo "venv FAILED"; exit 1; }
 PIP="$V/bin/pip"; PY="$V/bin/python"
 $PIP install -q --upgrade pip >/dev/null 2>&1
-PKGS="cjm-transcription-qt==0.0.8 cjm-transcript-decomp-qt==0.0.8 cjm-transcript-correction-qt==0.0.20 cjm-workflow-hub-qt==0.0.4 cjm-context-graph-projection==0.0.76 cjm-capability-pysbd==0.0.1 cjm-capability-monitor-nvidia==0.0.25 cjm-sentence-segmentation-adapter-interface==0.0.1 cjm-speaker-diarization-adapter-interface==0.0.1"
 if $PIP install -q $PKGS >"$V.install.log" 2>&1; then echo "INSTALL OK"; else echo "INSTALL FAILED:"; grep -E "ERROR|No matching|Could not" "$V.install.log" | head -5; fi
 cd /
 echo "--- cjm-* resolved in the fresh venv:"

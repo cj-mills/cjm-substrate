@@ -1,14 +1,11 @@
 #!/bin/bash
-# Build + twine-check every unpublished repo (no upload). One line per repo:
+# Build + twine-check every unpublished repo the sweep names (no upload). One line per repo:
 #   repo  local-version  wheel-version  twine-verdict  wheel-file
 PY=/home/innom-dt/miniforge3/envs/cjm-substrate/bin/python
 ROOT=/mnt/SN850X_8TB_EXT4/Projects/GitHub/cj-mills
-for r in cjm-capability-demucs cjm-capability-ffmpeg cjm-capability-monitor-nvidia cjm-capability-pysbd \
-         cjm-capability-voxtral-hf cjm-context-graph-layer cjm-context-graph-projection cjm-dev-graph-schema \
-         cjm-python-decompose-core cjm-sentence-segmentation-adapter-interface cjm-speaker-diarization-adapter-interface \
-         cjm-substrate cjm-substrate-qt-kit cjm-transcript-correction-core cjm-transcript-correction-qt \
-         cjm-transcript-decomp-core cjm-transcript-decomp-qt cjm-transcript-graph-schema cjm-transcription-core \
-         cjm-transcription-qt cjm-workflow-hub-qt; do
+# The window's repos come from the sweep (its one inventory), never a retyped list
+REPOS=$($PY "$(dirname "$(readlink -f "$0")")/pypi_sweep.py" --names) || { echo "SWEEP FAILED"; exit 1; }
+for r in $REPOS; do
   cd "$ROOT/$r" || { echo "$r MISSING"; continue; }
   rm -rf dist
   if ! $PY -m build >/tmp/claude-1000/build_$r.log 2>&1; then echo "$r BUILD-FAILED (see /tmp/claude-1000/build_$r.log)"; continue; fi
