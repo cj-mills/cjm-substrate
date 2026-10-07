@@ -1,7 +1,7 @@
 """Render proof of design ff0c6338 and amendments 2364f215 / 2fba772c (builds df6b8ae6 and
 9f629c75): the About page states nothing of its own. Every block of its <main> is explained by a
 source it reads -- the label is the page's own title, the heading site-author's name, the
-standfirst site-author's role then what the site holds (site-holds, as its own sentence), each
+standfirst one paragraph: site-author's role as a sentence, then what the site holds (site-holds), each
 background paragraph the born background Note's (the emitted draft file, the graph's lossless
 text), the one structural heading the reading-guide heading over the site's reading guide in its
 panel, the foot's links the site's links (site-links) with their icons -- and the page names the
@@ -86,7 +86,8 @@ for el in main.find_all(["p", "h1", "h2", "h3", "li", "blockquote"]):
         if (el.name == "p" and el.find(class_="about-label") is not None and text == title) or \
                 (el.name == "h1" and text == author["name"]):
             continue
-        if el.name == "p" and el.find_parent(class_="about-standfirst") is not None and standfirst == [author["role"], holds]:
+        if el.name == "p" and el.find_parent(class_="about-standfirst") is not None and \
+                standfirst == [norm(f"{holds_line(author['role'])} {holds}")]:
             continue
     if el.name == "h2" and text == READING_HEADING and el.find_parent(class_="about-guide") is not None:
         continue
