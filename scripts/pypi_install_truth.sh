@@ -7,9 +7,13 @@ set -u
 # bridge (the leaf apps + this window's first publishes + its bumped workers), never retyped.
 V="${1:-$(mktemp -d)}/venv-truth"
 HOSTPY=/home/innom-dt/miniforge3/envs/cjm-substrate/bin/python
+# The scripts dir, resolved ONCE before the `cd /` below: resolving "$0" after it made a relative
+# invocation (scripts/pypi_install_truth.sh) name //pypi_sweep.py, so the stale check read no local
+# versions and passed silently (found when it began failing closed, 2026-10-10)
+HERE="$(dirname "$(readlink -f "$0")")"
 # $2 = the window's first upload date (default today, UTC): its releases stay in the set once live
 SINCE="${2:-$(date -u +%Y-%m-%d)}"
-PKGS=$($HOSTPY "$(dirname "$(readlink -f "$0")")/pypi_pin_bridge.py" --install-set --since "$SINCE" | tr "\n" " ") || { echo "PIN BRIDGE FAILED"; exit 1; }
+PKGS=$($HOSTPY "$HERE/pypi_pin_bridge.py" --install-set --since "$SINCE" | tr "\n" " ") || { echo "PIN BRIDGE FAILED"; exit 1; }
 echo "install set: $PKGS"
 rm -rf "$V"; python3 -m venv "$V" >/dev/null || { echo "venv FAILED"; exit 1; }
 PIP="$V/bin/pip"; PY="$V/bin/python"
@@ -24,16 +28,28 @@ echo "--- each cjm-* dist against its local repo version (a resolve below local 
 STALE=$($PIP list --format json | $HOSTPY -c "
 import json, sys, subprocess
 from pathlib import Path
-sweep = Path('$(dirname "$(readlink -f "$0")")') / 'pypi_sweep.py'
+sweep = Path('$HERE') / 'pypi_sweep.py'
+resolved = json.load(sys.stdin)   # read BEFORE the sweep runs: a child must never see this pipe
+# The check FAILS CLOSED (window of 2026-10-10, session 2026-10-09_21-07-18): it once printed the
+# all-clear over a venv that had resolved the previous releases -- with no local version to compare
+# against, nothing reads as stale. A failed sweep, or a resolved cjm-* dist the sweep names no local
+# version for, is a STALE line, never a pass.
+r = subprocess.run([sys.executable, str(sweep), '-v'], capture_output=True, text=True, stdin=subprocess.DEVNULL)
 local = {}
-for line in subprocess.run([sys.executable, str(sweep), '-v'], capture_output=True, text=True).stdout.splitlines():
+for line in r.stdout.splitlines():
     f = line.split()
     if len(f) >= 3 and f[0].startswith('cjm-'):
         local[f[0]] = f[1]
+if r.returncode != 0 or not local:
+    print(f'  STALE-CHECK FAILED: the sweep exited {r.returncode} with {len(local)} local version(s): {r.stderr.strip()[-300:]}')
 key = lambda v: tuple(int(x) for x in v.split('.') if x.isdigit())
-for p in json.load(sys.stdin):
+for p in resolved:
     n, v = p['name'], p['version']
-    if n in local and key(v) < key(local[n]):
+    if not n.startswith('cjm-'):
+        continue
+    if n not in local:
+        print(f'  STALE-CHECK: {n} resolved {v}, the sweep names no local version for it')
+    elif key(v) < key(local[n]):
         print(f'  STALE {n}: resolved {v}, local {local[n]}')
 ")
 if [ -n "$STALE" ]; then echo "$STALE"; else echo "  every cjm-* dist resolved at its local version"; fi
