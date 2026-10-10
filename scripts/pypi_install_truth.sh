@@ -14,10 +14,29 @@ echo "install set: $PKGS"
 rm -rf "$V"; python3 -m venv "$V" >/dev/null || { echo "venv FAILED"; exit 1; }
 PIP="$V/bin/pip"; PY="$V/bin/python"
 $PIP install -q --upgrade pip >/dev/null 2>&1
-if $PIP install -q $PKGS >"$V.install.log" 2>&1; then echo "INSTALL OK"; else echo "INSTALL FAILED:"; grep -E "ERROR|No matching|Could not" "$V.install.log" | head -5; fi
+# --no-cache-dir: a cached index page hides a release that is already live, and the gate then
+# tests the PREVIOUS versions and passes (window 2026-10-10 resolved projection 0.0.81 over a live 0.0.82)
+if $PIP install -q --no-cache-dir $PKGS >"$V.install.log" 2>&1; then echo "INSTALL OK"; else echo "INSTALL FAILED:"; grep -E "ERROR|No matching|Could not" "$V.install.log" | head -5; fi
 cd /
 echo "--- cjm-* resolved in the fresh venv:"
 $PIP list --format json | $PY -c "import json,sys; print(' '.join(f\"{p['name']}={p['version']}\" for p in sorted(json.load(sys.stdin), key=lambda p:p['name']) if p['name'].startswith('cjm-')))"
+echo "--- each cjm-* dist against its local repo version (a resolve below local = a stale index or an unpublished bump):"
+STALE=$($PIP list --format json | $HOSTPY -c "
+import json, sys, subprocess
+from pathlib import Path
+sweep = Path('$(dirname "$(readlink -f "$0")")') / 'pypi_sweep.py'
+local = {}
+for line in subprocess.run([sys.executable, str(sweep), '-v'], capture_output=True, text=True).stdout.splitlines():
+    f = line.split()
+    if len(f) >= 3 and f[0].startswith('cjm-'):
+        local[f[0]] = f[1]
+key = lambda v: tuple(int(x) for x in v.split('.') if x.isdigit())
+for p in json.load(sys.stdin):
+    n, v = p['name'], p['version']
+    if n in local and key(v) < key(local[n]):
+        print(f'  STALE {n}: resolved {v}, local {local[n]}')
+")
+if [ -n "$STALE" ]; then echo "$STALE"; else echo "  every cjm-* dist resolved at its local version"; fi
 echo "--- neutral-cwd import sweep (every top-level module of every cjm-* dist):"
 $PY - <<'EOF'
 import importlib, importlib.metadata as md, sys
@@ -38,4 +57,5 @@ for d in md.distributions():
 print(f"  {n - bad}/{n} top-level modules import clean")
 EOF
 $PIP check 2>&1 | head -5
+[ -n "$STALE" ] && { echo "INSTALL-TRUTH-STALE"; exit 1; }
 echo "INSTALL-TRUTH-DONE"
