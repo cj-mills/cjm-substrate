@@ -3,20 +3,16 @@
     conda run -n cjm-transcript-correction-core python scripts/code_canonicalize.py \
         [--diff [REPO]] [--write] [--journal PATH] [--repos-dir DIR]
 
-Each module's latest source state is recomposed with a class's members as elements (abfc2829
-(1); d26e00f9 (1)): a def or nested class is one element, a run of class-level statements and
-the free comment blocks among them is one text element, a comment indented deeper than the
-member level that trails a body belongs to that member. Seams between elements are derived
-(d26e00f9 (2), amended by 3e155cd6): none from a bare class header to the first member, none
-between two consecutive one-line defs, one blank line otherwise -- after a class docstring too
-(PEP 257); an element's own lines are
-verbatim. Nested classes recurse; a class inside a function stays in its body. Whitespace-only
-lines become empty (d26e00f9 (3)), never inside a string literal, where the whitespace is the
-value. Every changed module is PROVED: its AST and its comment tokens are unchanged, and the
-recomposition is idempotent. The report lists the changes per repo; --diff prints the unified
-diffs (one repo or all). --write puts the canonical text into each file, refusing a file that
-differs from its journaled state; each written module is then absorbed by `cg-write flip-module`
-(the commands are printed).
+Each module's latest source state is composed from its elements -- the decompose core's element
+source unit (cjm_python_decompose_core.elements: a class's members are elements, indentation and
+every seam derived; d26e00f9, amended by 3e155cd6) -- after whitespace-only lines become empty
+(d26e00f9 (3)), never inside a string literal, where the whitespace is the value. The rule lives
+in the core alone; this script reports, proves and writes. Every changed module is PROVED: its AST
+and its comment tokens are unchanged, and the composition is idempotent. The report lists the
+changes per repo with the classes whose seams moved; --diff prints the unified diffs (one repo or
+all). --write puts the canonical text into each file, refusing a file that differs from its
+journaled state; each written module is then absorbed by `cg-write flip-module` (the commands are
+printed). The commit landed in build 1ac7b1ac; the corpus is canonical when this lists nothing.
 """
 
 import argparse
@@ -29,24 +25,10 @@ from collections import defaultdict
 from pathlib import Path
 
 from cjm_context_graph_projection.source_state import is_test_module_path, latest_source_ops
+from cjm_python_decompose_core.elements import (class_members, compose_elements, decompose_elements,
+                                                string_lines)
 
 CJM = Path(__file__).resolve().parent.parent / ".cjm"
-_DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-
-
-def _string_lines(
-    text: str,  # A module's text
-) -> set:  # 0-based indexes of the lines that sit inside a multi-line string literal
-    """The lines a string literal continues onto -- their whitespace is the string's value."""
-    inside, starts = set(), []
-    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
-        if tok.type == tokenize.FSTRING_START:
-            starts.append(tok.start[0])
-        elif tok.type == tokenize.FSTRING_END:
-            inside.update(range(starts.pop(), tok.end[0]))
-        elif tok.type == tokenize.STRING:
-            inside.update(range(tok.start[0], tok.end[0]))
-    return inside  # (start row .. end row - 1, 1-based) == the continuation lines, 0-based
 
 
 def _comments(
@@ -57,123 +39,35 @@ def _comments(
             if t.type == tokenize.COMMENT]
 
 
-def _indent(line: str) -> int:
-    return len(line) - len(line.lstrip())
-
-
-def _is_comment(line: str) -> bool:
-    return line.lstrip().startswith("#")
-
-
-def _class_elements(
-    lines: list,  # The module's lines
-    node: ast.ClassDef,  # A class whose members are recomposed
-) -> tuple:  # (anchor, doc, elements): the class's own text ends at anchor, doc = it holds a docstring
-    """The class's members as elements, each a 0-based inclusive line span; None when the class
-    has no member below its own text (an empty body, or a body on the header line)."""
-    body = node.body
-    doc = (isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
-           and isinstance(body[0].value.value, str))
-    members = body[1:] if doc else body
-    if not members:
-        return None
-    first = members[0].decorator_list[0] if getattr(members[0], "decorator_list", None) else members[0]
-    if doc:
-        anchor = body[0].end_lineno - 1
-    else:
-        anchor = next((j for j in range(first.lineno - 2, node.lineno - 2, -1)
-                       if lines[j].strip() and not _is_comment(lines[j])), None)
-    if anchor is None or anchor >= first.lineno - 1:
-        return None
-    level = members[0].col_offset
-
-    def opens(s, floor):  # the statement's first line, its attached member-level comments included
-        ln = (s.decorator_list[0].lineno if getattr(s, "decorator_list", None) else s.lineno) - 1
-        while ln - 1 > floor and _is_comment(lines[ln - 1]) and _indent(lines[ln - 1]) == level:
-            ln -= 1
-        return ln
-
-    units, floor = [], anchor
-    for i, s in enumerate(members):
-        start = opens(s, floor)
-        units.append([start, s.end_lineno - 1, isinstance(s, _DEFS),
-                      isinstance(s, _DEFS) and start == s.end_lineno - 1])
-        floor = s.end_lineno - 1
-    pieces, prev_end = [], anchor
-    for i, u in enumerate(units):
-        gap = range(prev_end + 1, u[0])
-        if i:  # a deeper comment trailing the previous body belongs to it
-            last = units[i - 1]
-            for j in gap:
-                if not lines[j].strip():
-                    continue
-                if _indent(lines[j]) > level:
-                    last[1], last[3] = j, False
-                    continue
-                break
-            gap = range(last[1] + 1, u[0])
-        free = [j for j in gap if lines[j].strip()]
-        if free:
-            pieces.append([free[0], free[-1], False, False])
-        pieces.append(u)
-        prev_end = u[1]
-    elements = []
-    for p in pieces:  # a run of statements and free comments is one text element
-        if not p[2] and elements and not elements[-1][2]:
-            elements[-1][1] = p[1]
-        else:
-            elements.append(list(p))
-    return anchor, doc, [(a, b, one) for a, b, _, one in elements]
-
-
-def _member_classes(
-    tree: ast.Module,  # A parsed module
-) -> list:  # Top-level classes and the classes nested in class bodies, outermost first
-    out, todo = [], [n for n in tree.body if isinstance(n, ast.ClassDef)]
+def _moved_seams(
+    text: str,  # A module's text, whitespace-only lines already empty
+) -> list:  # Dotted names of the classes whose member seams differ from the derived ones
+    """The classes the composition changes -- their seams read against the core's rule."""
+    lines, out = text.split("\n"), []
+    todo = [(n, "") for n in ast.parse(text).body if isinstance(n, ast.ClassDef)]
     while todo:
-        n = todo.pop(0)
-        out.append(n)
-        todo.extend(c for c in n.body if isinstance(c, ast.ClassDef))
-    return out
-
-
-def _recompose_one(
-    text: str,  # A module's text
-) -> tuple:  # (text, the class whose seams changed or None)
-    """Recompose the first class whose seams differ from the derived ones."""
-    lines = text.split("\n")
-    for node in _member_classes(ast.parse(text)):
-        found = _class_elements(lines, node)
+        node, prefix = todo.pop(0)
+        todo += [(c, f"{prefix}{node.name}.") for c in node.body if isinstance(c, ast.ClassDef)]
+        found = class_members(lines, node)
         if not found:
             continue
-        anchor, doc, elements = found
-        out = lines[:anchor + 1]
-        for i, (a, b, one) in enumerate(elements):
-            if i:
-                out += [""] * (0 if one and elements[i - 1][2] else 1)
-            elif doc:  # one blank line after a class docstring (3e155cd6)
-                out.append("")
-            out += lines[a:b + 1]
-        new = out + lines[elements[-1][1] + 1:]
-        if new != lines:
-            return "\n".join(new), node.name
-    return text, None
+        anchor, doc, spans = found
+        want = [1 if doc else 0] + [0 if (p[2] and s[2]) else 1 for p, s in zip(spans, spans[1:])]
+        have = [spans[0][0] - anchor - 1] + [s[0] - p[1] - 1 for p, s in zip(spans, spans[1:])]
+        if want != have:
+            out.append(f"{prefix}{node.name}")
+    return out
 
 
 def canonical_text(
     text: str,  # A module's journaled text
 ) -> tuple:  # (canonical text, [changed class names], whitespace-only lines emptied)
-    """The module with derived member seams and empty blank lines."""
-    keep = _string_lines(text)
+    """The module composed from its elements, its blank lines empty."""
+    keep = string_lines(text)
     lines = text.split("\n")
     emptied = sum(1 for i, ln in enumerate(lines) if ln and not ln.strip() and i not in keep)
     text = "\n".join("" if (ln and not ln.strip() and i not in keep) else ln for i, ln in enumerate(lines))
-    changed = []
-    while True:
-        text, name = _recompose_one(text)
-        if name is None:
-            return text, changed, emptied
-        changed.append(name)
+    return compose_elements(decompose_elements(text)), _moved_seams(text), emptied
 
 
 def _proof(
