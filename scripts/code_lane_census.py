@@ -6,7 +6,7 @@ they changed), the latest-state corpus profile (modules, top-level symbols, text
 placement, import-time order dependencies) and the class-member seam census -- the blank
 lines between a class's members and after its docstring, which the one canonicalization
 commit of abfc2829 (4) normalizes (member seams one blank line, docstring to first member
-none). With --classes it lists every class whose seams the canonicalization would change.
+one -- amendment 3e155cd6). With --classes it lists every class whose seams would change.
 
     conda run -n cjm-transcript-correction-core python scripts/code_lane_census.py \
         .cjm/dev-graph.source.jsonl [--classes]
@@ -98,9 +98,14 @@ def corpus_profile(texts: dict) -> None:
 
 
 def class_seams(texts: dict, list_classes: bool) -> None:
-    """Blank-line seams inside top-level classes (a member's leading comments belong to it)."""
+    """Blank-line seams inside top-level classes (a member's leading comments belong to it).
+
+    A gap holding a free comment block is a TEXT MEMBER, never a seam (d26e00f9 (1)): it is
+    counted apart and leaves the class canonical here. The commit's own list -- the seam rule
+    of d26e00f9 (2) with its one-line-def exception, whitespace-only lines, nested classes and
+    the proof -- is scripts/code_canonicalize.py."""
     docstring_seam, member_seam, changed = Counter(), Counter(), []
-    classes = 0
+    classes = text_members = 0
     for (repo, path), text in texts.items():
         try:
             tree = ast.parse(text)
@@ -124,21 +129,32 @@ def class_seams(texts: dict, list_classes: bool) -> None:
                     ln -= 1
                 return ln
 
+            def free_comment(start, stop):  # a comment in the gap: a text member sits there
+                return any(ln.strip().startswith("#") for ln in lines[start:stop])
+
             canonical = True
             if doc:
-                gap = opens(members[0]) - body[0].end_lineno
-                docstring_seam[gap] += 1
-                canonical &= gap == 0
+                if free_comment(body[0].end_lineno, opens(members[0])):
+                    text_members += 1
+                else:
+                    gap = opens(members[0]) - body[0].end_lineno
+                    docstring_seam[gap] += 1
+                    canonical &= gap == 1
             for prev, s in zip(members, members[1:]):
                 if isinstance(prev, _DEFS) or isinstance(s, _DEFS):
+                    if free_comment(prev.end_lineno, opens(s)):
+                        text_members += 1
+                        continue
                     gap = opens(s) - prev.end_lineno
                     member_seam[gap] += 1
                     canonical &= gap == 1
             if not canonical:
                 changed.append(f"{repo}/{path}::{node.name}")
-    print(f"top-level classes {classes}; the canonicalization changes {len(changed)}")
+    print(f"top-level classes {classes}; the canonicalization changes {len(changed)} "
+          f"(one blank line between members; the one-line-def exception is code_canonicalize.py's)")
     print(f"docstring -> first member blank lines: {sorted(docstring_seam.items())}")
     print(f"member seams around a def / class (blank lines): {sorted(member_seam.items())}")
+    print(f"gaps holding a free comment block (text members, not seams): {text_members}")
     if list_classes:
         for c in sorted(changed):
             print(f"  {c}")
