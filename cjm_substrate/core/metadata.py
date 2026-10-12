@@ -23,6 +23,7 @@ class ResourceRequirements:
     - `accelerators`: e.g., ["cuda", "mps", "cpu"]. Informational; substrate
       doesn't auto-select but consumers can filter on the values.
     """
+
     requires_gpu: bool = False
     platforms: List[str] = field(default_factory=list)
     accelerators: List[str] = field(default_factory=list)
@@ -31,6 +32,7 @@ class ResourceRequirements:
 @dataclass
 class CapabilityMeta:
     """Metadata about a capability."""
+
     name:str # Capability's unique identifier
     version:str # Capability's version string
     description:str="" # Brief description of the capability's functionality
@@ -80,6 +82,7 @@ class CapabilityInstance:
     `new_instance=True` as `{capability_name}-{6-char hex}`. Enforcement
     lives in `CapabilityManager.load_capability`.
     """
+
     instance_id: str  # Unique key in CapabilityManager.instances; default = capability_name
     capability_name: str  # The underlying discovered capability's name (CapabilityMeta.name)
     config: Dict[str, Any] = field(default_factory=dict)  # Effective config used at initialize()
@@ -129,6 +132,7 @@ class CapabilityLoadSpec:
     - `new_instance`: when True with instance_id=None, auto-generate
       `{capability_name}-{6-hex}`.
     """
+
     meta: Any  # CapabilityMeta — typed as Any to avoid forward-reference quirk under nbdev's late binding
     config: Optional[Dict[str, Any]] = None
     instance_id: Optional[str] = None

@@ -39,6 +39,7 @@ class ResourceSample:
     when execute returned"), not the true peak during execute. Worker-side peak
     tracking is a future enhancement when needed.
     """
+
     cpu_percent: float  # Worker CPU% at end-of-execute (proxy for peak)
     memory_mb_peak: float  # Worker RSS in MB at end-of-execute (proxy for peak)
     gpu_memory_mb_peak: float  # Worker GPU memory in MB at end-of-execute (0.0 if no GPU)
@@ -51,6 +52,7 @@ class ResourceSample:
 @dataclass
 class EmpiricalResourceRecord:
     """Aggregated empirical resource profile for a (instance_id, config_hash) pair."""
+
     instance_id: str  # CapabilityInstance.instance_id (CR-10 multi-instance aware)
     capability_name: str  # Convenience: CapabilityInstance.capability_name; derivable but cheap to denormalize
     config_hash: str  # compute_config_hash(inst.config) at sample time
@@ -77,7 +79,7 @@ class EmpiricalResourceStore(Protocol):
     `isinstance(x, EmpiricalResourceStore)` asserts the seam without importing
     the concrete class.
     """
-    
+
     def record_sample(
         self,
         instance_id: str,
@@ -87,7 +89,7 @@ class EmpiricalResourceStore(Protocol):
     ) -> None:
         """Fold a sample into the running aggregate. Creates a new record on first call."""
         ...
-    
+
     def get_record(
         self,
         instance_id: str,
@@ -95,14 +97,14 @@ class EmpiricalResourceStore(Protocol):
     ) -> Optional[EmpiricalResourceRecord]:
         """Fetch the aggregated record for (instance_id, config_hash), or None."""
         ...
-    
+
     def list_records(
         self,
         capability_name: Optional[str] = None,
     ) -> List[EmpiricalResourceRecord]:
         """List all records, optionally filtered to a single capability_name."""
         ...
-    
+
     def delete_record(
         self,
         instance_id: str,
@@ -152,7 +154,7 @@ class LocalEmpiricalResourceStore:
     Welford v1 deliberately omits the variance accumulator M2 — no consumer
     exposes variance; adding it later is a schema-additive change.
     """
-    
+
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize the store. `db_path=None` uses `~/.cjm/empirical_resources.db`."""
         self.db_path = Path(db_path) if db_path is not None else _default_db_path()
@@ -172,7 +174,6 @@ class LocalEmpiricalResourceStore:
             yield conn
         finally:
             conn.close()
-
 
     def record_sample(
         self,
@@ -248,7 +249,6 @@ class LocalEmpiricalResourceStore:
             )
             conn.commit()
 
-
     def get_record(
         self,
         instance_id: str,
@@ -267,7 +267,6 @@ class LocalEmpiricalResourceStore:
                 (instance_id, config_hash),
             ).fetchone()
         return self._row_to_record(row) if row is not None else None
-
 
     def list_records(
         self,
@@ -296,7 +295,6 @@ class LocalEmpiricalResourceStore:
                 ).fetchall()
         return [self._row_to_record(r) for r in rows]
 
-
     def delete_record(
         self,
         instance_id: str,
@@ -312,7 +310,6 @@ class LocalEmpiricalResourceStore:
             )
             conn.commit()
             return cur.rowcount > 0
-
 
     @staticmethod
     def _row_to_record(row) -> EmpiricalResourceRecord:

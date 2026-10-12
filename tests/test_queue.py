@@ -48,6 +48,7 @@ class FakeDeps:
     bypasses MagicMock's __getattr__-driven attribute auto-creation. A real
     class with declared methods satisfies the static-attribute lookup.
     """
+
     def get_capability_meta(self, name_or_id): return None
     def get_capability(self, name_or_id): return None
     async def execute_capability_async(self, name_or_id, *args, **kwargs): return None
@@ -73,6 +74,7 @@ class AdmissionDeps:
     concurrency high-water marks are tracked globally and per instance so
     tests can assert what actually co-ran.
     """
+
     def __init__(self, profiles=None, caps=None, stats=None, disabled=()):
         self._reactors = {}
         self.profiles = profiles or {}
@@ -137,6 +139,7 @@ async def _slow(**kwargs):
 
 class FakeWorkerProxy:
     """Worker proxy fake: returns deterministic get_stats payload."""
+
     def __init__(self, pid=12345, cpu=42.0, rss=512.0):
         self._stats = {'pid': pid, 'cpu_percent': cpu, 'memory_rss_mb': rss}
 
@@ -146,6 +149,7 @@ class FakeWorkerProxy:
 
 class FakeSysmon:
     """CR-3 typed MonitorToolProtocol fake: get_system_status + list_processes."""
+
     def __init__(self, worker_pid=12345):
         self._worker_pid = worker_pid
 
@@ -165,6 +169,7 @@ class FakeSysmon:
 
 class ProxySysmonDeps:
     """Driver fake supporting both worker-proxy + sysmon-capability lookups."""
+
     def __init__(self, worker_proxy=None, sysmon=None):
         self._worker = worker_proxy
         self._sysmon = sysmon
@@ -775,6 +780,7 @@ def test_wedge_gate_refuses_new_submissions():
 
 class RunCorrelationDeps:
     """Driver fake that also captures the call envelope the queue set."""
+
     def __init__(self):
         self.seen_envelopes = []
 
@@ -884,6 +890,7 @@ def test_run_correlation_threading(tmp_path):
 
 class FakeCancelCapability:
     """Worker proxy fake with cooperative cancel + slow execute."""
+
     def __init__(self, ack_cooperative: bool = True, exec_delay: float = 5.0):
         self._ack = ack_cooperative
         self._exec_delay = exec_delay
@@ -900,6 +907,7 @@ class FakeCancelCapability:
 class Stage4Deps:
     """Driver fake; exposes the _on_retry attribute slot used by start()/stop()
     and the queue's retry observer."""
+
     def __init__(self, capability, ack_cooperative: bool = True,
                  raise_resource_n_times: int = 0):
         self._capability = capability

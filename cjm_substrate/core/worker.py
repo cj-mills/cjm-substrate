@@ -44,7 +44,7 @@ class EnhancedJSONEncoder(json.JSONEncoder):
     SG-52: datetime support added so JobError.occurred_at serializes cleanly
     when emitted via the typed `_job_error` terminal chunk in /execute_stream.
     """
-    
+
     def default(
         self,
         o: Any # Object to encode
@@ -497,7 +497,7 @@ def _register_task_endpoints(
         args = data.get("args", [])
         kwargs = data.get("kwargs", {})
         _apply_call_envelope(data)  # CR-14: job identity + account span for this call
-        
+
         # CR-4: reset cancellation flag before invoking execute() so stale
         # state from a previous job doesn't immediately raise.
         if hasattr(capability_instance, "_cancel_requested"):
@@ -505,7 +505,7 @@ def _register_task_endpoints(
         # SG-54: reset measured usage so a failed / usage-less call can't inherit
         # a prior run's usage when the substrate reads /stats post-execute.
         capability_instance._last_api_usage = None
-        
+
         try:
             loop = asyncio.get_event_loop()
             # CR-14: copy_context AFTER the envelope set, so the executor
@@ -664,7 +664,7 @@ def _register_task_endpoints(
                 else:
                     # Fallback: wrap single result
                     iterator = [capability_instance.execute(*args, **kwargs)]
-                
+
                 for chunk in iterator:
                     # Line-delimited JSON (NDJSON)
                     yield json.dumps(wire_encode(chunk), cls=EnhancedJSONEncoder) + "\n"

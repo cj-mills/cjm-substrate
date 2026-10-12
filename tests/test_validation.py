@@ -19,6 +19,7 @@ from cjm_substrate.utils.validation import (config_to_dict, dataclass_to_jsonsch
 @dataclass
 class ExampleConfig:
     """Example configuration dataclass with metadata constraints."""
+
     model: str = field(
         default="base",
         metadata={SCHEMA_TITLE: "Model", SCHEMA_DESC: "Model size to use",

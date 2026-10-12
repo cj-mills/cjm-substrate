@@ -44,8 +44,10 @@ class ListJournal:
 class HarvestStubProxy:
     name = "stub-capability"
     worker_session_id = "ws-h1"
+
     def __init__(self):
         self.journal = ListJournal()
+
     _harvest_worker_accounts = RemoteCapabilityProxy._harvest_worker_accounts
 
 
@@ -145,14 +147,17 @@ def test_unary_non_json_body_falls_back_to_runtime_error():
 class StubProcess:
     def __init__(self, returncode):
         self._rc = returncode
+
     def poll(self):
         return self._rc
 
 
 class DeathStubProxy:
     name = "stub-capability"
+
     def __init__(self, process):
         self.process = process
+
     _check_worker_death = RemoteCapabilityProxy._check_worker_death
 
 

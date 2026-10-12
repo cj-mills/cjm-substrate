@@ -28,6 +28,7 @@ class NodeState(str, Enum):
     recorded as skipped rather than getting a Job at all. Composition-level
     status uses the running/completed/failed/cancelled subset.
     """
+
     pending = "pending"      # Waiting on dependencies (no Job exists yet)
     running = "running"      # Member Job created and enqueued/executing
     completed = "completed"  # Member Job completed successfully
@@ -51,6 +52,7 @@ class OutputRef:
     `extract_output_field` (dict key or typed-result attribute). Frozen so
     markers are hashable + safely shareable across nodes.
     """
+
     node: str  # Producer node id (within the same composition)
     field: Optional[str] = None  # None = whole result; else one field extracted
 
@@ -64,6 +66,7 @@ class CompositionNode:
     design: evidence needs single-position bindings, and a nested-marker
     grammar is seam-admitted later) to derive the node's dependencies.
     """
+
     id: str  # Unique node id within the composition
     capability_instance_id: str  # Target capability instance
     kwargs: Dict[str, Any] = field(default_factory=dict)  # Static values + OutputRef markers
@@ -88,6 +91,7 @@ class Composition:
     actor=)` analog for compositions) — NOT the composition run's own id,
     which the queue assigns at submit.
     """
+
     nodes: List[CompositionNode]  # The invocation nodes (order = readability + ready-scan order)
     fail_fast: bool = True  # Halt independent pending members on first failure
     priority: int = 0  # Composition-level priority (per-node override possible)
@@ -98,6 +102,7 @@ class Composition:
 class CompositionValidationError(ValueError):
     """A composition failed submit-time validation (duplicate ids, unresolved
     `OutputRef` targets, or a dependency cycle)."""
+
     pass
 
 
@@ -162,6 +167,7 @@ def validate_composition(
 class CompositionBindingError(RuntimeError):
     """An `OutputRef` could not be resolved against the producer's recorded
     result at execution time (missing producer result, missing key/attribute)."""
+
     pass
 
 
@@ -219,6 +225,7 @@ def resolve_node_kwargs(
 @dataclass
 class CompositionNodeRun:
     """Live state of one node within a composition run."""
+
     node_id: str  # The CompositionNode this tracks
     state: NodeState = NodeState.pending  # Current node state
     job_id: Optional[str] = None  # Member Job id (set when the node starts)
@@ -248,6 +255,7 @@ class CompositionRun:
     `core.queue` stays a thin integration: create lazy Jobs for ready nodes,
     record member outcomes, re-scan.
     """
+
     id: str  # Composition run UUID
     composition: Composition  # The submitted spec (immutable post-submit)
     deps: Dict[str, Set[str]]  # node_id -> upstream node ids (validated)

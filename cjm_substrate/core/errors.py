@@ -15,6 +15,7 @@ class CapabilityError(Exception):
     text. Bare Python exceptions raised by capability code go through
     `map_bare_exception_to_job_error` to acquire a default category.
     """
+
     category: ClassVar[Literal['user_input', 'transient', 'resource', 'fatal']]
     default_retriable: ClassVar[bool]
 
@@ -27,9 +28,10 @@ class CapabilityInputError(CapabilityError):
     `CapabilityError`; the right reader intent is `except CapabilityInputError:`
     (or the broader `except CapabilityError:`).
     """
+
     category: ClassVar[Literal['user_input']] = 'user_input'
     default_retriable: ClassVar[bool] = True
-    
+
     def __init__(
         self,
         message: str,  # Human-readable description
@@ -46,9 +48,10 @@ class CapabilityTransientError(CapabilityError):
     Substrate / JobQueue may retry on its own initiative. Capability authors raise
     this when they know the failure is recoverable.
     """
+
     category: ClassVar[Literal['transient']] = 'transient'
     default_retriable: ClassVar[bool] = True
-    
+
     def __init__(
         self,
         message: str,  # Human-readable description
@@ -66,9 +69,10 @@ class CapabilityResourceError(CapabilityError):
     after attempting to free the named resource. Capability authors set
     `resource_shortfall` so the substrate knows what to evict.
     """
+
     category: ClassVar[Literal['resource']] = 'resource'
     default_retriable: ClassVar[bool] = True
-    
+
     def __init__(
         self,
         message: str,  # Human-readable description
@@ -85,6 +89,7 @@ class CapabilityFatalError(CapabilityError):
     Capability authors raise this when they know the failure is permanent for the
     given inputs. The substrate does NOT retry fatal errors.
     """
+
     category: ClassVar[Literal['fatal']] = 'fatal'
     default_retriable: ClassVar[bool] = False
 
@@ -95,7 +100,7 @@ class CapabilityDisabledError(CapabilityInputError):
     User-fixable (re-enable the capability). Raised by CR-2's enable/disable
     wiring once that lands.
     """
-    
+
     def __init__(self, capability_name: str):
         super().__init__(f"Capability {capability_name!r} is disabled")
         self.capability_name = capability_name
@@ -108,7 +113,7 @@ class CapabilityNotLoadedError(CapabilityFatalError):
     user-fixable condition. The right reader intent is
     `except CapabilityNotLoadedError:` (or the broader `except CapabilityError:`).
     """
-    
+
     def __init__(self, capability_name: str):
         super().__init__(f"Capability {capability_name!r} is not loaded")
         self.capability_name = capability_name
@@ -121,7 +126,7 @@ class CapabilityTimeoutError(CapabilityTransientError):
     next time. Carries `retry_after_seconds` from `CapabilityTransientError`.
     Raised by SG-14's per-job timeout primitive when that lands.
     """
-    
+
     def __init__(
         self,
         capability_name: str,
@@ -153,8 +158,9 @@ class CapabilityCancelledError(CapabilityTransientError):
     `cancel()`. See CR-4's cancellation primitives for the cooperative-cancel
     protocol.
     """
+
     default_retriable: ClassVar[bool] = False
-    
+
     def __init__(self, capability_name: str):
         super().__init__(f"Capability {capability_name!r} cancelled by operator")
         self.capability_name = capability_name
@@ -182,7 +188,7 @@ class WorkerOOMError(CapabilityResourceError):
     other signals if they read it). Defaults to `None` for callers that don't
     have it on hand.
     """
-    
+
     def __init__(
         self,
         capability_name: str,
@@ -208,7 +214,7 @@ class CapabilityConfigError(CapabilityInputError):
     bare `except ValueError:`. `config_class_name` is the dataclass /
     capability name whose schema was violated.
     """
-    
+
     def __init__(
         self,
         message: str,  # Human-readable description
@@ -223,6 +229,7 @@ class CapabilityConfigError(CapabilityInputError):
 @dataclass
 class ResourceShortfall:
     """Quantitative gap between what a capability needed and what was available."""
+
     resource: Literal['gpu_vram_mb', 'system_ram_mb', 'disk_mb']  # Which resource
     needed: float  # Amount the capability reported it needed
     available: float  # Amount actually available when the failure occurred
@@ -233,6 +240,7 @@ class TracebackPolicy(str, Enum):
 
     FULL is what dev mode wants; REPR_ONLY / NONE are opt-outs for
     security-sensitive multi-user deployments."""
+
     FULL = "full"  # Default dev-mode: include traceback
     REPR_ONLY = "repr_only"  # Just the exception repr; no traceback
     NONE = "none"  # Only category + message
@@ -246,6 +254,7 @@ class JobError:
     population logic; CR-5 owns the shape). Sufficient for UI to render a
     failure card + retry affordance without re-running the capability.
     """
+
     category: Literal['user_input', 'transient', 'resource', 'fatal']
     message: str  # Human-readable error message
     retriable: bool  # Whether the substrate considers this safe to auto-retry
@@ -319,23 +328,23 @@ def map_bare_exception_to_job_error(
     default category-based retriable flag and no structured side-channel.
     """
     category = classify_exception(exc)
-    
+
     if isinstance(exc, CapabilityError):
         retriable = exc.default_retriable
     else:
         retriable = _CATEGORY_RETRIABLE_DEFAULTS[category]
-    
+
     if traceback_policy is TracebackPolicy.FULL:
         import traceback as _tb
         tb_str = _tb.format_exception(type(exc), exc, exc.__traceback__)
         tb = "".join(tb_str)
     else:
         tb = None
-    
+
     fields_invalid = getattr(exc, 'fields_invalid', None) if isinstance(exc, CapabilityInputError) else None
     resource_shortfall = getattr(exc, 'resource_shortfall', None) if isinstance(exc, CapabilityResourceError) else None
     retry_after = getattr(exc, 'retry_after_seconds', None) if isinstance(exc, CapabilityTransientError) else None
-    
+
     # A message-less exception (a bare `assert`, `TimeoutError()`, `KeyError` on a falsy
     # key) used to reach the host as `CapabilityFatalError('')` — nothing to act on and the
     # worker's own traceback gone with the process (sighted 2026-09-10: demucs asserting on

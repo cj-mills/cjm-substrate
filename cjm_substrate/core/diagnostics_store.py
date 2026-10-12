@@ -22,6 +22,7 @@ _logger = logging.getLogger(__name__)
 @dataclass
 class DiagnosticRecord:
     """One structured worker log record (CR-14 diagnostics class)."""
+
     message: str  # record.getMessage() result
     level: str = "INFO"  # Logging level name
     logger_name: str = ""  # Logger hierarchy name (restored — flat logs dropped it)
@@ -40,6 +41,7 @@ class StreamChunk:
     stage-3 multi-lane interleaving made job-attribution of raw streams
     structurally unsound.
     """
+
     content: str  # Decoded line content (tqdm CR-frames collapsed to final frame)
     ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))  # Capture time (host clock)
     worker_session_id: Optional[str] = None  # Session attribution (the honest unit)

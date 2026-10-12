@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 class JobStatus(str, Enum):
     """Status of a job in the queue."""
+
     pending = "pending"
     running = "running"
     completed = "completed"
@@ -67,6 +68,7 @@ class JobEventType(str, Enum):
     Non-job substrate events (worker lifecycle, config, runs) live in
     `core.journal_store.SubstrateEventType`.
     """
+
     STATE_TRANSITION = "state_transition"          # JobStatus changed (Stage 1); terminal transitions carry the job snapshot (CR-14)
     PROGRESS_CHANGED = "progress_changed"          # progress / status_message updated (Stage 1; liveness — never journaled)
     COMPOSITION_ADVANCED = "composition_advanced"  # Composition enqueued downstream nodes (stage 3)
@@ -83,6 +85,7 @@ class CancelPhase(str, Enum):
     transitions; Stage 1 reserves the enum so `Job.cancel_phase` can be
     typed correctly without dangling forward references.
     """
+
     COOPERATIVE = "cooperative"  # Cancel signal sent; awaiting capability acknowledgement
     FORCE = "force"              # Cooperative timeout; force-terminating worker
     RELOADING = "reloading"      # Worker reload in progress post-force-kill
@@ -107,22 +110,28 @@ class JobQueueDependencies(Protocol):
     queue isn't constructed with explicit stores — a deps without them
     (test doubles) simply yields no journaling.
     """
+
     def get_capability_meta(self, name_or_id: str) -> Optional[Any]: ...
     def get_capability(self, name_or_id: str) -> Optional[Any]: ...
     async def execute_capability_async(self, name_or_id: str, *args: Any, **kwargs: Any) -> Any: ...
     def reload_capability(self, name_or_id: str) -> Any: ...
+
     # Stage 3 (CR-16) admission surface:
     def get_admission_profile(self, name_or_id: str) -> Optional[Dict[str, Any]]: ...
+
     def get_instance_concurrency_cap(self, name_or_id: str) -> Optional[int]: ...
     async def get_global_stats(self) -> Dict[str, Any]: ...
+
     # Eviction-v2 A (9b0c8eb1) admission-eviction seam — consumed defensively
     # like the rest of stage 3: a deps without it leaves blocked jobs blocked
     # (visible via BLOCK_REASON_CHANGED), exactly the pre-A behavior.
     def evict_idle_gpu(self, shortfall_mb: float, exclude_instance_ids: List[str]) -> float: ...
+
     # Self-residency credit (finding 3993a755) — consumed defensively: a deps
     # without it (or one answering None) leaves the peak uncredited, i.e. the
     # pre-fix comparison of the raw empirical peak against live free VRAM.
     def get_instance_live_gpu_mb(self, name_or_id: str) -> Optional[float]: ...
+
     # Stage 4 (CR-17 pt 2) task channel — invoked only for task-addressed jobs
     # (Job.task_name set); execute-channel jobs never touch it, so older test
     # doubles keep working unchanged.
@@ -143,6 +152,7 @@ class Job:
     journal row for this job links back to the run record (run manifest ↔
     journal linkage) and carries who/what initiated it.
     """
+
     id: str  # Unique job identifier (UUID)
     capability_instance_id: str  # Target capability instance (per CR-10)
     args: Tuple[Any, ...]  # Positional arguments for execute()
@@ -191,6 +201,7 @@ class JobEvent:
     `run_id` / `actor` (CR-14 follow-up) ride from the Job so journal rows
     written by the single emission path carry the host-tier correlation.
     """
+
     type: JobEventType
     job_id: str
     capability_instance_id: str
@@ -205,6 +216,7 @@ class JobEvent:
 @dataclass
 class QueueStats:
     """Aggregate counts returned by `JobQueue.get_stats()` (CR-6)."""
+
     total_pending: int
     total_completed: int
     total_failed: int
@@ -219,6 +231,7 @@ class _Subscription:
     the publisher never blocks. `dropped_count` surfaces visibility for
     operators / future telemetry.
     """
+
     queue: 'asyncio.Queue[JobEvent]'
     dropped_count: int = 0
 
@@ -241,6 +254,7 @@ class ResourceSnapshot:
     ResourceSnapshot so the cascade migration to the substrate-owned type is
     structural rather than semantic.
     """
+
     timestamp: datetime  # When the sample was taken
     worker_pid: int = 0  # OS PID of the capability worker subprocess
     cpu_percent: float = 0.0  # Worker process CPU%

@@ -78,6 +78,7 @@ class ProjectScope:
     `~/.cjm/manifests/` directly). `project_root` is the parent of cjm.yaml,
     used as `--cjm-config` argument when invoking cjm-ctl per project.
     """
+
     label: str  # Display name (e.g., "cjm-fasthtml-workflow-transcript-decomp")
     cjm_yaml: Optional[Path]  # cjm.yaml path or None for fallback mode
     manifests_dir: Path  # Resolved manifests directory

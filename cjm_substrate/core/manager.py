@@ -50,6 +50,7 @@ class CapabilityManager:
     forwarded to workers over HTTP, sync + async + streaming), and LIFECYCLE
     (initialization, configuration updates, enable/disable, cleanup).
     """
+
     def __init__(
         self,
         capability_interface:Type[ToolCapability]=ToolCapability, # Base interface for type checking
@@ -65,7 +66,7 @@ class CapabilityManager:
     ):
         """Initialize the capability manager."""
         self.capability_interface = capability_interface
-        
+
         # Use config-based search paths if not explicitly provided
         if search_paths is None:
             cfg = get_config()
@@ -75,7 +76,7 @@ class CapabilityManager:
             ]
         else:
             self.search_paths = search_paths
-        
+
         self.scheduler = scheduler or PermissiveScheduler()
         self.system_monitor: Optional[ToolCapability] = None
         self.discovered: List[CapabilityMeta] = []
@@ -85,7 +86,7 @@ class CapabilityManager:
         # for backward compat; multi-instance loads populate self.instances only.
         self.instances: Dict[str, CapabilityInstance] = {}
         self.logger = logging.getLogger(f"{__name__}.{type(self).__name__}")
-        
+
         # CR-2: persistence + lifecycle hook bookkeeping.
         # config_store=None → lazy LocalCapabilityConfigStore (~/.cjm/capability_configs.db)
         # per OQ-4 resolution. Hosts that want a different backend (workflow-
@@ -103,7 +104,7 @@ class CapabilityManager:
         # the on_disable hook until the job finishes (audit semantics).
         self._running_executions: Set[str] = set()
         self._pending_disable_hooks: Set[str] = set()
-        
+
         # CR-12: secret storage (API keys etc.). Project-local by default:
         # <cfg.data_dir>/secrets (falls back to ~/.cjm/secrets). Secret values are
         # NEVER persisted via config_store, echoed in config_schema, or logged.
@@ -111,7 +112,7 @@ class CapabilityManager:
         self.secret_store: SecretStore = secret_store or LocalSecretStore(
             (_data_dir / "secrets") if _data_dir is not None else None
         )
-        
+
         # CR-14: observability stores. The journal is the substrate-derived,
         # host-written, never-auto-deleted account-of-action (SG-57's audit
         # trail); diagnostics is the disposable worker-narrative store. Both
@@ -159,10 +160,10 @@ class CapabilityManager:
                 self.empirical_store = LocalEmpiricalResourceStore(
                     (_data_dir / "empirical_resources.db") if _data_dir is not None else None
                 )
-        
+
         # CR-7: bounded reactive retries on CapabilityResourceError (Track A + B).
         self.max_retries: int = max_retries
-        
+
         # monitor capability name for GPU subtree attribution at sample-record time.
         # _record_sample_safe intersects the worker-reported subtree_pids with this
         # capability's list_processes() output. Mirrors JobQueue's sysmon_capability_name;
@@ -170,7 +171,7 @@ class CapabilityManager:
         # self.capabilities to tolerate load-order (sysmon may load after this manager
         # is constructed).
         self._sysmon_capability_name: Optional[str] = sysmon_capability_name
-        
+
         # SG-33 (part-of-CR-7): per-instance asyncio.Semaphore for the async
         # execute path's concurrency cap. Lazy-created on first execute_capability_async
         # for instances whose `max_concurrent_requests` was set at load time.
@@ -416,7 +417,7 @@ class CapabilityManager:
         for base_path in self.search_paths:
             if not base_path.exists():
                 continue
-        
+
             for manifest_file in base_path.glob("*.json"):
                 try:
                     # CR-17 pt 2 (stage 4): adapter manifests are separate
@@ -435,22 +436,22 @@ class CapabilityManager:
                         continue
                     # CR-8: parse via load_manifest → typed ManifestV2.
                     v2 = load_manifest(manifest_file)
-                
+
                     name = v2.code.name
                     if not name or name in seen_capabilities:
                         continue  # Skip duplicates (local shadows global)
-                
+
                     # Build a flat-shaped dict view for legacy consumers that
                     # access manifest as a plain dict (proxy.py reads
                     # `manifest['python_path']`, scheduling.py reads
                     # `manifest.get('resources', {})`, etc.).
                     nested = manifest_to_dict(v2)
                     manifest = {**nested.get("install", {}), **nested.get("code", {})}
-                
+
                     # CR-8: use the typed resources directly — no re-parse from
                     # the dict needed (load_manifest already did it).
                     resources = v2.code.resources
-                
+
                     # SG-35: `author` + `package_name` removed; `description`
                     # kept and validated by SG-6.
                     meta = CapabilityMeta(
@@ -467,7 +468,7 @@ class CapabilityManager:
                     # existing assignment pattern; CapabilityMeta dataclass doesn't
                     # declare either).
                     meta.manifest_v2 = v2
-                
+
                     self.discovered.append(meta)
                     seen_capabilities.add(name)
                     self.logger.info(f"Discovered manifest: {name} from {manifest_file}")
@@ -667,10 +668,10 @@ class CapabilityManager:
             return {}
         if not config_schema or "properties" not in config_schema:
             return dict(config)
-    
+
         valid_keys = set(config_schema["properties"].keys())
         unknown_keys = sorted(set(config) - valid_keys)
-    
+
         if unknown_keys:
             if strict:
                 raise CapabilityConfigError(
@@ -686,7 +687,7 @@ class CapabilityManager:
                     capability_name, unknown_keys,
                 )
                 return {k: v for k, v in config.items() if k in valid_keys}
-    
+
         return dict(config)
 
     def _check_config_schema_drift(
@@ -719,7 +720,7 @@ class CapabilityManager:
             # Backward compat: hosts running on a pre-CR-8 CJMConfig without
             # the substrate sub-config. Falls through to default-on behavior.
             pass
-    
+
         try:
             live_schema = proxy.get_config_schema()
         except Exception as e:
@@ -727,7 +728,7 @@ class CapabilityManager:
                 f"Skipping drift detection for {capability_meta.name}: live schema fetch failed ({e})"
             )
             return
-    
+
         # CR-8: hash-based comparison. The manifest carries the witness hash
         # computed at install/regenerate time; substrate hashes the live schema
         # the same way and compares.
@@ -735,7 +736,7 @@ class CapabilityManager:
         stored_hash = (manifest_v2.drift_tracking.config_schema_hash
                        if manifest_v2 is not None else None)
         live_hash = compute_config_schema_hash(live_schema)
-    
+
         if stored_hash != live_hash:
             capability_meta.config_schema_drift = True
             capability_meta.live_config_schema = live_schema
@@ -1189,7 +1190,7 @@ class CapabilityManager:
         if not hasattr(capability_meta, 'manifest'):
             self.logger.error(f"Capability {capability_meta.name} has no manifest data")
             return False
-    
+
         # CR-10: resolve instance_id + idempotency check
         if instance_id is None:
             resolved_id = self._generate_instance_id(capability_meta.name) if new_instance else capability_meta.name
@@ -1249,7 +1250,7 @@ class CapabilityManager:
                                                            or "full"))
 
             config_schema = capability_meta.manifest.get("config_schema")
-        
+
             # SG-9 + CR-8: detect drift between manifest-stored schema hash and
             # live worker. Drift check reads the stored hash from
             # `capability_meta.manifest_v2.drift_tracking.config_schema_hash` and
@@ -1258,14 +1259,14 @@ class CapabilityManager:
             # Pass-2 Thread 3 companion: structural-surface drift (same idiom,
             # same cjm.yaml opt-out switch).
             self._check_structural_surface_drift(proxy, capability_meta)
-        
+
             # CR-2: effective config = caller > persisted (deterministic ids) > manifest defaults.
             if not config and persisted is not None and persisted.config:
                 config = dict(persisted.config)
                 self.logger.info(
                     f"Using persisted config for {capability_meta.name}: {list(config.keys())}"
                 )
-        
+
             # If config is still None or empty, extract defaults from the
             # capability's config schema (existing behavior).
             if not config:
@@ -1291,13 +1292,13 @@ class CapabilityManager:
                 effective_enabled = persisted.enabled
                 if is_default:
                     capability_meta.enabled = effective_enabled
-        
+
             # CR-7: hash the effective config so empirical recording can key by
             # (instance_id, config_hash). Two configs for the same instance get
             # two distinct records (e.g. whisper at model=base vs model=large).
             effective_config = dict(config or {})
             instance_config_hash = compute_config_hash(effective_config)
-        
+
             # CR-10: always record the per-instance state
             self.instances[resolved_id] = CapabilityInstance(
                 instance_id=resolved_id,
@@ -1309,7 +1310,7 @@ class CapabilityManager:
                 max_concurrent_requests=max_concurrent_requests,
                 persistable=persistable,
             )
-        
+
             # Default-instance only: maintain backward-compat single-instance
             # references (CapabilityMeta.instance, self.capabilities[capability_name]).
             if is_default:
@@ -1320,7 +1321,7 @@ class CapabilityManager:
                 # the CapabilityMeta so list_capabilities / get_capability_meta still work,
                 # but leave meta.instance=None (no canonical instance exists).
                 self.capabilities[capability_meta.name] = capability_meta
-        
+
             self.logger.info(
                 f"Loaded capability: {capability_meta.name} "
                 f"(instance_id={resolved_id}, enabled={effective_enabled})"
@@ -1359,12 +1360,12 @@ class CapabilityManager:
         """Discover and load all available capabilities."""
         configs = configs or {}
         results = {}
-    
+
         self.discover_manifests()
         for meta in self.discovered:
             config = configs.get(meta.name)
             results[meta.name] = self.load_capability(meta, config)
-    
+
         return results
 
     def unload_capability(
@@ -1400,7 +1401,7 @@ class CapabilityManager:
             # Backward-compat: also clear capability_name keys for the canonical instance
             self._pending_disable_hooks.discard(capability_name)
             self._running_executions.discard(capability_name)
-        
+
             remaining = [i for i in self.instances.values() if i.capability_name == capability_name]
             if not remaining:
                 # No instances of this capability at all (whether the unloaded one
@@ -1815,17 +1816,17 @@ class CapabilityManager:
         `empirical_tracking: true`.
         """
         self.logger.info(f"Attempting eviction to make room for {needed_meta.name}...")
-    
+
         candidates = [
             meta for name, meta in self.capabilities.items()
             if meta.instance is not None and name != needed_meta.name
         ]
-    
+
         needs_gpu = bool(
             needed_meta.resources is not None and needed_meta.resources.requires_gpu
         )
         store = getattr(self, 'empirical_store', None)
-    
+
         def _eviction_priority(candidate_meta:CapabilityMeta):
             """Sort key: (idle, cost). Both keys are NEGATIVE so largest-first
             sorts to the front via Python's default ascending sort:
@@ -1845,9 +1846,9 @@ class CapabilityManager:
                         peak = rec.gpu_memory_mb_peak_max if needs_gpu else rec.memory_mb_peak_max
                         cost = -float(peak)
             return (idle, cost)
-    
+
         candidates.sort(key=_eviction_priority)
-    
+
         for candidate in candidates:
             self.logger.info(
                 f"Evicting idle capability: {candidate.name} (Last used: {candidate.last_executed})"
@@ -1859,7 +1860,7 @@ class CapabilityManager:
             time.sleep(0.5) 
             if self.scheduler.allocate(needed_meta, self._get_global_stats):
                 return True
-            
+
         return False
 
     def execute_capability(
@@ -1894,10 +1895,10 @@ class CapabilityManager:
             raise ValueError(f"Capability/instance {name_or_id!r} not found or not loaded")
         if not inst.enabled:
             raise CapabilityDisabledError(inst.instance_id)
-    
+
         instance_id = inst.instance_id  # stable across reload (preserved by reload_capability)
         capability_meta = self.capabilities.get(inst.capability_name)
-    
+
         # CR-7 reactive retry loop. Defensive max_retries lookup so test fixtures
         # bypassing __init__ inherit the default behavior (one retry on resource).
         max_retries = getattr(self, 'max_retries', 1)
@@ -1942,13 +1943,13 @@ class CapabilityManager:
                         f"CR-7: reload of {instance_id!r} failed; aborting retry"
                     )
                     raise last_resource_error
-        
+
             # Existing pre-execute allocation + eviction flow (LRU + multi-axis under CR-7)
             inst.last_executed = time.time()
             if capability_meta is not None:
                 capability_meta.last_executed = inst.last_executed
             stats_provider = self._get_global_stats
-        
+
             if capability_meta is not None and not self.scheduler.allocate(capability_meta, stats_provider):
                 self.logger.warning(f"Resources busy for {name_or_id}. Triggering eviction protocol.")
                 if self._evict_for_resources(capability_meta):
@@ -1957,7 +1958,7 @@ class CapabilityManager:
                     raise RuntimeError(
                         f"ResourceScheduler blocked execution of {name_or_id} (Eviction failed)"
                     )
-        
+
             start_time = time.time()
             self._running_executions.add(inst.instance_id)
             self.scheduler.on_execution_start(inst.instance_id)
@@ -2005,13 +2006,13 @@ class CapabilityManager:
             raise ValueError(f"Capability/instance {name_or_id!r} not found or not loaded")
         if not inst.enabled:
             raise CapabilityDisabledError(inst.instance_id)
-    
+
         instance_id = inst.instance_id
         capability_meta = self.capabilities.get(inst.capability_name)
-    
+
         # SG-33 lazy semaphore (None when no cap configured for this instance).
         limiter = self._get_concurrent_limiter(instance_id)
-    
+
         max_retries = getattr(self, 'max_retries', 1)
         last_resource_error: Optional[CapabilityResourceError] = None
         for attempt in range(max_retries + 1):
@@ -2055,11 +2056,11 @@ class CapabilityManager:
                 # — though load_capability's reload-via-unload-then-load path passes None
                 # here today; the lookup is correct in either case).
                 limiter = self._get_concurrent_limiter(instance_id)
-        
+
             inst.last_executed = time.time()
             if capability_meta is not None:
                 capability_meta.last_executed = inst.last_executed
-        
+
             if capability_meta is not None and not await self.scheduler.allocate_async(capability_meta, self._get_global_stats_async):
                 self.logger.warning(f"Resources busy for {name_or_id}. Triggering eviction protocol.")
                 if self._evict_for_resources(capability_meta):
@@ -2068,7 +2069,7 @@ class CapabilityManager:
                     raise RuntimeError(
                         f"ResourceScheduler blocked execution of {name_or_id} (Eviction failed)"
                     )
-        
+
             start_time = time.time()
             self._running_executions.add(inst.instance_id)
             self.scheduler.on_execution_start(inst.instance_id)
@@ -2371,21 +2372,21 @@ class CapabilityManager:
         if inst is None:
             self.logger.error(f"Capability/instance {name_or_id!r} not found")
             return False
-    
+
         capability_meta = self.capabilities.get(inst.capability_name)
         if capability_meta is None:
             self.logger.error(f"CapabilityMeta for {inst.capability_name!r} missing — cannot reload")
             return False
-    
+
         try:
             # Capture current config if caller didn't supply one
             effective_config = config
             if effective_config is None and inst.proxy is not None:
                 effective_config = inst.proxy.get_current_config()
-        
+
             # Capture instance_id BEFORE unload (unload_capability removes the entry)
             target_instance_id = inst.instance_id
-        
+
             self.unload_capability(target_instance_id)
             # Re-load using the same instance_id to preserve the addressing for callers
             return self.load_capability(
@@ -2424,7 +2425,7 @@ class CapabilityManager:
             raise ValueError(f"Capability/instance {name_or_id!r} not found or not loaded")
         if not inst.enabled:
             raise ValueError(f"Capability/instance {name_or_id!r} is disabled")
-    
+
         capability_meta = self.capabilities.get(inst.capability_name)
         if capability_meta is not None and not await self.scheduler.allocate_async(capability_meta, self._get_global_stats_async):
             raise RuntimeError(f"ResourceScheduler blocked execution of {name_or_id}")
@@ -2480,7 +2481,7 @@ class CapabilityManager:
         for non-fail-fast mode; re-raised in fail_fast=True).
         """
         sem = asyncio.Semaphore(max_concurrency) if max_concurrency else None
-    
+
         async def _load_one(spec: CapabilityLoadSpec) -> str:
             if sem:
                 async with sem:
@@ -2510,16 +2511,16 @@ class CapabilityManager:
             if not candidates:
                 raise RuntimeError(f"Could not resolve auto-gen instance_id for {spec.meta.name!r}")
             return max(candidates, key=lambda i: i.created_at).instance_id
-    
+
         keys = [_spec_requested_key(spec, idx) for idx, spec in enumerate(specs)]
         tasks = [_load_one(spec) for spec in specs]
-    
+
         if fail_fast:
             # gather without return_exceptions re-raises the first exception
             results = await asyncio.gather(*tasks)
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
         return dict(zip(keys, results))
 
     async def unload_capabilities_concurrent(
@@ -2535,20 +2536,20 @@ class CapabilityManager:
         responsibility; duplicate inputs produce one dict entry per unique key).
         """
         sem = asyncio.Semaphore(max_concurrency) if max_concurrency else None
-    
+
         async def _unload_one(name_or_id: str) -> bool:
             if sem:
                 async with sem:
                     return await self.unload_capability_async(name_or_id)
             return await self.unload_capability_async(name_or_id)
-    
+
         tasks = [_unload_one(nid) for nid in name_or_ids]
-    
+
         if fail_fast:
             results = await asyncio.gather(*tasks)
         else:
             results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
         return dict(zip(name_or_ids, results))
 
     def bind(
@@ -2617,30 +2618,31 @@ class CapabilityBinding:
     `default_config` is the fallback used when `load()` is called without an
     explicit config (matches the manifest-default behavior in `load_capability`).
     """
+
     manager: "CapabilityManager"  # The shared CapabilityManager
     capability_name: str  # Name of the capability this binding targets
     default_config: Dict[str, Any] = _field(default_factory=dict)  # Used when load() called without config
-    
+
     # --- Observation ---
-    
+
     @property
     def meta(self) -> Optional[CapabilityMeta]:
         """The CapabilityMeta if the capability is loaded, else None."""
         return self.manager.get_capability_meta(self.capability_name)
-    
+
     @property
     def is_loaded(self) -> bool:
         """True if the capability is loaded in the bound manager."""
         return self.manager.get_capability(self.capability_name) is not None
-    
+
     @property
     def is_enabled(self) -> bool:
         """True if the capability is loaded AND not currently disabled."""
         m = self.meta
         return m is not None and m.enabled
-    
+
     # --- Lifecycle ---
-    
+
     def load(
         self,
         config: Optional[Dict[str, Any]] = None,  # Override default_config when provided
@@ -2653,38 +2655,38 @@ class CapabilityBinding:
             return False
         effective = config if config is not None else dict(self.default_config)
         return self.manager.load_capability(meta, effective, strict=strict)
-    
+
     def unload(self) -> bool:  # True if unloaded
         """Unload the bound capability."""
         return self.manager.unload_capability(self.capability_name)
-    
+
     def reload(
         self,
         config: Optional[Dict[str, Any]] = None  # Optional new config; current config used if None
     ) -> bool:
         """Reload the bound capability (terminate + restart worker)."""
         return self.manager.reload_capability(self.capability_name, config)
-    
+
     def enable(self) -> bool:
         """Enable the bound capability."""
         return self.manager.enable_capability(self.capability_name)
-    
+
     def disable(self) -> bool:
         """Disable the bound capability (worker stays alive; jobs rejected)."""
         return self.manager.disable_capability(self.capability_name)
-    
+
     # --- Execution ---
-    
+
     def execute(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (sync)."""
         return self.manager.execute_capability(self.capability_name, *args, **kwargs)
-    
+
     async def execute_async(self, *args, **kwargs) -> Any:
         """Execute via the bound manager (async)."""
         return await self.manager.execute_capability_async(self.capability_name, *args, **kwargs)
-    
+
     # --- Configuration ---
-    
+
     def update_config(
         self,
         config: Dict[str, Any],  # New config values
@@ -2692,15 +2694,15 @@ class CapabilityBinding:
     ) -> bool:
         """Hot-reload the bound capability's configuration."""
         return self.manager.update_capability_config(self.capability_name, config, strict=strict)
-    
+
     def get_config(self) -> Optional[Dict[str, Any]]:
         """Current configuration values (None if not loaded)."""
         return self.manager.get_capability_config(self.capability_name)
-    
+
     def get_config_schema(self) -> Optional[Dict[str, Any]]:
         """JSON Schema describing this capability's configuration."""
         return self.manager.get_capability_config_schema(self.capability_name)
-    
+
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Resource telemetry for the bound capability's worker process."""
         return self.manager.get_capability_stats(self.capability_name)

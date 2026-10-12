@@ -32,6 +32,7 @@ _logger = logging.getLogger(__name__)
 @dataclasses.dataclass
 class ConfigOption:
     """CR-11: one live option for a dynamic config field, with optional metadata."""
+
     value: Any                              # option value (e.g. "gemini-2.5-flash")
     label: str                              # display label (e.g. "Gemini 2.5 Flash")
     metadata: Dict[str, Any] = dataclasses.field(default_factory=dict)  # token limits, descriptions, ...
@@ -46,6 +47,7 @@ class FieldOptions:
     static schema; folding them into the schema would make every API capability
     perpetually 'drift'.
     """
+
     options: List[ConfigOption]                                            # current valid options
     constraints: Dict[str, Any] = dataclasses.field(default_factory=dict)  # derived field-constraint overrides
 
@@ -83,6 +85,7 @@ class EnvVarSpec:
     device selector enumerating GPUs); unused today but reserved so the
     capability-config UI / a future `set-env` surface isn't blocked.
     """
+
     name: str                              # The env var the worker reads, e.g. "GEMINI_API_KEY"
     secret: bool = False                   # True -> value resolved from the SecretStore, masked
     required: bool = False                 # Worker can't do useful work until this is satisfied

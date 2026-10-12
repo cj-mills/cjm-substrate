@@ -36,6 +36,7 @@ class InstallSection:
     installed version (in distribution mode these ARE the pins env truth
     checks against); `refreshed_at` is the last `cjm-ctl refresh` moment.
     """
+
     python_path: str = ""        # Absolute path to the capability env's python interpreter
     conda_env: str = ""          # Conda environment name
     db_path: str = ""            # Capability's per-data SQLite path (if any)
@@ -60,6 +61,7 @@ class CodeSection:
     `class_name` serializes as the JSON key `"class"` (Python reserved-word
     workaround).
     """
+
     name: str = ""               # Capability's unique identifier
     version: str = ""            # Capability's version string
     description: str = ""        # Brief description (SG-6 required)
@@ -84,6 +86,7 @@ class DriftTracking:
     a mismatch raises `CapabilityMeta.config_schema_drift = True` plus a
     warning log.
     """
+
     config_schema_hash: Optional[str] = None  # "sha256:hexdigest" of canonical config_schema
     structural_surface_hash: Optional[str] = None  # Pass-2 Thread 3 witness: hash of code.structural_surface (None = pre-surface manifest)
 
@@ -95,6 +98,7 @@ class ManifestV2:
     Loaded from a v2.0 nested JSON file as-is; `format_version` is always
     `CURRENT_FORMAT_VERSION`.
     """
+
     install: InstallSection = field(default_factory=InstallSection)
     code: CodeSection = field(default_factory=CodeSection)
     drift_tracking: DriftTracking = field(default_factory=DriftTracking)

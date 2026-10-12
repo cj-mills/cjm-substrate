@@ -13,12 +13,14 @@ from cjm_substrate.core.workspace import resolve_workspace
 
 class RuntimeMode(str, Enum):
     """Runtime mode for the capability system."""
+
     LOCAL = "local"    # Project-local runtime and data
     SYSTEM = "system"  # System-wide conda and ~/.cjm data
 
 
 class CondaType(str, Enum):
     """Type of conda implementation to use."""
+
     MICROMAMBA = "micromamba"
     MINIFORGE = "miniforge"
     CONDA = "conda"
@@ -27,6 +29,7 @@ class CondaType(str, Enum):
 @dataclass
 class RuntimeConfig:
     """Runtime environment configuration."""
+
     mode:RuntimeMode=RuntimeMode.SYSTEM # LOCAL for project-local, SYSTEM for global
     conda_type:CondaType=CondaType.CONDA # Conda implementation to use
     prefix:Optional[Path]=None # Path to runtime directory (LOCAL mode only)
@@ -56,6 +59,7 @@ class SubstrateConfig:
       Default 60 s; bump higher for capabilities that don't report progress, or lower
       if false-positive stalls are noisy.
     """
+
     drift_detection:bool=True # Run /config_schema hash compare on every load_capability
     empirical_tracking:bool=True # Record ResourceSample after every execute_capability*
     prefetch_stall_threshold_seconds:float=60.0 # CR-4 / Session A: stall detection threshold for proxy.prefetch
@@ -66,6 +70,7 @@ class SubstrateConfig:
 @dataclass
 class CJMConfig:
     """Main configuration for cjm-substrate."""
+
     runtime:RuntimeConfig=field(default_factory=RuntimeConfig) # Runtime environment settings
     data_dir:Path=field(default_factory=lambda: Path.home() / ".cjm") # Base directory for manifests, logs
     capabilities_config:Path=field(default_factory=lambda: Path("capabilities.yaml")) # Path to capabilities.yaml file
@@ -98,7 +103,7 @@ class CJMConfig:
         # Inline platform detection to avoid circular imports
         system = platform_mod.system().lower()
         machine = platform_mod.machine().lower()
-        
+
         if system == "windows":
             system = "win"
         if machine in ("x86_64", "amd64"):
@@ -107,17 +112,17 @@ class CJMConfig:
             arch = "arm64"
         else:
             arch = machine
-        
+
         platform_key = f"{system}-{arch}"
-        
+
         if self.runtime.binaries and platform_key in self.runtime.binaries:
             return self.runtime.binaries[platform_key]
-        
+
         # Default location if prefix is set
         if self.runtime.prefix:
             binary_name = "micromamba.exe" if system == "win" else "micromamba"
             return self.runtime.prefix / "bin" / binary_name
-        
+
         return None
 
 

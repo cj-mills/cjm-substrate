@@ -29,10 +29,13 @@ from cjm_substrate.core.errors import (
 
 class MinimalCapability(ToolCapability):
     """Concrete capability satisfying abstracts; relies on CR-4 default cleanup()."""
+
     @property
     def name(self) -> str: return "cr4-minimal"
+
     @property
     def version(self) -> str: return "0.0.0"
+
     def initialize(self, config=None): self._cfg = dict(config or {})
     def execute(self, *args, **kwargs): return None
     def get_config_schema(self) -> Dict[str, Any]: return {}
@@ -327,6 +330,7 @@ def test_fields_that_changed():
 @dataclass
 class WhisperTestConfig:
     """Config dataclass with two RELOAD_TRIGGER-tagged fields sharing a trigger."""
+
     model: str = field(default="base", metadata={RELOAD_TRIGGER: "model"})
     revision: str = field(default="main", metadata={RELOAD_TRIGGER: "model"})  # SAME trigger
     device: str = field(default="cuda", metadata={RELOAD_TRIGGER: "device"})   # DIFFERENT trigger
@@ -335,6 +339,7 @@ class WhisperTestConfig:
 
 class TriggerCapability(MinimalCapability):
     """Capability that opts into the declarative RELOAD_TRIGGER pattern."""
+
     config_class = WhisperTestConfig
 
     def __init__(self):
@@ -400,16 +405,20 @@ def test_reconfigure_with_triggers():
 
 class ApplyConfigCapability(TriggerCapability):
     """Capability with the clean _apply_config seam."""
+
     def __init__(self):
         super().__init__()
         self.events = []
         self._cfg = {}
+
     def _release_model(self):
         super()._release_model()
         self.events.append("release:model")
+
     def _apply_config(self, config):
         self.events.append(("apply", dict(config)))
         self._cfg = dict(config)
+
     def initialize(self, config=None):
         # must NOT be invoked by reconfigure when _apply_config is present
         self.events.append("initialize")
@@ -418,13 +427,16 @@ class ApplyConfigCapability(TriggerCapability):
 
 class FallbackCapability(TriggerCapability):
     """No _apply_config — reconfigure must fall back to initialize(new)."""
+
     def __init__(self):
         super().__init__()
         self.events = []
         self._cfg = {}
+
     def _release_model(self):
         super()._release_model()
         self.events.append("release:model")
+
     def initialize(self, config=None):
         self.events.append(("initialize", dict(config or {})))
         self._cfg = dict(config or {})

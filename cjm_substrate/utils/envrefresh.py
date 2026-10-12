@@ -57,6 +57,7 @@ def run_argv(argv: List[str], capture: bool = False) -> Tuple[int, str]:
 class EnvPlan:
     """One env's refresh plan — every command the verb will run, in order, plus
     what it decided and why. `refusal` set = nothing runs for this env."""
+
     capability: str
     conda_env: str
     python_path: str

@@ -26,6 +26,7 @@ class CapabilityConfigRecord:
     single round-trip. `worker_env` holds per-instance NON-SECRET overrides
     injected ahead of the manifest defaults at spawn (manifest-default <
     persisted-override < secret); secret values never land here."""
+
     config: Dict[str, Any] = field(default_factory=dict)  # Capability's current config values
     enabled: bool = True  # Whether the substrate should accept jobs for this instance
     worker_env: Dict[str, str] = field(default_factory=dict)  # Non-secret worker-env overrides for this instance
@@ -43,11 +44,11 @@ class CapabilityConfigStore(Protocol):
     cross-session single-user backend; the future `cjm-workflow-state`-backed
     store (CR-2) implements the same Protocol, so hosts swap stores without
     code changes."""
-    
+
     def get(self, instance_id: str) -> Optional[CapabilityConfigRecord]:
         """Fetch the record for an instance, or None if no record exists yet."""
         ...
-    
+
     def set(self, instance_id: str, record: CapabilityConfigRecord) -> None:
         """Persist a record. Overwrites any prior record for the same instance.
         
@@ -55,11 +56,11 @@ class CapabilityConfigStore(Protocol):
         the write so callers don't have to manage timestamps.
         """
         ...
-    
+
     def delete(self, instance_id: str) -> bool:
         """Remove the record for an instance. Returns True if a record was deleted."""
         ...
-    
+
     def list_all(self) -> Dict[str, CapabilityConfigRecord]:
         """Return every stored record, keyed by instance_id."""
         ...
@@ -88,7 +89,7 @@ class LocalCapabilityConfigStore:
     return empty results rather than raising, so hosts can call `.get()` on
     a fresh install without preparing the file first.
     """
-    
+
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize the store. `db_path=None` uses `~/.cjm/capability_configs.db`."""
         self.db_path = Path(db_path) if db_path is not None else _default_db_path()

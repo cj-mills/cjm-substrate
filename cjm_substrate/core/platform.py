@@ -42,13 +42,13 @@ def get_current_platform() -> str:
     """
     system = platform.system().lower()
     machine = platform.machine().lower()
-    
+
     # Normalize system names
     if system == "darwin":
         pass  # Keep as darwin
     elif system == "windows":
         system = "win"
-    
+
     # Normalize architecture
     if machine in ("x86_64", "amd64"):
         arch = "x64"
@@ -56,7 +56,7 @@ def get_current_platform() -> str:
         arch = "arm64"
     else:
         arch = machine
-    
+
     return f"{system}-{arch}"
 
 
@@ -248,7 +248,7 @@ def conda_env_exists(
         )
         if result.returncode != 0:
             return False
-        
+
         data = json.loads(result.stdout)
         # Extract env names from paths
         for path in data.get('envs', []):
@@ -276,11 +276,11 @@ def get_micromamba_download_url(
     """Get the micromamba download URL for the specified or current platform."""
     if platform_str is None:
         platform_str = get_current_platform()
-    
+
     url = MICROMAMBA_URLS.get(platform_str)
     if url is None:
         raise ValueError(f"No micromamba download URL for platform: {platform_str}")
-    
+
     return url
 
 
@@ -292,31 +292,31 @@ def download_micromamba(
     """Download and extract micromamba binary to the specified path."""
     if platform_str is None:
         platform_str = get_current_platform()
-    
+
     url = get_micromamba_download_url(platform_str)
-    
+
     # Create parent directory if needed
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
         archive_path = tmpdir_path / "micromamba.tar.bz2"
-        
+
         # Download the archive
         if show_progress:
             print(f"Downloading micromamba from {url}...")
-        
+
         try:
             urlretrieve(url, archive_path)
         except URLError as e:
             if show_progress:
                 print(f"Failed to download micromamba: {e}")
             return False
-        
+
         # Extract the archive
         if show_progress:
             print("Extracting micromamba...")
-        
+
         try:
             with tarfile.open(archive_path, "r:bz2") as tar:
                 # PEP 706: `filter='data'` required to avoid hard-error on Python 3.14+.
@@ -325,31 +325,31 @@ def download_micromamba(
             if show_progress:
                 print(f"Failed to extract archive: {e}")
             return False
-        
+
         # Find the micromamba binary (usually at bin/micromamba or Library/bin/micromamba.exe)
         binary_name = "micromamba.exe" if is_windows() else "micromamba"
         extracted_binary = None
-        
+
         for root, dirs, files in os.walk(tmpdir_path):
             if binary_name in files:
                 extracted_binary = Path(root) / binary_name
                 break
-        
+
         if extracted_binary is None:
             if show_progress:
                 print(f"Could not find {binary_name} in extracted archive")
             return False
-        
+
         # Move to destination
         shutil.copy2(extracted_binary, dest_path)
-        
+
         # Make executable on Unix
         if not is_windows():
             dest_path.chmod(dest_path.stat().st_mode | 0o755)
-        
+
         if show_progress:
             print(f"Micromamba installed to {dest_path}")
-        
+
         return True
 
 
@@ -359,7 +359,7 @@ def get_conda_command(
     """Get the conda/mamba/micromamba base command with prefix args for local mode."""
     # Late import to avoid circular dependency
     from cjm_substrate.core.config import CondaType, RuntimeMode
-    
+
     if config.runtime.conda_type == CondaType.MICROMAMBA:
         # Get binary path from config or use default
         platform_key = get_current_platform()
@@ -367,15 +367,15 @@ def get_conda_command(
             binary = str(config.runtime.binaries[platform_key])
         else:
             binary = "micromamba"
-        
+
         # Add root prefix for local mode
         if config.runtime.mode == RuntimeMode.LOCAL and config.runtime.prefix:
             return [binary, "-r", str(config.runtime.prefix)]
         return [binary]
-    
+
     elif config.runtime.conda_type == CondaType.MINIFORGE:
         return ["mamba"]
-    
+
     else:  # CondaType.CONDA or default
         return ["conda"]
 
@@ -394,15 +394,15 @@ def get_micromamba_binary_path(
 ) -> Optional[Path]:  # Path to micromamba binary or None
     """Get the configured micromamba binary path for the current platform."""
     platform_key = get_current_platform()
-    
+
     if config.runtime.binaries and platform_key in config.runtime.binaries:
         return config.runtime.binaries[platform_key]
-    
+
     # Default location if prefix is set
     if config.runtime.prefix:
         binary_name = "micromamba.exe" if is_windows() else "micromamba"
         return config.runtime.prefix / "bin" / binary_name
-    
+
     return None
 
 
@@ -412,7 +412,7 @@ def ensure_runtime_available(
     """Check if the configured conda/micromamba runtime is available."""
     # Late import to avoid circular dependency
     from cjm_substrate.core.config import CondaType
-    
+
     if config.runtime.conda_type == CondaType.MICROMAMBA:
         binary_path = get_micromamba_binary_path(config)
         if binary_path and binary_path.exists():
@@ -427,7 +427,7 @@ def ensure_runtime_available(
             return result.returncode == 0
         except FileNotFoundError:
             return False
-    
+
     elif config.runtime.conda_type == CondaType.MINIFORGE:
         try:
             result = subprocess.run(
@@ -438,7 +438,7 @@ def ensure_runtime_available(
             return result.returncode == 0
         except FileNotFoundError:
             return False
-    
+
     else:  # CondaType.CONDA
         try:
             result = subprocess.run(

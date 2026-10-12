@@ -54,7 +54,7 @@ class RemoteCapabilityProxy(ToolCapability):
             result = capability.execute(audio="/path/to/audio.wav")
         # worker terminated on exit
     """
-    
+
     def __init__(
         self,
         manifest:Dict[str, Any], # Capability manifest with python_path, module, class, etc.
@@ -113,7 +113,7 @@ class RemoteCapabilityProxy(ToolCapability):
     def name(self) -> str: # Capability name from manifest
         """Capability name."""
         return self.manifest.get('name', 'unknown')
-    
+
     @property
     def version(self) -> str: # Capability version from manifest
         """Capability version."""
@@ -167,13 +167,12 @@ class RemoteCapabilityProxy(ToolCapability):
         )
         if not ok:
             raise RuntimeError("Initialize failed: worker unreachable or rejected /initialize")
-    
-    
+
     def get_config_schema(self) -> Dict[str, Any]: # JSON Schema
         """Get the capability's configuration schema."""
         return self._ensure_sync_client().get(
             f"{self.base_url}/config_schema", timeout=5).json()
-    
+
     def get_current_config(self) -> Dict[str, Any]: # Current config values
         """Get the capability's current configuration."""
         return self._ensure_sync_client().get(
@@ -659,7 +658,7 @@ class RemoteCapabilityProxy(ToolCapability):
             # CR-7 Track A: worker may have died mid-call. Classify or re-raise.
             self._check_worker_death()
             raise  # Worker still alive — propagate the original transport fault
-    
+
         # CR-14 follow-up: journal worker-reported accounts BEFORE status checks
         # (a _job_error 500's pre-failure accounts are kept).
         self._harvest_worker_accounts(resp)
@@ -1109,11 +1108,11 @@ def _raise_from_job_error_chunk(
     category = job_error.get("category", "fatal")
     message = job_error.get("message", "Capability error in stream")
     repr_str = job_error.get("original_exc_repr", "") or ""
-    
+
     # Cancellation special-case (transient category, non-retriable semantic)
     if repr_str.startswith("CapabilityCancelledError"):
         raise CapabilityCancelledError(capability_name)
-    
+
     if category == "user_input":
         raise CapabilityInputError(message, fields_invalid=job_error.get("fields_invalid"))
     if category == "transient":

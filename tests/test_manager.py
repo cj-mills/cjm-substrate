@@ -28,19 +28,25 @@ from cjm_substrate.utils.validation import CapabilityConfigError
 
 class _CR10StubProxy:
     """Stand-in proxy tracking execute calls + hook fires for verification."""
+
     def __init__(self, name="stub"):
         self._name = name
         self.execute_calls = []
         self.on_disable_calls = 0
         self.on_enable_calls = 0
+
     @property
     def name(self): return self._name
+
     @property
     def version(self): return "0.0.1"
+
     def initialize(self, config): self._config = dict(config or {})
+
     def execute(self, *args, **kwargs):
         self.execute_calls.append((args, kwargs))
         return {"who": self._name, "args": args, "kwargs": kwargs}
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
     def cleanup(self): pass
@@ -144,15 +150,19 @@ def test_phase5a_platform_query_filters(monkeypatch):
 
 class _StubCapabilityInstance:
     """Minimal stand-in for a worker capability proxy. Records hook calls + holds config."""
+
     def __init__(self, name="stub"):
         self._name = name
         self._config: Dict[str, Any] = {}
         self.on_disable_calls = 0
         self.on_enable_calls = 0
+
     @property
     def name(self): return self._name
+
     @property
     def version(self): return "0.0.1"
+
     def initialize(self, config): self._config = dict(config or {})
     def execute(self, *a, **kw): return None
     def get_config_schema(self): return {}
@@ -232,11 +242,14 @@ def test_cr2_persistence_hooks_deferred_disable(tmp_path):
 
 class _TypedStubMonitor:
     """Stub with CR-3 typed surface. get_system_status returns a dict."""
+
     def __init__(self, stats):
         self._stats = stats
         self.execute_calls = 0
+
     def get_system_status(self):
         return self._stats
+
     def execute(self, command, **kwargs):
         self.execute_calls += 1
         return {"should_not_be_called": True}
@@ -244,21 +257,25 @@ class _TypedStubMonitor:
 
 class _ToDictStubMonitor:
     """Typed call returns an object with .to_dict() (in-process SystemStats)."""
+
     class _Bag:
         def to_dict(self):
             return {"cpu_percent": 12.5, "gpu_type": "AMD"}
+
     def get_system_status(self):
         return self._Bag()
 
 
 class _NoneReturningMonitor:
     """Proxy returned None (ConnectError) — substrate should degrade silently."""
+
     def get_system_status(self):
         return None
 
 
 class _RaisingTypedMonitor:
     """Typed call raises; substrate logs + returns empty (no dispatcher fallback)."""
+
     def get_system_status(self):
         raise RuntimeError("typed call boom")
 
@@ -266,8 +283,10 @@ class _RaisingTypedMonitor:
 class _NoTypedSurfaceMonitor:
     """Misconfigured monitor lacking get_system_status. Substrate degrades to {} +
     warns (the pre-CR-3 execute() dispatcher fallback was removed at SG-48)."""
+
     def __init__(self):
         self.execute_calls = 0
+
     def execute(self, command, **kwargs):
         self.execute_calls += 1  # Must never be called — the dispatcher fallback is gone.
         return {"should_not_be_called": True}
@@ -308,11 +327,14 @@ def test_cr3_global_stats_typed_paths():
 
 class _AsyncTypedStubMonitor:
     """Async-typed surface — exposes get_system_status_async."""
+
     def __init__(self, stats):
         self._stats = stats
         self.execute_async_calls = 0
+
     async def get_system_status_async(self):
         return self._stats
+
     async def execute_async(self, command, **kwargs):
         self.execute_async_calls += 1
         return {"should_not_be_called": True}
@@ -321,8 +343,10 @@ class _AsyncTypedStubMonitor:
 class _NoAsyncTypedSurfaceMonitor:
     """Async monitor lacking get_system_status_async → {} + warns (the
     execute_async() dispatcher fallback was removed at SG-48)."""
+
     def __init__(self):
         self.execute_async_calls = 0
+
     async def execute_async(self, command, **kwargs):
         self.execute_async_calls += 1  # Must never be called.
         return {"should_not_be_called": True}
@@ -723,16 +747,21 @@ def test_cr10b_unload_capabilities_concurrent():
 
 class _CR7StubProxy:
     """Stub proxy with controllable failure behavior for CR-7 reactive tests."""
+
     def __init__(self, name="stub"):
         self._name = name
         self.execute_calls = 0
         self.fail_next_n_times = 0
         self.fail_with: Optional[Exception] = None
+
     @property
     def name(self): return self._name
+
     @property
     def version(self): return "0.0.1"
+
     def initialize(self, config): pass
+
     def execute(self, *args, **kwargs):
         self.execute_calls += 1
         if self.fail_next_n_times > 0:
@@ -740,12 +769,14 @@ class _CR7StubProxy:
             if self.fail_with is not None:
                 raise self.fail_with
         return {"result": "ok", "call": self.execute_calls, "proxy": self._name}
+
     def get_stats(self):
         # Synthetic stats matching the substrate's /stats contract (post-subtree
         # fix): gpu_memory_mb is NOT a /stats key — GPU memory comes from sysmon's
         # per-PID enumeration via the substrate helper, not from the worker.
         return {"pid": 12345, "cpu_percent": 50.0, "memory_rss_mb": 1000.0,
                 "subtree_pids": [12345]}
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
     def cleanup(self): pass
@@ -1011,12 +1042,16 @@ def test_cr7_eviction_candidates_multi_axis():
 
 class _FakeSecretStore:
     def __init__(self): self._d = {}
+
     def get_secret(self, capability_name, key, *, scope=None):
         return self._d.get((scope, capability_name, key))
+
     def set_secret(self, capability_name, key, value, *, scope=None):
         self._d[(scope, capability_name, key)] = value
+
     def delete_secret(self, capability_name, key, *, scope=None):
         return self._d.pop((scope, capability_name, key), None) is not None
+
     def list_keys(self, capability_name, *, scope=None):
         return sorted(k for (s, p, k) in self._d if s == scope and p == capability_name)
 
@@ -1073,6 +1108,7 @@ def test_cr12_worker_env_overlay_and_secret_actuation():
 
 class _StubProxyWithSubtree:
     """Proxy whose /stats reports a worker pid + grandchild pid (vLLM-shaped)."""
+
     def get_stats(self):
         return {"pid": 1111, "cpu_percent": 50.0, "memory_rss_mb": 1024.0,
                 "subtree_pids": [1111, 9999]}  # 9999 = vLLM grandchild
@@ -1080,6 +1116,7 @@ class _StubProxyWithSubtree:
 
 class _StubSysmonMeta:
     """CapabilityMeta-shaped wrapper so _get_sysmon_capability resolves."""
+
     def __init__(self, sysmon):
         self.instance = sysmon
 
@@ -1096,8 +1133,10 @@ class _StubSysmon:
 
 class _SpyStore:
     """Capture record_sample calls instead of writing to disk."""
+
     def __init__(self):
         self.samples = []
+
     def record_sample(self, instance_id, capability_name, config_hash, sample):
         self.samples.append((instance_id, capability_name, config_hash, sample))
 

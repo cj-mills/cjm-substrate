@@ -13,6 +13,7 @@ class AdapterManifest:
     members are introspected where the protocol is importable); discovered
     host-side beside capability manifests via the `unit` discriminator.
     """
+
     name: str  # Unique unit name ("module.ClassName")
     version: str  # Interface-lib version at generation
     task_name: str  # The task this adapter serves (e.g. "graph-storage")

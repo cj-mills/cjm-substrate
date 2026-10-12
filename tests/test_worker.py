@@ -33,8 +33,10 @@ STUB_MODULE = "_worker_test_stubs"
 class NotAMonitorCapability:
     """NOT a monitor — lacks get_system_status / list_processes entirely.
     Worker should return 404 (configuration error: wrong capability type)."""
+
     name = "not-a-monitor"
     version = "1.0.0"
+
     def initialize(self, config=None): pass
     def execute(self, *args, **kwargs): return {"ok": True}
     def get_config_schema(self): return {}
@@ -45,81 +47,104 @@ class RaisingMonitorCapability:
     """IS a monitor shape but raises NotImplementedError — a legacy monitor
     opting out of the CR-3 typed surface. Worker should return 501 (the proxy
     then falls back to /execute)."""
+
     name = "raising-monitor"
     version = "1.0.0"
+
     def initialize(self, config=None): pass
+
     def execute(self, command="get_system_status", **kwargs):
         if command == "get_system_status":
             return {"gpu_type": "LEGACY", "cpu_percent": 12.0}
         return {}
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
+
     def get_system_status(self):
         raise NotImplementedError("opted out of typed surface")
+
     def list_processes(self):
         raise NotImplementedError("opted out of typed surface")
 
 
 class PrefetchCapability:
     """Tracks prefetch + reconfigure invocations for endpoint verification."""
+
     name = "cr4-prefetch-capability"
     version = "1.0.0"
     # Class-level so tests can verify across instances; the worker creates one
     # instance via capability_cls() so a class-level counter is fine.
     prefetch_calls = 0
     reconfigure_calls = []  # list of (old, new) tuples
+
     def initialize(self, config=None): pass
     def execute(self, *args, **kwargs): return {"ok": True}
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
+
     def prefetch(self):
         type(self).prefetch_calls += 1
+
     def reconfigure(self, old_config, new_config):
         type(self).reconfigure_calls.append((old_config, new_config))
 
 
 class PrefetchRaisingCapability(PrefetchCapability):
     """prefetch() raises — worker returns 500 with detail."""
+
     name = "cr4-prefetch-raising-capability"
+
     def prefetch(self):
         raise RuntimeError("prefetch boom")
 
 
 class CancellingCapability:
     """execute() raises CapabilityCancelledError to drive the 409 path."""
+
     name = "cr4-cancelling-capability"
     version = "1.0.0"
     _cancel_requested = False  # CR-4 flag (class-level default)
+
     def initialize(self, config=None): pass
+
     def execute(self, *args, **kwargs):
         # In real use capability code calls self.check_cancel() and it raises
         # when the substrate has flipped the flag via /cancel; this stub raises
         # directly to keep the test independent of timing.
         raise CapabilityCancelledError(self.name)
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
 
 
 class FailingCapability:
     """execute() raises a real RuntimeError — worker returns 500."""
+
     name = "cr4-failing-capability"
     version = "1.0.0"
+
     def initialize(self, config=None): pass
+
     def execute(self, *args, **kwargs):
         raise RuntimeError("simulated capability failure")
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
 
 
 class StreamCapability:
     """execute_stream yields items normally; verifies SG-51's flag reset."""
+
     name = "sg51-stream-capability"
     version = "1.0.0"
     _cancel_requested = True  # Pre-set: the SG-51 reset must clear it
+
     def initialize(self, config=None): pass
     def execute(self, *args, **kwargs): return None
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
+
     def execute_stream(self, *args, **kwargs):
         # The capability captures the flag's value at yield-time so the test
         # can verify the worker reset it before iteration started.
@@ -131,13 +156,16 @@ class StreamCapability:
 class CancellingStreamCapability:
     """execute_stream raises CapabilityCancelledError mid-stream — SG-52 typed
     error chunk emission + category mapping for cancellation."""
+
     name = "sg52-cancel-capability"
     version = "1.0.0"
     _cancel_requested = False
+
     def initialize(self, config=None): pass
     def execute(self, *args, **kwargs): return None
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
+
     def execute_stream(self, *args, **kwargs):
         yield {"data": "first"}
         raise CapabilityCancelledError(self.name)
@@ -146,12 +174,15 @@ class CancellingStreamCapability:
 class FailingStreamCapability:
     """execute_stream raises a bare RuntimeError — SG-52 typed error chunk with
     CR-5 default classification (RuntimeError -> fatal, retriable=False)."""
+
     name = "sg52-fail-capability"
     version = "1.0.0"
+
     def initialize(self, config=None): pass
     def execute(self, *args, **kwargs): return None
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
+
     def execute_stream(self, *args, **kwargs):
         yield {"data": "before failure"}
         raise RuntimeError("simulated stream failure")
@@ -159,22 +190,29 @@ class FailingStreamCapability:
 
 class EnvelopeCapability:
     """Captures the contextvar AS SEEN INSIDE execute() (executor thread)."""
+
     name = "cr14-envelope-capability"
     version = "1.0.0"
     seen_envelopes = []  # class-level capture across calls
+
     def initialize(self, config=None): pass
+
     def execute(self, *args, **kwargs):
         type(self).seen_envelopes.append(get_call_envelope())
         return {"ok": True}
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
 
 
 class AcctRecordingCapability:
     """execute records accounts (the T29 storage-helper shape)."""
+
     name = "acct-recording-capability"
     version = "1.0.0"
+
     def initialize(self, config=None): pass
+
     def execute(self, *args, mode="save", **kwargs):
         if mode == "save":
             record_account("result_saved", {"row_job_id": "row-1",
@@ -184,14 +222,18 @@ class AcctRecordingCapability:
             record_account("result_saved", {"row_job_id": "row-2"})
             raise RuntimeError("post-save crash")
         return {"ok": True}  # mode="plain": no accounts recorded
+
     def get_config_schema(self): return {}
     def get_current_config(self): return {}
 
 
 class AcctTaskAdapter:
     """Minimal task adapter: /task dispatch target for the TASK_ACCOUNT test."""
+
     task_name = "acct-task"
+
     def __init__(self, tool): self.tool = tool
+
     def do_thing(self, x=0):
         if x < 0:
             raise RuntimeError("negative")

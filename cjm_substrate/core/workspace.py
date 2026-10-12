@@ -35,6 +35,7 @@ class WorkspaceError(Exception):
     Raised only for EXPLICIT references — a marker miss on the upward-walk
     path is a normal outcome (`resolve_workspace` returns None) so hosts keep
     their pre-workspace cwd-relative behavior."""
+
     pass
 
 
@@ -47,6 +48,7 @@ class Workspace:
     READERS resolve recorded paths via `resolve_recorded()`. Recorded paths stay
     the source of truth — the workspace supplies defaults for NEW writes only.
     """
+
     root: Path  # Absolute workspace root (the directory containing the marker)
 
     @property

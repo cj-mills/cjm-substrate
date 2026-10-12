@@ -73,44 +73,44 @@ def setup_runtime(
     on PATH.
     """
     cfg = get_config()
-    
+
     # Check if micromamba mode
     if cfg.runtime.conda_type != CondaType.MICROMAMBA:
         typer.echo(f"Runtime setup is only needed for micromamba mode.")
         typer.echo(f"Current conda_type: {cfg.runtime.conda_type.value}")
         typer.echo(f"Set 'conda_type: micromamba' in cjm.yaml to use project-local runtime.")
         raise typer.Exit(code=0)
-    
+
     # Determine binary path
     binary_path = get_micromamba_binary_path(cfg)
-    
+
     if binary_path is None:
         typer.echo("Error: Cannot determine micromamba binary path.", err=True)
         typer.echo("Set 'runtime.prefix' or 'runtime.binaries' in cjm.yaml.", err=True)
         raise typer.Exit(code=1)
-    
+
     # Check if already exists
     if binary_path.exists() and not force:
         typer.echo(f"Micromamba already installed at: {binary_path}")
         typer.echo(f"Use --force to re-download.")
         raise typer.Exit(code=0)
-    
+
     # Show what will be done
     platform_str = get_current_platform()
     typer.echo(f"=== Setup Runtime ===\n")
     typer.echo(f"Platform: {platform_str}")
     typer.echo(f"Destination: {binary_path}")
     typer.echo("")
-    
+
     # Create runtime directory structure
     if cfg.runtime.prefix:
         (cfg.runtime.prefix / "bin").mkdir(parents=True, exist_ok=True)
         (cfg.runtime.prefix / "envs").mkdir(parents=True, exist_ok=True)
         typer.echo(f"Created runtime directories at: {cfg.runtime.prefix}")
-    
+
     # Download micromamba
     success = download_micromamba(binary_path, platform_str, show_progress=True)
-    
+
     if success:
         typer.echo(f"\nRuntime setup complete!")
         typer.echo(f"You can now run: cjm-ctl install-all --capabilities <capabilities.yaml>")
@@ -122,7 +122,7 @@ def setup_runtime(
 def _check_runtime_available() -> None:
     """Check if the configured conda runtime is available, exit with helpful message if not."""
     cfg = get_config()
-    
+
     if not ensure_runtime_available(cfg):
         if cfg.runtime.conda_type == CondaType.MICROMAMBA:
             typer.echo("Error: Micromamba runtime not found.", err=True)
@@ -152,7 +152,7 @@ def _download_url_to_temp(
         # Create a named temp file that won't be auto-deleted
         fd, temp_path = tempfile.mkstemp(suffix=suffix)
         os.close(fd)
-        
+
         print(f"Downloading {url}...")
         urlretrieve(url, temp_path)
         return Path(temp_path)
@@ -206,7 +206,7 @@ def _generate_manifest(
     """
     print(f"[{env_name}] Generating manifest...")
     cfg = get_config()
-    
+
     # Robust Module Name Extraction
     if package_name.startswith("git+"):
         # Case: git+https://github.com/cj-mills/repo-name.git
@@ -227,7 +227,7 @@ def _generate_manifest(
         module_name = dist.strip().replace('-', '_')
 
     print(f"[{env_name}] Introspecting module: {module_name}")
-    
+
     # Enhanced introspection script. The script:
     # 1. Derives identity from the installed distribution + capability class.
     # 2. Instantiates the capability class to get config_schema
@@ -338,13 +338,13 @@ except Exception:
 
 print(json.dumps(meta, indent=2))
 '''
-    
+
     # Build environment with CJM paths for capability introspection
     env = dict(os.environ)
     env["CJM_CAPABILITY_DATA_DIR"] = str(cfg.capability_data_dir)
     if cfg.models_dir:
         env["CJM_MODELS_DIR"] = str(cfg.models_dir)
-    
+
     # SG-2: write the introspection script to a temp .py file rather than
     # passing it inline via `python -c '...'`. cmd.exe does not honor POSIX
     # single quotes, so the inline form silently breaks Windows installs.
@@ -358,13 +358,13 @@ print(json.dumps(meta, indent=2))
     try:
         with os.fdopen(introspection_fd, "w") as f:
             f.write(introspection_script)
-        
+
         # The introspection command - use configurable conda command.
         # Double-quote the script path so paths with spaces (common on
         # Windows) work in either shell.
         conda_cmd = _get_conda_cmd_str()
         introspection_cmd = f'{conda_cmd} run -n {env_name} python "{introspection_path}"'
-        
+
         try:
             # Check output, capture stdout
             # Use shell=True without explicit executable for cross-platform support
@@ -378,7 +378,7 @@ print(json.dumps(meta, indent=2))
                 env=env
             )
             result_str = result.stdout.strip()
-            
+
             # Robust JSON Parsing: 
             # Sometimes 'conda run' leaks warnings into stdout. We try to find the JSON block.
             try:
@@ -471,7 +471,7 @@ print(json.dumps(meta, indent=2))
                 ),
                 overrides={},
             )
-            
+
             # Log detected metadata
             if config_schema is not None:
                 print(f"[{env_name}] Config schema: captured")
@@ -479,13 +479,13 @@ print(json.dumps(meta, indent=2))
                 print(f"[{env_name}] Structural surface: "
                       f"{len(intro_surface.get('methods', []))} methods, "
                       f"{len(intro_surface.get('properties', []))} properties")
-            
+
             write_manifest(out_file, manifest)
             print(f"[{env_name}] Wrote manifest to {out_file}")
             # SG-3: return the path so callers can update the manifest by exact
             # file rather than scanning `manifest_dir` with a substring match.
             return out_file
-            
+
         except subprocess.CalledProcessError as e:
             print(f"Error generating manifest for {env_name}:")
             print(e.stderr if e.stderr else str(e))
@@ -533,13 +533,13 @@ def regenerate_manifest(
     if not manifest_path.exists():
         typer.echo(f"No manifest found at {manifest_path}", err=True)
         raise typer.Exit(code=1)
-    
+
     try:
         existing = load_manifest(manifest_path)
     except (json.JSONDecodeError, ValueError) as e:
         typer.echo(f"Cannot parse existing manifest {manifest_path}: {e}", err=True)
         raise typer.Exit(code=1)
-    
+
     # Recover env_name: explicit field preferred, python_path fallback for legacy.
     env_name = existing.install.conda_env or _extract_env_from_python_path(
         existing.install.python_path
@@ -552,7 +552,7 @@ def regenerate_manifest(
             err=True,
         )
         raise typer.Exit(code=1)
-    
+
     # Recover package_source: --package > manifest.install.package_source > capabilities.yaml lookup.
     package_source = package
     source_origin = "--package override"
@@ -576,17 +576,17 @@ def regenerate_manifest(
             err=True,
         )
         raise typer.Exit(code=1)
-    
+
     # Snapshot the original installed_at so we can preserve it after _generate_manifest
     # rewrites the file (which would otherwise set installed_at = regenerated_at = now).
     original_installed_at = existing.install.installed_at
-    
+
     typer.echo(f"Regenerating {capability_name} from {package_source} ({source_origin})...")
     out_path = _generate_manifest(env_name, package_source, cfg.manifests_dir)
     if out_path is None:
         typer.echo(f"Regeneration failed for {capability_name}", err=True)
         raise typer.Exit(code=1)
-    
+
     # Post-write fix-up: restore installed_at from the pre-existing manifest.
     # _generate_manifest sets both installed_at + regenerated_at to "now"; for
     # regenerations the install timestamp should be the original install moment.
@@ -604,7 +604,7 @@ def regenerate_manifest(
             write_manifest(out_path, refreshed)
         except (json.JSONDecodeError, ValueError, IOError) as e:
             typer.echo(f"Warning: failed to restore installed_at on {out_path}: {e}")
-    
+
     typer.echo(f"✓ Regenerated manifest at {out_path}")
 
 
@@ -753,7 +753,7 @@ def _conda_env_exists_configured(
     cmd_parts = get_conda_command(cfg)
     # Use the first part as the conda command for conda_env_exists
     conda_cmd = cmd_parts[0]
-    
+
     # For micromamba with root prefix, we need to filter envs by the prefix path
     if cfg.runtime.conda_type == CondaType.MICROMAMBA and cfg.runtime.prefix:
         # micromamba -r <prefix> env list --json returns ALL known envs,
@@ -766,11 +766,11 @@ def _conda_env_exists_configured(
             )
             if result.returncode != 0:
                 return False
-            
+
             data = json.loads(result.stdout)
             # Get the absolute prefix path for comparison
             prefix_str = str(cfg.runtime.prefix.resolve())
-            
+
             for path in data.get('envs', []):
                 # Only consider envs under our root prefix
                 if path.startswith(prefix_str):
@@ -802,7 +802,7 @@ def install_all(
     manifests (pass-2 Thread 3), one command does both.
     """
     cfg = get_config()
-    
+
     # Schema v2 (PILLAR 2): default the capabilities file from cjm.yaml's
     # capabilities_config (parent-walk-discovered) so install-all runs flagless.
     if capabilities_path is None:
@@ -810,7 +810,7 @@ def install_all(
 
     # Check runtime availability
     _check_runtime_available()
-    
+
     if not os.path.exists(capabilities_path):
         typer.echo(f"Capabilities file not found: {capabilities_path}", err=True)
         raise typer.Exit(code=1)
@@ -824,13 +824,13 @@ def install_all(
 
     capabilities = config.get('capabilities', [])
     print(f"Found {len(capabilities)} capabilities to process.")
-    
+
     # Get the conda command string for shell commands
     conda_cmd = _get_conda_cmd_str()
-    
+
     # Determine if using micromamba (different command syntax)
     is_micromamba = cfg.runtime.conda_type == CondaType.MICROMAMBA
-    
+
     # Track temp files to clean up
     temp_files_to_cleanup: List[Path] = []
 
@@ -855,7 +855,7 @@ def install_all(
                     local_env_file, temp_file = _resolve_env_file(capability['env_file'])
                     if temp_file:
                         temp_files_to_cleanup.append(temp_file)
-                    
+
                     # micromamba uses 'create' directly, conda uses 'env create'
                     if is_micromamba:
                         run_cmd(f"{conda_cmd} create -f {local_env_file} -n {env_name} -y")
@@ -872,7 +872,7 @@ def install_all(
             # Default = the published package; --substrate-source overrides for
             # local-editable dev.
             run_cmd(f"{base_pip_cmd} {substrate_source}")
-            
+
             if 'interface_libs' in capability:
                 libs = " ".join(capability['interface_libs'])
                 run_cmd(f"{base_pip_cmd} {libs}")
@@ -914,7 +914,7 @@ def install_all(
                     raise typer.Exit(code=1)
 
         print("\n All operations complete.")
-    
+
     finally:
         # Clean up any temporary files
         for temp_file in temp_files_to_cleanup:
@@ -940,15 +940,15 @@ def setup_host(
     # Collect unique interface libraries from all capabilities
     capabilities = config.get('capabilities', [])
     all_libs: set[str] = set()
-    
+
     for capability in capabilities:
         interface_libs = capability.get('interface_libs', [])
         all_libs.update(interface_libs)
-    
+
     # Filter out cjm-substrate (already installed since we're running this CLI)
     all_libs = {lib for lib in all_libs 
                 if 'cjm-substrate.git' not in lib and lib != 'cjm-substrate'}
-    
+
     if not all_libs:
         typer.echo("No interface libraries found in config.")
         raise typer.Exit(code=0)
@@ -970,7 +970,7 @@ def setup_host(
     # Install libraries using the current Python interpreter
     libs_str = " ".join(sorted(all_libs))
     run_cmd(f"{sys.executable} -m pip install {libs_str}")
-    
+
     typer.echo("\nHost environment setup complete.")
 
 
@@ -978,7 +978,7 @@ def _get_conda_envs() -> set[str]: # Set of existing conda environment names
     """Get list of existing conda environment names using configured conda command."""
     cfg = get_config()
     cmd_parts = build_conda_command(cfg, "env", "list", "--json")
-    
+
     try:
         result = subprocess.run(
             cmd_parts,
@@ -987,7 +987,7 @@ def _get_conda_envs() -> set[str]: # Set of existing conda environment names
         if result.returncode == 0:
             data = json.loads(result.stdout)
             envs = set()
-            
+
             # For micromamba with root prefix, filter by the prefix path
             if cfg.runtime.conda_type == CondaType.MICROMAMBA and cfg.runtime.prefix:
                 prefix_str = str(cfg.runtime.prefix.resolve())
@@ -1000,7 +1000,7 @@ def _get_conda_envs() -> set[str]: # Set of existing conda environment names
                 for path in data.get('envs', []):
                     env_name = Path(path).name
                     envs.add(env_name)
-            
+
             return envs
     except (subprocess.SubprocessError, json.JSONDecodeError):
         pass
@@ -1042,13 +1042,13 @@ def _extract_env_from_python_path(
     """Extract conda environment name from python_path."""
     if not python_path:
         return ''
-    
+
     # Look for /envs/<env_name>/ pattern
     path_parts = Path(python_path).parts
     for i, part in enumerate(path_parts):
         if part == 'envs' and i + 1 < len(path_parts):
             return path_parts[i + 1]
-    
+
     return ''
 
 
@@ -1060,11 +1060,11 @@ def list_capabilities(
     """List installed capabilities from manifest directory."""
     cfg = get_config()
     manifests = _get_installed_manifests()
-    
+
     if not manifests:
         typer.echo(f"No capabilities found in {cfg.manifests_dir}")
         raise typer.Exit(code=0)
-    
+
     # Load config for cross-reference if provided
     config_capabilities = {}
     if capabilities_path and os.path.exists(capabilities_path):
@@ -1072,31 +1072,31 @@ def list_capabilities(
             config = yaml.safe_load(f)
         for p in config.get('capabilities', []):
             config_capabilities[p.get('name')] = p
-    
+
     # Get conda envs if requested
     conda_envs = _get_conda_envs() if show_envs else set()
-    
+
     typer.echo(f"=== Installed Capabilities ({len(manifests)}) ===\n")
-    
+
     for m in sorted(manifests, key=lambda m: m.code.name or ''):
         name = m.code.name or 'unknown'
         version = m.code.version or '?'
-        
+
         # Get env name from manifest or extract from python_path
         env_name = m.install.conda_env or ''
         if not env_name:
             env_name = _extract_env_from_python_path(m.install.python_path or '')
-        
+
         # Basic info line
         typer.echo(f"{name} v{version}")
-        
+
         # Environment status
         if show_envs and env_name:
             env_status = "exists" if env_name in conda_envs else "missing"
             typer.echo(f"  Env: {env_name} ({env_status})")
         elif show_envs:
             typer.echo(f"  Env: (not specified in manifest)")
-        
+
         # Cross-reference with config
         if capabilities_path:
             if name in config_capabilities:
@@ -1105,7 +1105,7 @@ def list_capabilities(
                     typer.echo(f"  Config env: {cfg_env} (differs from manifest)")
             else:
                 typer.echo(f"  (not in {capabilities_path})")
-        
+
         typer.echo("")
 
 
@@ -1279,7 +1279,7 @@ def remove_capability(
     cfg = get_config()
     manifest_dir = cfg.manifests_dir
     manifest_path = manifest_dir / f"{capability_name}.json"
-    
+
     # Load the manifest (typed). Adapter / unreadable / bad-format files yield None.
     manifest = None
     if manifest_path.exists():
@@ -1287,19 +1287,19 @@ def remove_capability(
             manifest = load_manifest(manifest_path)
         except (json.JSONDecodeError, IOError, ValueError):
             pass
-    
+
     if not manifest:
         typer.echo(f"Capability manifest not found: {capability_name}", err=True)
         typer.echo(f"  Expected at: {manifest_path}")
         raise typer.Exit(code=1)
-    
+
     # Determine conda environment name (try multiple sources)
     env_name = manifest.install.conda_env or ''
-    
+
     # Fallback 1: Extract from python_path in manifest
     if not env_name:
         env_name = _extract_env_from_python_path(manifest.install.python_path or '')
-    
+
     # Fallback 2: Check capabilities file
     if not env_name and capabilities_path and os.path.exists(capabilities_path):
         with open(capabilities_path) as f:
@@ -1308,15 +1308,15 @@ def remove_capability(
             if p.get('name') == capability_name:
                 env_name = p.get('env_name', '')
                 break
-    
+
     # Check if env exists
     conda_envs = _get_conda_envs()
     env_exists = env_name in conda_envs if env_name else False
-    
+
     # Show what will be removed
     typer.echo(f"=== Remove Capability: {capability_name} ===\n")
     typer.echo(f"Manifest: {manifest_path}")
-    
+
     if env_name:
         if env_exists:
             if keep_env:
@@ -1327,16 +1327,16 @@ def remove_capability(
             typer.echo(f"Conda env: {env_name} (does not exist)")
     else:
         typer.echo(f"Conda env: (not specified)")
-    
+
     typer.echo("")
-    
+
     # Confirm
     if not yes:
         confirm = typer.confirm("Proceed with removal?")
         if not confirm:
             typer.echo("Aborted.")
             raise typer.Exit(code=0)
-    
+
     # Remove conda environment using configured command
     if env_name and env_exists and not keep_env:
         typer.echo(f"Removing conda environment: {env_name}...")
@@ -1346,7 +1346,7 @@ def remove_capability(
             typer.echo(f"  Removed: {env_name}")
         except subprocess.CalledProcessError as e:
             typer.echo(f"  Warning: Failed to remove conda env: {e}", err=True)
-    
+
     # Remove manifest file
     typer.echo(f"Removing manifest: {manifest_path}...")
     try:
@@ -1355,7 +1355,7 @@ def remove_capability(
     except IOError as e:
         typer.echo(f"  Error removing manifest: {e}", err=True)
         raise typer.Exit(code=1)
-    
+
     typer.echo(f"\nCapability '{capability_name}' removed successfully.")
 
 
@@ -1396,34 +1396,34 @@ def _validate_manifest_v2_dict(
     `install.python_path` mirrors v1.0's required top-level `python_path`.
     """
     errors: List[str] = []
-    
+
     # Sections must be dicts when present
     install = data.get("install")
     code = data.get("code")
     drift = data.get("drift_tracking")
     overrides = data.get("overrides")
-    
+
     if install is None:
         errors.append("manifest: required section 'install' is missing")
         install = {}
     elif not isinstance(install, dict):
         errors.append(f"manifest: 'install' must be an object, got {type(install).__name__}")
         install = {}
-    
+
     if code is None:
         errors.append("manifest: required section 'code' is missing")
         code = {}
     elif not isinstance(code, dict):
         errors.append(f"manifest: 'code' must be an object, got {type(code).__name__}")
         code = {}
-    
+
     if drift is not None and not isinstance(drift, dict):
         errors.append(f"manifest: 'drift_tracking' must be an object when present, got {type(drift).__name__}")
         drift = {}
-    
+
     if overrides is not None and not isinstance(overrides, dict):
         errors.append(f"manifest: 'overrides' must be an object when present, got {type(overrides).__name__}")
-    
+
     # Required code.* fields (mirroring v1.0 contract)
     for key in ("name", "version", "description", "module", "class"):
         val = code.get(key) if isinstance(code, dict) else None
@@ -1431,14 +1431,14 @@ def _validate_manifest_v2_dict(
             errors.append(f"manifest: required field 'code.{key}' is missing or empty")
         elif not isinstance(val, str):
             errors.append(f"manifest: 'code.{key}' must be a string, got {type(val).__name__}")
-    
+
     # Required install.python_path (the proxy needs it to spawn the worker)
     py_path = install.get("python_path") if isinstance(install, dict) else None
     if py_path is None or py_path == "":
         errors.append("manifest: required field 'install.python_path' is missing or empty")
     elif not isinstance(py_path, str):
         errors.append(f"manifest: 'install.python_path' must be a string, got {type(py_path).__name__}")
-    
+
     # Optional install.* fields — type-check only
     for key in ("conda_env", "db_path", "installed_at", "installer_version", "package_source",
                 "mode", "refreshed_at"):
@@ -1456,12 +1456,12 @@ def _validate_manifest_v2_dict(
             errors.append("manifest: 'install.resolved' must be an object when present")
         elif not all(isinstance(k, str) and isinstance(v, str) for k, v in resolved.items()):
             errors.append("manifest: 'install.resolved' must map dist names to version strings")
-    
+
     # Optional code.* fields
     if isinstance(code, dict) and "regenerated_at" in code and code["regenerated_at"] is not None:
         if not isinstance(code["regenerated_at"], str):
             errors.append("manifest: 'code.regenerated_at' must be a string when present")
-    
+
     # Optional code.config_schema
     if isinstance(code, dict) and "config_schema" in code and code["config_schema"] is not None:
         cs = code["config_schema"]
@@ -1469,14 +1469,14 @@ def _validate_manifest_v2_dict(
             errors.append("manifest: 'code.config_schema' must be an object when present")
         elif "properties" in cs and not isinstance(cs["properties"], dict):
             errors.append("manifest: 'code.config_schema.properties' must be an object when present")
-    
+
     # Optional code.resources block — type-check
     if isinstance(code, dict):
         errors.extend(_validate_resources_block(
             code.get("resources"),
             path_prefix="manifest: code",
         ))
-    
+
     # T23: worker-env default templating — every EnvVarSpec.default's ${...}
     # placeholders must be in the allowed vocabulary, else the substrate can't
     # resolve them when it spawns the worker. Surface the capability-author bug at
@@ -1505,7 +1505,7 @@ def _validate_manifest_v2_dict(
     if isinstance(drift, dict) and "config_schema_hash" in drift and drift["config_schema_hash"] is not None:
         if not isinstance(drift["config_schema_hash"], str):
             errors.append("manifest: 'drift_tracking.config_schema_hash' must be a string when present")
-    
+
     return errors
 
 
@@ -1521,7 +1521,7 @@ def _validate_manifest_dict(
     """
     if not isinstance(data, dict):
         return [f"manifest must be a JSON object, got {type(data).__name__}"]
-    
+
     fmt = data.get("format_version")
     if fmt == "2.0":
         return _validate_manifest_v2_dict(data)
@@ -1541,20 +1541,20 @@ def _validate_capabilities_yaml_dict(
     errors: List[str] = []
     if not isinstance(data, dict):
         return [f"capabilities.yaml must be a YAML mapping at the top level, got {type(data).__name__}"]
-    
+
     capabilities = data.get("capabilities")
     if capabilities is None:
         return ["capabilities.yaml: top-level key 'capabilities' is missing"]
     if not isinstance(capabilities, list):
         return [f"capabilities.yaml: 'capabilities' must be a list, got {type(capabilities).__name__}"]
-    
+
     seen_names: set[str] = set()
     for i, capability in enumerate(capabilities):
         prefix = f"capabilities.yaml: capabilities[{i}]"
         if not isinstance(capability, dict):
             errors.append(f"{prefix}: must be a mapping, got {type(capability).__name__}")
             continue
-        
+
         # Required string fields
         for key in ("name", "env_name", "package"):
             val = capability.get(key)
@@ -1562,21 +1562,21 @@ def _validate_capabilities_yaml_dict(
                 errors.append(f"{prefix}: required field {key!r} is missing or empty")
             elif not isinstance(val, str):
                 errors.append(f"{prefix}: field {key!r} must be a string")
-        
+
         # Name uniqueness
         name = capability.get("name")
         if isinstance(name, str) and name:
             if name in seen_names:
                 errors.append(f"{prefix}: duplicate capability name {name!r}")
             seen_names.add(name)
-        
+
         # Env creation: env_file OR python_version (at least one)
         if "env_file" not in capability and "python_version" not in capability:
             errors.append(
                 f"{prefix}: must declare either 'env_file' or 'python_version' "
                 f"to specify how the conda env is created"
             )
-        
+
         if "interface_libs" in capability and not isinstance(capability["interface_libs"], list):
             errors.append(f"{prefix}: 'interface_libs' must be a list when present")
 
@@ -1600,7 +1600,7 @@ def _validate_capabilities_yaml_dict(
                     lib = entry.get("lib")
                     if lib is not None and not isinstance(lib, str):
                         errors.append(f"{aprefix}: 'lib' must be a string when present")
-    
+
     return errors
 
 
@@ -1735,7 +1735,7 @@ def validate_file(
     if not path.exists():
         typer.echo(f"File not found: {path}", err=True)
         raise typer.Exit(code=1)
-    
+
     fmt = format or _detect_manifest_format(path)
     if fmt is None:
         typer.echo(
@@ -1744,7 +1744,7 @@ def validate_file(
             err=True,
         )
         raise typer.Exit(code=1)
-    
+
     warnings: List[str] = []
     try:
         if fmt == "manifest":
@@ -1767,20 +1767,20 @@ def validate_file(
     except (json.JSONDecodeError, yaml.YAMLError) as e:
         typer.echo(f"Parse error in {path}: {e}", err=True)
         raise typer.Exit(code=1)
-    
+
     # T23: warnings (V4 single-element enum, V12 dropped resource fields) are
     # non-failing lints — surface them but don't exit non-zero on warnings alone.
     if warnings:
         typer.echo(f"⚠ {path} ({kind}): {len(warnings)} warning(s)", err=True)
         for w in warnings:
             typer.echo(f"  - {w}", err=True)
-    
+
     if errors:
         typer.echo(f"✗ {path} ({kind}): {len(errors)} error(s)", err=True)
         for err in errors:
             typer.echo(f"  - {err}", err=True)
         raise typer.Exit(code=1)
-    
+
     typer.echo(f"✓ {path} ({kind}): valid{' (with warnings)' if warnings else ''}")
 
 

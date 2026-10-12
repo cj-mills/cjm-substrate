@@ -27,23 +27,24 @@ class Pipeline:
 
     Exit calls `queue.stop()` + `manager.unload_all()`.
     """
+
     manager: CapabilityManager  # Discovery + lifecycle
     queue: JobQueue  # Job submission + scheduling
     bindings: Dict[str, CapabilityBinding] = field(default_factory=dict)  # Capability name -> bound view
-    
+
     async def start(self) -> None:
         """Start the job queue's background processor."""
         await self.queue.start()
-    
+
     async def stop(self) -> None:
         """Stop the job queue and unload all capabilities."""
         await self.queue.stop()
         self.manager.unload_all()
-    
+
     async def __aenter__(self) -> "Pipeline":
         await self.start()
         return self
-    
+
     async def __aexit__(self, exc_type, exc, tb) -> None:
         await self.stop()
 
@@ -97,7 +98,7 @@ def create_pipeline(
     """
     manager = CapabilityManager(scheduler=scheduler, search_paths=search_paths)
     manager.discover_manifests()
-    
+
     bindings: Dict[str, CapabilityBinding] = {}
     for spec in (capabilities or []):
         name, config = _normalize_spec(spec)
@@ -111,9 +112,9 @@ def create_pipeline(
             bindings[name] = binding
         else:
             _logger.warning("Capability %s did not load; omitted from pipeline.bindings", name)
-    
+
     if system_monitor:
         manager.register_system_monitor(system_monitor)
-    
+
     queue = JobQueue(deps=manager, **(queue_kwargs or {}))
     return Pipeline(manager=manager, queue=queue, bindings=bindings)

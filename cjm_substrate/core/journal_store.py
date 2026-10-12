@@ -30,6 +30,7 @@ class SubstrateEventType(str, Enum):
     journal's `event_type` column — the journal is vocabulary-tolerant
     by design (unknown types round-trip; the P5/P6 tolerant-unknown law).
     """
+
     WORKER_SPAWNED = "worker_spawned"      # Worker subprocess launched (proxy)
     WORKER_READY = "worker_ready"          # Worker passed readiness probe (proxy)
     WORKER_DIED = "worker_died"            # Worker exited / was terminated (proxy cleanup or death check)
@@ -69,6 +70,7 @@ class JournalEvent:
     stage-5 identity rule's asserted class); `EventRef(event_id)` from
     cjm-context-graph-primitives anchors graph->journal references.
     """
+
     event_type: str  # JobEventType.value or SubstrateEventType.value (vocabulary-tolerant)
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))  # Generated occurrence id (EventRef anchor)
     ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))  # Substrate-stamped, tz-aware UTC

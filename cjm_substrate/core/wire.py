@@ -22,7 +22,7 @@ class FileBackedDTO(Protocol):
     When the Proxy detects an argument implementing this protocol, it calls
     `to_temp_file()` and sends the file path instead of the data.
     """
-    
+
     def to_temp_file(self) -> str: # Absolute path to the temporary file
         """Save the data to a temporary file and return the absolute path."""
         ...
@@ -143,6 +143,7 @@ class CallEnvelope:
     All fields optional — an envelope-less call (direct proxy use, old hosts)
     simply yields unattributed records, never a failure.
     """
+
     job_id: Optional[str] = None  # Queue job identity
     run_id: Optional[str] = None  # Host-tier run correlation (core run manifests)
     composition_id: Optional[str] = None  # Stage-3 composition correlation
