@@ -6,10 +6,12 @@ they changed), the latest-state corpus profile (modules, top-level symbols, text
 placement, import-time order dependencies) and the class-member seam census -- the blank
 lines between a class's members and after its docstring, which the one canonicalization
 commit of abfc2829 (4) normalizes (member seams one blank line, docstring to first member
-one -- amendment 3e155cd6). With --classes it lists every class whose seams would change.
+one -- amendment 3e155cd6). With --classes it lists every class whose seams would change; with
+--imports it measures the test modules' import blocks against their rendered bindings (the leg 2
+measurement f4fb397f, ruling 21b8fcca).
 
     conda run -n cjm-transcript-correction-core python scripts/code_lane_census.py \
-        .cjm/dev-graph.source.jsonl [--classes]
+        .cjm/dev-graph.source.jsonl [--classes] [--imports]
 """
 
 import ast
@@ -19,7 +21,8 @@ from collections import Counter
 
 from cjm_context_graph_projection.source_state import (is_test_module_path, latest_source_ops,
                                                        read_source_journal)
-from cjm_python_decompose_core.parse import parse_regions
+from cjm_python_decompose_core.emit import render_import_block
+from cjm_python_decompose_core.parse import _import_bindings, parse_regions
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
@@ -160,15 +163,52 @@ def class_seams(texts: dict, list_classes: bool) -> None:
             print(f"  {c}")
 
 
-def main(journal: str, list_classes: bool = False) -> int:
+def test_import_blocks(texts: dict) -> None:
+    """Whether a test module's rendered bindings reproduce its verbatim import block (f4fb397f;
+    ruling 21b8fcca): byte-equal, or differing by line shape, by order / grouping, or holding a
+    statement inside the import span (order-bearing, kept in source order)."""
+    kinds, example = Counter(), {}
+    for (repo, path), text in sorted(texts.items()):
+        if not is_test_module_path(path):
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        imports = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
+        if not imports:
+            kinds["no top-level import"] += 1
+            continue
+        first, last = imports[0].lineno, imports[-1].end_lineno
+        lines = text.split("\n")
+        block = "\n".join(lines[first - 1:last])
+        rendered = render_import_block([b for bs in _import_bindings(tree).values() for b in bs])
+        if any(first <= n.lineno <= last for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))):
+            kind = "a statement inside the import span (order-bearing)"
+        elif rendered == block:
+            kind = "rendered == verbatim"
+        elif sorted(rendered.replace("\n\n", "\n").split("\n")) == sorted(block.replace("\n\n", "\n").split("\n")):
+            kind = "differs by order / grouping"
+        else:
+            kind = "differs by line shape (merge / wrap)"
+        kinds[kind] += 1
+        example.setdefault(kind, f"{repo}/{path}")
+    print(f"test modules' import blocks against the rendered bindings ({sum(kinds.values())}):")
+    for kind, n in kinds.most_common():
+        print(f"  {n:4}  {kind}  (e.g. {example.get(kind, '-')})")
+
+
+def main(journal: str, list_classes: bool = False, imports: bool = False) -> int:
     ops = read_source_journal(journal)
     texts = {k: a.get("text", "") for k, a in latest_source_ops(journal).items()
              if k[1].endswith(".py")}
     amplification(ops)
     corpus_profile(texts)
     class_seams(texts, list_classes)
+    if imports:
+        test_import_blocks(texts)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1], "--classes" in sys.argv[2:]))
+    sys.exit(main(sys.argv[1], "--classes" in sys.argv[2:], "--imports" in sys.argv[2:]))
