@@ -18,8 +18,11 @@ keep theirs (aba8ec79) -- and every later sighting of such a symbol is `carried`
 is `unexplained` and fails the replay. Refusals are counted by kind: `ambiguous` (a gap with several
 candidates), `unbound` (the binding check, abfc2829 (2): a write that left a name nothing binds -- in
 history the other half landed in a later write; under the element regime it lands in the same one, an
-import rider, or first); any `other` refusal fails the replay. The capture verb's sitting re-runs it with the
-capture preview before the capture lands.
+import rider, or first); any `other` refusal fails the replay. THE HORIZON IS THE REAL CAPTURE: once the capture verb has
+journaled a module's capture group (build 0547767d), the replay checks the shadow's composition of that
+module equals the capture's, byte for byte -- the snapshot history replayed through the element regime
+lands where the real capture landed -- and every element-regime record of the journal is then the real
+regime's, held to live == rebuild, never re-applied to the shadow (a mismatch fails the replay).
 
     python scripts/code_absorb_replay.py [--journal .cjm/dev-graph.source.jsonl] [--report out.json]
 """
@@ -31,9 +34,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from cjm_context_graph_projection.codesource import (capture_records, CodeSourceError,
+from cjm_context_graph_projection.codesource import (CAPTURE, capture_records, CodeSourceError,
                                                      derive_captured, element_canonical,
-                                                     SourceState)
+                                                     ELEMENT_VERBS, SourceState)
 from cjm_context_graph_projection.seeds import conceptual_key
 from cjm_context_graph_projection.source_state import (element_plan, IdentityWalk,
                                                        is_test_module_path, read_source_journal)
@@ -60,7 +63,7 @@ def replay(records: list) -> dict:
     out = {"modules": 0, "writes": 0, "noop": 0, "records": 0, "elements_touched": 0,
            "elements_held": 0, "moves": Counter(), "refused": Counter(), "refusals": [],
            "compose_mismatch": [], "id_divergence": Counter(), "divergences": [],
-           "derive_failures": []}
+           "derive_failures": [], "captures_checked": 0, "capture_mismatch": []}
 
     def is_test(a: dict) -> bool:
         mp = a.get("module_path") or ""
@@ -76,6 +79,17 @@ def replay(records: list) -> dict:
         before = copy.deepcopy(walk.ident) if op.get("op") in MOVE_OPS else None  # as the write finds it
         for rec in group:
             walk.apply(rec)
+        for rec in group:  # the real element regime: the horizon (its capture checked against the shadow)
+            if rec.get("verb") == CAPTURE:
+                m = walk.state.elements.modules[rec["args"]["module"]]
+                key = (m.repo_key, m.module_path)
+                out["captures_checked"] += 1
+                held = shadow.latest_ops()[key]["text"] if key in shadow.latest_ops() else None
+                if held != walk.state.compose(m.module):
+                    out["capture_mismatch"].append(f"{key[0]}/{key[1]}")
+        group = [r for r in group if r.get("verb") not in ELEMENT_VERBS]
+        if not group:
+            return
         tests = [r for r in group if is_test(r.get("args") or {})]
         snaps = [r for r in group if not is_test(r.get("args") or {})]  # the snapshot regime's, held too
         if not tests:
@@ -188,10 +202,13 @@ def main(journal: str, report: str = "") -> int:
     for d in out["divergences"][:12]:
         print(f"  DIVERGES {d}")
     print(f"derive failures at the end: {len(out['derive_failures'])} {out['derive_failures'][:5]}")
+    print(f"real captures checked against the shadow: {out['captures_checked']}; "
+          f"mismatches: {len(out['capture_mismatch'])} {out['capture_mismatch'][:5]}")
     if report:
         Path(report).write_text(json.dumps({**out, "refused": dict(out["refused"]), "moves": dict(out["moves"]),
                                             "id_divergence": dict(out["id_divergence"])}, indent=1))
     ok = (out["writes"] > 0 and not out["compose_mismatch"] and not out["derive_failures"]
+          and not out["capture_mismatch"]
           and not out["refused"].get("other")
           and not out["id_divergence"].get("unexplained"))
     print("REPLAY CLEAN" if ok else "REPLAY NOT CLEAN")
