@@ -1,0 +1,156 @@
+"""The element-grain absorb replayed over the code source journal's real edit history, in memory --
+nothing is journaled (design abfc2829 (7); the tests pilot's leg 2, work item 8caa95e1).
+
+Every test module is captured into a shadow element state at its first snapshot, and each later
+snapshot of it is absorbed (`codesource.absorb_records`, the op's identity hints honoured) as if the
+module had been captured all along. Per write it checks the records compose the element regime's
+canonical form of the snapshot, counts the records against the module's elements (the grain), and
+compares every symbol element's id with the id the snapshot regime derives at that record; at the end
+every shadow module must derive (`derive_captured`). An id divergence is expected only where the element
+regime decides differently by design -- a def an `author` edit renamed keeps its id, a name re-born after
+a retire takes a new one (6d35c07d (5)) -- and every later sighting of such a symbol is `carried`; any
+other divergence is `unexplained` and fails the replay. Refusals (an ambiguous edit, a verb the element
+regime does not carry) are counted by kind -- each is a write an agent would have had to land in two
+steps; an `unbound` refusal is the binding check (abfc2829 (2)) catching a write that left a name
+nothing binds -- in history the other half landed in a later write, under the element regime it lands
+in the same one (an import rider) or first. The capture verb's sitting re-runs it with the capture preview before the capture lands.
+
+    python scripts/code_absorb_replay.py [--journal .cjm/dev-graph.source.jsonl] [--report out.json]
+"""
+
+import argparse
+import json
+import sys
+from collections import Counter
+from pathlib import Path
+
+from cjm_context_graph_projection.codesource import (absorb_records, capture_records,
+                                                     CodeSourceError, derive_captured,
+                                                     element_canonical, SourceState)
+from cjm_context_graph_projection.seeds import conceptual_key
+from cjm_context_graph_projection.source_state import (_op_hints, ELEMENT_REFUSED_OPS, IdentityWalk,
+                                                       is_test_module_path, read_source_journal)
+from cjm_python_decompose_core.extract import decompose_text
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _snapshot_ids(walk: IdentityWalk, ck: str, mp: str, a: dict) -> dict:
+    """qualname -> the id the snapshot regime derives for each symbol at this record."""
+    dm = decompose_text(ck, mp, "", a["text"], import_name=a.get("import_name") or None,
+                        symbol_identity=walk.ident.for_module(ck, mp))
+    return {s.qualname: s.id for s in dm.symbols}
+
+
+def replay(records: list) -> dict:
+    walk = IdentityWalk(conceptual_key)
+    shadow = SourceState()
+    ts = 0.0
+    caused = set()  # (module, element) pairs whose divergence began at a known cause
+    out = {"modules": 0, "writes": 0, "noop": 0, "records": 0, "elements_touched": 0,
+           "elements_held": 0, "refused": Counter(), "refusals": [], "compose_mismatch": [],
+           "id_divergence": Counter(), "divergences": [], "derive_failures": []}
+    for rec in records:
+        walk.apply(rec)
+        a = rec.get("args") or {}
+        rk, mp = a.get("repo_key"), a.get("module_path")
+        if not (mp and mp.endswith(".py") and is_test_module_path(mp)):
+            continue
+        ts += 1.0
+        if rec["verb"] == "retire":
+            if shadow.elements.captured((rk, mp)) is not None:
+                shadow.apply({**rec, "ts": ts})
+            continue
+        if rec["verb"] != "source":
+            continue
+        ck = conceptual_key(rk)
+        mid = shadow.elements.captured((rk, mp))
+        if mid is None:  # the module's first snapshot (or its first since a retire): capture it
+            recs, _rep = capture_records(rk, ck, mp, a.get("import_name") or "", a["text"],
+                                         symbol_identity=walk.ident.for_module(ck, mp),
+                                         ever=set(shadow.elements.ever))
+            for r in recs:
+                shadow.apply({**r, "ts": ts, "generation": 1})
+            out["modules"] += 1
+            continue
+        out["writes"] += 1
+        op = rec.get("op") or {}
+        if op.get("op") in ELEMENT_REFUSED_OPS:
+            out["refused"][op["op"]] += 1
+            out["refusals"].append({"module": f"{rk}/{mp}", "op": op.get("op"), "ts": rec.get("ts")})
+            shadow.apply({"verb": "retire", "ts": ts, "args": {"repo_key": rk, "module_path": mp}})
+            continue  # the shadow re-captures at the module's next snapshot
+        renames, authored = _op_hints(op)
+        try:
+            recs, rep = absorb_records(shadow, mid, a["text"], renames=renames, authored=authored)
+        except CodeSourceError as e:
+            kind = ("ambiguous" if "ambiguous" in str(e) else "unbound" if "no binding" in str(e)
+                    else "other")
+            out["refused"][kind] += 1
+            out["refusals"].append({"module": f"{rk}/{mp}", "op": op.get("op"), "ts": rec.get("ts"),
+                                    "error": str(e)[:300]})
+            shadow.apply({"verb": "retire", "ts": ts, "args": {"repo_key": rk, "module_path": mp}})
+            continue
+        held = len(shadow.elements.outline(mid)) + 1
+        for r in recs:
+            shadow.apply({**r, "ts": ts, "generation": 1})
+        if not recs:
+            out["noop"] += 1
+        out["records"] += len(recs)
+        out["elements_touched"] += len({r["args"]["element"] for r in recs})
+        out["elements_held"] += held
+        composed = shadow.latest_ops()[(rk, mp)]["text"]
+        if composed != element_canonical(a["text"], shadow.siblings((rk, mp))):
+            out["compose_mismatch"].append(f"{rk}/{mp}@{rec.get('ts')}")
+        snap = _snapshot_ids(walk, ck, mp, a)
+        for eid, q in shadow.elements.addresses(mid).items():
+            if q in snap and snap[q] != eid:
+                why = ("authored-rename" if any(q == r[1] or q.startswith(r[1] + ".") for r in rep["renamed"])
+                       else "reborn-after-retire" if eid in rep["born"]
+                       else "carried" if (mid, eid) in caused else "unexplained")
+                caused.add((mid, eid))
+                out["id_divergence"][why] += 1
+                if len(out["divergences"]) < 40:
+                    out["divergences"].append({"module": f"{rk}/{mp}", "qualname": q, "why": why,
+                                               "op": op.get("op")})
+    for key in sorted(shadow.live_keys()):
+        mid = shadow.elements.captured(key)
+        if mid is None:
+            continue
+        try:
+            derive_captured(shadow, mid, conceptual_key(key[0]), "")
+        except (CodeSourceError, SyntaxError, ValueError) as e:
+            out["derive_failures"].append(f"{key[0]}/{key[1]}: {e}")
+    return out
+
+
+def main(journal: str, report: str = "") -> int:
+    out = replay(read_source_journal(journal))
+    w = max(out["writes"], 1)
+    print(f"test modules captured in the shadow: {out['modules']}; later writes absorbed: {out['writes']}")
+    print(f"no-op writes (layout only): {out['noop']}; records landed: {out['records']} "
+          f"({out['records'] / w:.2f} per write)")
+    print(f"elements touched per write: {out['elements_touched'] / w:.2f} of {out['elements_held'] / w:.1f} held")
+    print(f"refused: {dict(out['refused'])}")
+    for r in out["refusals"][:12]:
+        print(f"  REFUSED {r}")
+    print(f"compose mismatches: {len(out['compose_mismatch'])} {out['compose_mismatch'][:5]}")
+    print(f"symbol ids diverging from the snapshot regime: {dict(out['id_divergence'])}")
+    for d in out["divergences"][:12]:
+        print(f"  DIVERGES {d}")
+    print(f"derive failures at the end: {len(out['derive_failures'])} {out['derive_failures'][:5]}")
+    if report:
+        Path(report).write_text(json.dumps({**out, "refused": dict(out["refused"]),
+                                            "id_divergence": dict(out["id_divergence"])}, indent=1))
+    ok = (out["writes"] > 0 and not out["compose_mismatch"] and not out["derive_failures"] and not out["refused"].get("other")
+          and not out["id_divergence"].get("unexplained"))
+    print("REPLAY CLEAN" if ok else "REPLAY NOT CLEAN")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--journal", default=str(ROOT / ".cjm" / "dev-graph.source.jsonl"))
+    ap.add_argument("--report", default="", help="Write the full replay report here (JSON)")
+    a = ap.parse_args()
+    sys.exit(main(a.journal, a.report))
