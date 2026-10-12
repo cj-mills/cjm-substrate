@@ -20,8 +20,8 @@ from cjm_substrate.core.errors import (CapabilityDisabledError, CapabilityResour
                                        ResourceShortfall, WorkerOOMError)
 from cjm_substrate.core.manager import CapabilityBinding, CapabilityManager
 from cjm_substrate.core.manifest_format import CodeSection, ManifestV2
-from cjm_substrate.core.metadata import (CapabilityInstance, CapabilityLoadSpec,
-                                         CapabilityMeta, ResourceRequirements)
+from cjm_substrate.core.metadata import (CapabilityInstance, CapabilityLoadSpec, CapabilityMeta,
+                                         ResourceRequirements)
 from cjm_substrate.core.scheduling import PermissiveScheduler
 from cjm_substrate.utils.validation import CapabilityConfigError
 

@@ -16,15 +16,12 @@ from dataclasses import dataclass, field
 from typing import Any, Dict
 
 import pytest
-
-from cjm_substrate.core.capability import (
-    ConfigOption, EnvVarSpec, FieldOptions, RELOAD_TRIGGER, ToolCapability,
-    capability_action, collect_capability_actions, derive_structural_surface,
-    expand_worker_env_template, template_check_placeholders,
-)
-from cjm_substrate.core.errors import (
-    CapabilityCancelledError, CapabilityConfigError, CapabilityInputError,
-)
+from cjm_substrate.core.capability import (capability_action, collect_capability_actions,
+                                           ConfigOption, derive_structural_surface, EnvVarSpec,
+                                           expand_worker_env_template, FieldOptions, RELOAD_TRIGGER,
+                                           template_check_placeholders, ToolCapability)
+from cjm_substrate.core.errors import (CapabilityCancelledError, CapabilityConfigError,
+                                       CapabilityInputError)
 
 
 class MinimalCapability(ToolCapability):

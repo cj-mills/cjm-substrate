@@ -9,7 +9,6 @@ widening caller intent — which the taxonomy explicitly forbids (SG-48 dropped
 the last ValueError base)."""
 
 import pytest
-
 from cjm_substrate.core.errors import (CapabilityCancelledError, CapabilityConfigError,
                                        CapabilityDisabledError, CapabilityError,
                                        CapabilityFatalError, CapabilityInputError,

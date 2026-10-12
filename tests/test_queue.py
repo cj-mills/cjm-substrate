@@ -15,24 +15,14 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-
-from cjm_substrate.core.diagnostics_store import (
-    DiagnosticRecord, LocalDiagnosticsStore,
-)
-from cjm_substrate.core.errors import (
-    CapabilityDisabledError, CapabilityInputError, CapabilityResourceError,
-)
-from cjm_substrate.core.journal_store import (
-    LocalJournalStore, SubstrateEventType,
-)
-from cjm_substrate.core.ports import (
-    Composition, CompositionNode, CompositionValidationError, NodeState,
-    OutputRef,
-)
-from cjm_substrate.core.queue import (
-    CancelPhase, Job, JobEvent, JobEventType, JobQueue, JobQueueDependencies,
-    JobStatus, _subscriber_keys_for,
-)
+from cjm_substrate.core.diagnostics_store import DiagnosticRecord, LocalDiagnosticsStore
+from cjm_substrate.core.errors import (CapabilityDisabledError, CapabilityInputError,
+                                       CapabilityResourceError)
+from cjm_substrate.core.journal_store import LocalJournalStore, SubstrateEventType
+from cjm_substrate.core.ports import (Composition, CompositionNode, CompositionValidationError,
+                                      NodeState, OutputRef)
+from cjm_substrate.core.queue import (_subscriber_keys_for, CancelPhase, Job, JobEvent,
+                                      JobEventType, JobQueue, JobQueueDependencies, JobStatus)
 from cjm_substrate.core.wire import get_call_envelope
 
 

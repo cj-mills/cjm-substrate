@@ -4,9 +4,8 @@ flag > env > upward-walk > None precedence, and workspace-relative recording."""
 from pathlib import Path
 
 import pytest
-
-from cjm_substrate.core.workspace import (WORKSPACE_ENV_VAR, WorkspaceError, find_workspace_root,
-                                          init_workspace, resolve_workspace, workspace_doctor)
+from cjm_substrate.core.workspace import (find_workspace_root, init_workspace, resolve_workspace,
+                                          workspace_doctor, WORKSPACE_ENV_VAR, WorkspaceError)
 
 
 def test_init_creates_layout_and_is_idempotent(tmp_path):

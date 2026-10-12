@@ -2,7 +2,7 @@
 cell 9f8a656f at the golden-reference flip) — including THE negative check
 (a mismatched pairing must say no, legibly)."""
 
-from cjm_substrate.core.adapter_manifest import (AdapterManifest, adapter_manifest_from_dict,
+from cjm_substrate.core.adapter_manifest import (adapter_manifest_from_dict, AdapterManifest,
                                                  is_adapter_manifest,
                                                  match_protocol_against_surface)
 

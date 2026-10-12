@@ -8,10 +8,9 @@ CLI drives all of it."""
 import json
 
 import pytest
-
-from cjm_substrate.utils.lifecycle import (ACTIVE, ARCHIVED, ArtifactLifecycle,
-                                           LifecycleRefusal, find_holders, lifecycle_state,
-                                           list_artifacts, main, partition_lifecycle)
+from cjm_substrate.utils.lifecycle import (ACTIVE, ARCHIVED, ArtifactLifecycle, find_holders,
+                                           lifecycle_state, LifecycleRefusal, list_artifacts, main,
+                                           partition_lifecycle)
 
 
 def _artifact(root, cls, aid, **fields):

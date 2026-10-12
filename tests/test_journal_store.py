@@ -3,9 +3,7 @@ test-roundtrip / test-terminal / test-tolerant-unknown / test-loud at the
 golden-reference flip)."""
 
 import pytest
-
-from cjm_substrate.core.journal_store import (LIVENESS_EVENT_TYPES,
-                                              JournalEvent, LocalJournalStore,
+from cjm_substrate.core.journal_store import (JournalEvent, LIVENESS_EVENT_TYPES, LocalJournalStore,
                                               SubstrateEventType)
 
 

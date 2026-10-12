@@ -1,8 +1,7 @@
 """Capability-metadata tests (projected from nbs/core/metadata.ipynb cells
 4bf39f71 / 6416b554 / 9f9db9a7 / b54e012c at the golden-reference flip)."""
 
-from cjm_substrate.core.metadata import (CapabilityInstance, CapabilityMeta,
-                                         ResourceRequirements)
+from cjm_substrate.core.metadata import CapabilityInstance, CapabilityMeta, ResourceRequirements
 
 
 def test_capability_instance_defaults_and_tz_aware_created_at():

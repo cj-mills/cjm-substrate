@@ -10,14 +10,11 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import pytest
-
-from cjm_substrate.core.wire import (ACCOUNTS_HEADER, WIRE_DATA_KEY,
-                                     WIRE_KIND_KEY, CallEnvelope,
-                                     FileBackedDTO, begin_account_capture,
-                                     drain_accounts, get_call_envelope,
-                                     record_account, reset_call_envelope,
-                                     set_call_envelope, wire_decode,
-                                     wire_encode, wire_type)
+from cjm_substrate.core.wire import (ACCOUNTS_HEADER, begin_account_capture, CallEnvelope,
+                                     drain_accounts, FileBackedDTO, get_call_envelope,
+                                     record_account, reset_call_envelope, set_call_envelope,
+                                     WIRE_DATA_KEY, wire_decode, wire_encode, WIRE_KIND_KEY,
+                                     wire_type)
 
 
 # ─── FileBackedDTO protocol ───

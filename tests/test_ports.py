@@ -6,14 +6,10 @@ import dataclasses
 from dataclasses import dataclass
 
 import pytest
-
-from cjm_substrate.core.ports import (Composition, CompositionBindingError,
-                                      CompositionNode,
-                                      CompositionValidationError, NodeState,
-                                      OutputRef, extract_output_field,
-                                      new_composition_run,
-                                      resolve_node_kwargs,
-                                      validate_composition)
+from cjm_substrate.core.ports import (Composition, CompositionBindingError, CompositionNode,
+                                      CompositionValidationError, extract_output_field,
+                                      new_composition_run, NodeState, OutputRef,
+                                      resolve_node_kwargs, validate_composition)
 
 
 def _pipe_composition():

@@ -7,13 +7,11 @@ from dataclasses import dataclass, field, fields
 from typing import List, Optional
 
 import pytest
-
 from cjm_substrate.core.errors import CapabilityConfigError
-from cjm_substrate.utils.validation import (config_to_dict, dataclass_to_jsonschema,
-                                            dict_to_config, extract_defaults,
-                                            SCHEMA_DESC, SCHEMA_ENUM, SCHEMA_MAX, SCHEMA_MIN,
-                                            SCHEMA_TITLE, validate_config,
-                                            _python_type_to_json_type)
+from cjm_substrate.utils.validation import (_python_type_to_json_type, config_to_dict,
+                                            dataclass_to_jsonschema, dict_to_config,
+                                            extract_defaults, SCHEMA_DESC, SCHEMA_ENUM, SCHEMA_MAX,
+                                            SCHEMA_MIN, SCHEMA_TITLE, validate_config)
 
 
 @dataclass

@@ -5,13 +5,9 @@ validators, T23 first-wave gates) at the golden-reference flip)."""
 import copy
 from pathlib import Path
 
-from cjm_substrate.cli import (
-    _collect_manifest_warnings,
-    _detect_manifest_format,
-    _lint_capability_logging,
-    _validate_capabilities_yaml_dict,
-    _validate_manifest_dict,
-)
+from cjm_substrate.cli import (_collect_manifest_warnings, _detect_manifest_format,
+                               _lint_capability_logging, _validate_capabilities_yaml_dict,
+                               _validate_manifest_dict)
 
 
 # ─── T23 (CR-14): logging.basicConfig source lint ──────────────────────────

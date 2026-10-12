@@ -1,10 +1,10 @@
 """The refresh verb's planning + the public-yaml projection (DEC f282571c) — pure, no pip."""
 
 import pytest
-
-from cjm_substrate.utils.envrefresh import (EnvPlan, checkout_dist_version, derive_public_capabilities,
-                                            execute_plan, find_checkout, import_sweep, plan_env,
-                                            raw_github_url, spec_floors, yaml_entry_for, yaml_specs)
+from cjm_substrate.utils.envrefresh import (checkout_dist_version, derive_public_capabilities,
+                                            EnvPlan, execute_plan, find_checkout, import_sweep,
+                                            plan_env, raw_github_url, spec_floors, yaml_entry_for,
+                                            yaml_specs)
 
 
 def _manifest(py, env="test-x", src="/repos/cjm-capability-x/", name="cjm-capability-x"):

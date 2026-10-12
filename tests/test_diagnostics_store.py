@@ -6,13 +6,10 @@ notebook never had)."""
 import logging
 from datetime import datetime, timedelta, timezone
 
-from cjm_substrate.core.diagnostics_store import (DiagnosticRecord,
-                                                  DiagnosticsLogHandler,
-                                                  LocalDiagnosticsStore,
-                                                  StreamChunk,
-                                                  normalize_stream_line)
-from cjm_substrate.core.wire import (CallEnvelope, reset_call_envelope,
-                                     set_call_envelope)
+from cjm_substrate.core.diagnostics_store import (DiagnosticRecord, DiagnosticsLogHandler,
+                                                  LocalDiagnosticsStore, normalize_stream_line,
+                                                  StreamChunk)
+from cjm_substrate.core.wire import CallEnvelope, reset_call_envelope, set_call_envelope
 
 
 def test_store_append_and_exact_job_correlation(tmp_path):

@@ -13,19 +13,14 @@ import json
 import signal
 
 import pytest
-
-from cjm_substrate.core.errors import (
-    CapabilityCancelledError, CapabilityError, CapabilityFatalError,
-    CapabilityInputError, CapabilityResourceError, CapabilityTransientError,
-    WorkerOOMError,
-)
-from cjm_substrate.core.proxy import (
-    RemoteCapabilityProxy, _raise_from_job_error_chunk,
-    _raise_typed_execute_error,
-)
-from cjm_substrate.core.wire import (
-    ACCOUNTS_HEADER, CallEnvelope, reset_call_envelope, set_call_envelope,
-)
+from cjm_substrate.core.errors import (CapabilityCancelledError, CapabilityError,
+                                       CapabilityFatalError, CapabilityInputError,
+                                       CapabilityResourceError, CapabilityTransientError,
+                                       WorkerOOMError)
+from cjm_substrate.core.proxy import (_raise_from_job_error_chunk, _raise_typed_execute_error,
+                                      RemoteCapabilityProxy)
+from cjm_substrate.core.wire import (ACCOUNTS_HEADER, CallEnvelope, reset_call_envelope,
+                                     set_call_envelope)
 
 
 # ---------------------------------------------------------------------------

@@ -7,8 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
-
-from cjm_substrate.bootstrap import Pipeline, _normalize_spec, create_pipeline
+from cjm_substrate.bootstrap import _normalize_spec, create_pipeline, Pipeline
 from cjm_substrate.core.manager import CapabilityManager
 from cjm_substrate.core.queue import JobQueue
 

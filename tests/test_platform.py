@@ -9,18 +9,12 @@ import sys
 from pathlib import Path
 
 import pytest
-
-from cjm_substrate.core.config import (CJMConfig, CondaType, RuntimeConfig,
-                                       RuntimeMode)
-from cjm_substrate.core.platform import (MICROMAMBA_URLS, build_conda_command,
-                                         conda_env_exists, get_conda_command,
-                                         get_current_platform,
-                                         get_micromamba_binary_path,
-                                         get_micromamba_download_url,
-                                         get_popen_isolation_kwargs,
-                                         get_python_in_env, is_linux,
-                                         is_macos, is_windows,
-                                         run_shell_command, terminate_process)
+from cjm_substrate.core.config import CJMConfig, CondaType, RuntimeConfig, RuntimeMode
+from cjm_substrate.core.platform import (build_conda_command, conda_env_exists, get_conda_command,
+                                         get_current_platform, get_micromamba_binary_path,
+                                         get_micromamba_download_url, get_popen_isolation_kwargs,
+                                         get_python_in_env, is_linux, is_macos, is_windows,
+                                         MICROMAMBA_URLS, run_shell_command, terminate_process)
 
 
 def test_exactly_one_os_detected():

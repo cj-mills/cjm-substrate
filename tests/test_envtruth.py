@@ -2,7 +2,8 @@
 
 import json
 
-from cjm_substrate.utils.envtruth import derive_mode, env_mode, envs_for, main, read_cjm_set, render_rows
+from cjm_substrate.utils.envtruth import (derive_mode, env_mode, envs_for, main, read_cjm_set,
+                                          render_rows)
 
 
 def _mk_env(root, version="0.1.9", editable=True, origin=None):

@@ -15,13 +15,10 @@ import types
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi.testclient import TestClient
-
 from cjm_substrate.core.errors import CapabilityCancelledError
-from cjm_substrate.core.wire import (
-    ACCOUNTS_HEADER, get_call_envelope, record_account,
-)
-from cjm_substrate.core.worker import EnhancedJSONEncoder, create_app
+from cjm_substrate.core.wire import ACCOUNTS_HEADER, get_call_envelope, record_account
+from cjm_substrate.core.worker import create_app, EnhancedJSONEncoder
+from fastapi.testclient import TestClient
 
 STUB_MODULE = "_worker_test_stubs"
 

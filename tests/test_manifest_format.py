@@ -5,14 +5,10 @@ golden-reference flip)."""
 import json
 
 import pytest
-
-from cjm_substrate.core.manifest_format import (CodeSection, DriftTracking,
-                                                InstallSection, ManifestV2,
-                                                compute_config_schema_hash,
-                                                compute_structural_surface_hash,
-                                                load_manifest,
-                                                manifest_to_dict,
-                                                write_manifest)
+from cjm_substrate.core.manifest_format import (CodeSection, compute_config_schema_hash,
+                                                compute_structural_surface_hash, DriftTracking,
+                                                InstallSection, load_manifest, manifest_to_dict,
+                                                ManifestV2, write_manifest)
 from cjm_substrate.core.metadata import ResourceRequirements
 
 

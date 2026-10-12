@@ -1,5 +1,6 @@
 """Tests for the SidecarState store (never-raise load, merge-on-save,
 best-effort write)."""
+
 from cjm_substrate.utils.sidecar import SidecarState
 
 

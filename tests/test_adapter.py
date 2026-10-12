@@ -6,7 +6,6 @@ from abc import abstractmethod
 from typing import Protocol, runtime_checkable
 
 import pytest
-
 from cjm_substrate.core.adapter import TaskAdapter
 
 

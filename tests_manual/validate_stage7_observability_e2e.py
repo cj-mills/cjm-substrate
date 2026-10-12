@@ -30,6 +30,7 @@ connection + synchronous=NORMAL in both stores.
 Per [[stage-stress-suites]]: this script persists NO config (no I8 exposure);
 all stores live in a TemporaryDirectory.
 """
+
 import asyncio
 import json
 import logging
@@ -45,12 +46,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from cjm_substrate.core.diagnostics_store import (
-    DiagnosticRecord, LocalDiagnosticsStore, StreamChunk,
-)
-from cjm_substrate.core.journal_store import (
-    JournalEvent, LocalJournalStore, SubstrateEventType,
-)
+from cjm_substrate.core.diagnostics_store import (DiagnosticRecord, LocalDiagnosticsStore,
+                                                  StreamChunk)
+from cjm_substrate.core.journal_store import JournalEvent, LocalJournalStore, SubstrateEventType
 from cjm_substrate.core.proxy import _pump_stream
 from cjm_substrate.core.queue import JobEventType, JobQueue, JobStatus
 

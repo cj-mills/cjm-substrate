@@ -5,11 +5,9 @@ aea0afa8 at the golden-reference flip)."""
 from pathlib import Path
 
 import pytest
-
-from cjm_substrate.core.config import (CJMConfig, CondaType, RuntimeConfig,
-                                       RuntimeMode, SubstrateConfig,
-                                       _load_from_yaml, get_config,
-                                       load_config, reset_config, set_config)
+from cjm_substrate.core.config import (_load_from_yaml, CJMConfig, CondaType, get_config,
+                                       load_config, reset_config, RuntimeConfig, RuntimeMode,
+                                       set_config, SubstrateConfig)
 
 
 @pytest.fixture(autouse=True)
