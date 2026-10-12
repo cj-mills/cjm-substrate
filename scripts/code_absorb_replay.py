@@ -5,7 +5,10 @@ Every test module is captured into a shadow element state at its first snapshot,
 write to it is absorbed through `source_state.element_plan` as `journaled_emit` would land it, so a move,
 regroup or rename-module's records (one op, several modules) plan together as one write: departures
 and arrivals keep their ids, a regroup's new test module is born captured, a renamed module keeps its
-id. Per write it checks the records compose the element regime's canonical form of the snapshot (a
+id. A move across the regimes (aba8ec79 (5)) plans with the write's snapshot modules beside its
+captured ones -- the shadow holds every other module's snapshot records, so a snapshot source's text
+and the identity map are the ones the write finds -- and an adopted symbol keeps its snapshot id. Per
+write it checks the records compose the element regime's canonical form of the snapshot (a
 move's, with its travelling bindings), counts the records against the module's elements (the grain),
 and compares every symbol element's id with the id the snapshot regime derives at that record; at the
 end every shadow module must derive (`derive_captured`). An id divergence is expected only where the
@@ -15,14 +18,14 @@ keep theirs (aba8ec79) -- and every later sighting of such a symbol is `carried`
 is `unexplained` and fails the replay. Refusals are counted by kind: `ambiguous` (a gap with several
 candidates), `unbound` (the binding check, abfc2829 (2): a write that left a name nothing binds -- in
 history the other half landed in a later write; under the element regime it lands in the same one, an
-import rider, or first), `cross-regime` (a move between a captured and a snapshot module, aba8ec79 (5),
-built next); any `other` refusal fails the replay. The capture verb's sitting re-runs it with the
+import rider, or first); any `other` refusal fails the replay. The capture verb's sitting re-runs it with the
 capture preview before the capture lands.
 
     python scripts/code_absorb_replay.py [--journal .cjm/dev-graph.source.jsonl] [--report out.json]
 """
 
 import argparse
+import copy
 import json
 import sys
 from collections import Counter
@@ -69,12 +72,15 @@ def replay(records: list) -> dict:
             shadow.apply({**r, "ts": clock[0], "generation": 1})
 
     def process(group: list) -> None:
+        op = group[0].get("op") or {}
+        before = copy.deepcopy(walk.ident) if op.get("op") in MOVE_OPS else None  # as the write finds it
         for rec in group:
             walk.apply(rec)
         tests = [r for r in group if is_test(r.get("args") or {})]
+        snaps = [r for r in group if not is_test(r.get("args") or {})]  # the snapshot regime's, held too
         if not tests:
+            apply(snaps)
             return
-        op = group[0].get("op") or {}
         sources = [r for r in tests if r["verb"] == "source"]
         retires = [r["args"] for r in tests if r["verb"] == "retire"]
         if len(group) == 1 and sources:
@@ -90,32 +96,32 @@ def replay(records: list) -> dict:
                 return
         if not sources:  # a delete: the retire ends the key and its elements
             apply([r for r in tests if shadow.elements.captured(
-                (r["args"]["repo_key"], r["args"]["module_path"])) is not None])
+                (r["args"]["repo_key"], r["args"]["module_path"])) is not None] + snaps)
             return
-        emissions = [{**r["args"], "cutover": shadow.elements.captured(
-            (r["args"]["repo_key"], r["args"]["module_path"])) is None} for r in sources]
-        out["writes"] += len(emissions)
+        out["writes"] += len(sources)
+        emissions = [{**r["args"], "cutover": is_test(r["args"]) and shadow.elements.captured(
+            (r["args"]["repo_key"], r["args"]["module_path"])) is None}
+            for r in group if r["verb"] == "source"]
         if op.get("op") in MOVE_OPS:
             out["moves"][op["op"]] += 1
         try:
-            plans, absorbed = element_plan(shadow, emissions, retires, op)
+            plans, absorbed = element_plan(shadow, emissions, retires, op, identity=lambda: before)
         except CodeSourceError as e:
             msg = str(e)
-            kind = ("ambiguous" if "ambiguous" in msg else "unbound" if "no binding" in msg
-                    else "cross-regime" if "not built yet" in msg else "other")
+            kind = "ambiguous" if "ambiguous" in msg else "unbound" if "no binding" in msg else "other"
             out["refused"][kind] += 1
             out["refusals"].append({"modules": [f"{x['repo_key']}/{x['module_path']}" for x in emissions],
                                     "op": op.get("op"), "ts": group[0].get("ts"), "error": msg[:300]})
             gone = [{"verb": "retire", "args": {"repo_key": x["repo_key"], "module_path": x["module_path"]}}
                     for x in emissions + retires
                     if shadow.elements.captured((x["repo_key"], x["module_path"])) is not None]
-            apply(gone)  # the shadow re-captures each at its next snapshot
+            apply(gone + snaps)  # the shadow re-captures each at its next snapshot
             return
         held = {i: len(shadow.elements.outline(p[1]["module"])) + 1
                 for i, p in plans.items() if p[1]["restated"] != "born"}
         apply([r for i in sorted(plans) for r in plans[i][0]]
               + [{"verb": "retire", "args": x} for x in retires
-                 if (x["repo_key"], x["module_path"]) not in absorbed])
+                 if (x["repo_key"], x["module_path"]) not in absorbed] + snaps)
         for i, (recs, rep) in plans.items():
             rk, mp = rep["repo_key"], rep["module_path"]
             if not recs:
