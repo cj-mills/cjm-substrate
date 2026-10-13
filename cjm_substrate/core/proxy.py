@@ -26,8 +26,8 @@ from cjm_substrate.core.errors import (CapabilityCancelledError, CapabilityFatal
 from cjm_substrate.core.journal_store import (JournalEvent, JournalStore, LocalJournalStore,
                                               SubstrateEventType)
 from cjm_substrate.core.platform import get_popen_isolation_kwargs, is_windows, terminate_process
-from cjm_substrate.core.wire import (ACCOUNTS_HEADER, ENVELOPE_BODY_KEY, FileBackedDTO,
-                                     get_call_envelope, wire_decode)
+from cjm_substrate.core.wire import (ACCOUNTS_HEADER, call_metrics, ENVELOPE_BODY_KEY,
+                                     FileBackedDTO, get_call_envelope, wire_decode)
 from cjm_substrate.core.workspace import resolve_workspace, WORKSPACE_ENV_VAR
 
 # CR-3 follow-up: module-level logger so the proxy can log close-to-wire
@@ -719,6 +719,7 @@ class RemoteCapabilityProxy(ToolCapability):
         no later wrapper supersedes it (the G7a last-assignment-wins lesson).
         """
         payload = self._prepare_task_payload(task_name, method, kwargs)
+        t0 = time.perf_counter()
         try:
             resp = self._ensure_sync_client().post(
                 f"{self.base_url}/task", json=payload)
@@ -726,28 +727,37 @@ class RemoteCapabilityProxy(ToolCapability):
                 httpx.ReadError, httpx.WriteError):
             self._check_worker_death()
             raise
+        post_s = time.perf_counter() - t0
         self._harvest_worker_accounts(resp)  # CR-14 follow-up: TASK_ACCOUNT et al
         if resp.status_code == 409:
             raise CapabilityCancelledError(self.name)
         if resp.status_code != 200:
             _raise_typed_execute_error(resp, self.name)  # G7 typed channel from day one
-        return wire_decode(resp.json())
+        t1 = time.perf_counter()
+        result = wire_decode(resp.json())
+        _record_call_metrics(resp, post_s, time.perf_counter() - t1)  # the instrument (681604c1)
+        return result
 
     async def execute_task_async(self, task_name: str, method: str, **kwargs) -> Any:
         """Invoke a typed task-adapter method in-worker (CR-17 pt 2; async). Same semantics."""
         payload = self._prepare_task_payload(task_name, method, kwargs)
+        t0 = time.perf_counter()
         try:
             resp = await self._ensure_async_client().post(f"{self.base_url}/task", json=payload)
         except (httpx.ConnectError, httpx.RemoteProtocolError,
                 httpx.ReadError, httpx.WriteError):
             self._check_worker_death()
             raise
+        post_s = time.perf_counter() - t0
         self._harvest_worker_accounts(resp)  # CR-14 follow-up: TASK_ACCOUNT et al
         if resp.status_code == 409:
             raise CapabilityCancelledError(self.name)
         if resp.status_code != 200:
             _raise_typed_execute_error(resp, self.name)
-        return wire_decode(resp.json())
+        t1 = time.perf_counter()
+        result = wire_decode(resp.json())
+        _record_call_metrics(resp, post_s, time.perf_counter() - t1)  # the instrument (681604c1)
+        return result
 
     def get_stats(self) -> Dict[str, Any]: # Process telemetry
         """Get worker process resource usage."""
@@ -1149,6 +1159,29 @@ def _raise_typed_execute_error(
     if isinstance(body, dict) and "_job_error" in body:
         _raise_from_job_error_chunk(body["_job_error"], capability_name)
     raise RuntimeError(f"Execute failed: {resp.text}")
+
+
+def _record_call_metrics(
+    resp,             # The worker's httpx response to a task call (status 200)
+    post_s: float,    # Host seconds from the post's start to the response read (encode, HTTP, worker)
+    decode_s: float,  # Host seconds decoding the response body (JSON + wire_decode)
+) -> None:
+    """Write one task call's measurements into the queued job's `metrics` (the instrument,
+    design detail 681604c1): wire bytes each way, the worker's own seconds off its
+    TASK_ACCOUNT, the host's post and decode seconds. A no-op outside a queued job, and it
+    never breaks the call -- the result is the contract."""
+    metrics = call_metrics()
+    if metrics is None:
+        return
+    try:
+        metrics.update(bytes_out=len(resp.request.content), bytes_in=len(resp.content),
+                       post_s=post_s, decode_s=decode_s)
+        raw = resp.headers.get(ACCOUNTS_HEADER)
+        for acct in json.loads(raw) if raw else []:
+            if acct.get("event_type") == SubstrateEventType.TASK_ACCOUNT.value:
+                metrics["worker_s"] = (acct.get("payload") or {}).get("duration_s")
+    except Exception as e:
+        _logger.debug(f"call metrics not recorded: {e}")
 
 
 def _resolve_prefetch_stall_threshold() -> float:

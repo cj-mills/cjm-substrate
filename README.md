@@ -290,12 +290,15 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `CallEnvelope` _class_ — Substrate-owned per-call identity + control block (CR-14 / CR-15).
 - `FileBackedDTO` _class_ — Protocol for Data Transfer Objects that serialize to disk for zero-copy transfer.
 - `begin_account_capture` _function_ — Start a fresh account list for the current call span (worker endpoint
+- `call_metrics` _function_ — The current call's measurement dict, or None outside a queued job's call.
 - `drain_accounts` _function_ — Return + clear the current span's recorded accounts ([] outside a span
 - `flat_from_dict` _function_ — Default reconstruction for FLAT wire DTOs (no nested-DTO fields).
 - `get_call_envelope` _function_ — The current call envelope, or None outside any call span.
 - `record_account` _function_ — Record one substrate-family account for the current call span.
 - `reset_call_envelope` _function_ — Restore the prior envelope (always pair with `set_call_envelope` in finally).
+- `reset_call_metrics` _function_ — Restore the prior measurement dict (always pair with `set_call_metrics` in finally).
 - `set_call_envelope` _function_ — Set the current call envelope; returns the token for `reset_call_envelope`.
+- `set_call_metrics` _function_ — Set the current call's measurement dict; returns the token for `reset_call_metrics`.
 - `wire_decode` _function_ — Reconstruct a typed result from its tagged envelope (host side).
 - `wire_encode` _function_ — Wrap a registered wire DTO in its tagged envelope (worker side).
 - `wire_type` _function_ — Register a dataclass as a typed wire DTO under `kind`.

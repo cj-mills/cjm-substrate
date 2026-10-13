@@ -21,7 +21,8 @@ from cjm_substrate.core.journal_store import (JournalEvent, JournalStore, LIVENE
                                               SubstrateEventType)
 from cjm_substrate.core.ports import (Composition, CompositionBindingError, CompositionRun,
                                       new_composition_run, NodeState, resolve_node_kwargs)
-from cjm_substrate.core.wire import CallEnvelope, reset_call_envelope, set_call_envelope
+from cjm_substrate.core.wire import (CallEnvelope, reset_call_envelope, reset_call_metrics,
+                                     set_call_envelope, set_call_metrics)
 
 # CR-6: CapabilityManager continues to satisfy JobQueueDependencies structurally.
 # Imported under TYPE_CHECKING to thin runtime coupling per OQ-5 resolution —
@@ -178,6 +179,7 @@ class Job:
     block_reason: Optional[str] = None  # Why the scheduler is blocking (Stage 4)
     retry_count: int = 0  # Reactive retries attempted (CR-7 + Stage 4)
     last_resource_snapshot: Optional[Any] = None  # Stage 3 wires this (ResourceSnapshot)
+    metrics: Dict[str, Any] = field(default_factory=dict)  # The call's measurements, written by the proxy (wire bytes, worker / post / decode seconds; the instrument, 681604c1)
 
     def __lt__(self, other: 'Job') -> bool:
         """Compare jobs for priority queue (higher priority first, then FIFO).
@@ -1961,6 +1963,8 @@ class JobQueue:
         # the wire, with the reset landing immediately after creation (no other
         # code in THIS task sees it). run_id/actor ride from the Job (CR-14
         # follow-up) so in-worker diagnostics carry the host-tier correlation.
+        # The call's measurement dict rides the same copy (the instrument, 681604c1): the proxy
+        # writes the call's wire bytes and seconds into the job's own `metrics`.
         token = set_call_envelope(CallEnvelope(
             job_id=job.id,
             run_id=job.run_id,
@@ -1969,6 +1973,7 @@ class JobQueue:
             actor=job.actor,
             control=job.control or {},
         ))
+        metrics_token = set_call_metrics(job.metrics)
         try:
             # Start execution. Task-addressed jobs (stage 4, CR-17 pt 2) route via
             # the explicit task channel; execute-channel jobs are unchanged.
@@ -1982,6 +1987,7 @@ class JobQueue:
                     self._deps.execute_capability_async(job.capability_instance_id, *job.args, **job.kwargs)
                 )
         finally:
+            reset_call_metrics(metrics_token)
             reset_call_envelope(token)
 
         # Monitor for cancellation

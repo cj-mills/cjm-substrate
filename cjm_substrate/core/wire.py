@@ -235,3 +235,28 @@ def drain_accounts() -> list:
         return []
     _CALL_ACCOUNTS.set([])
     return lst
+
+
+# THE CALL'S MEASUREMENTS (the instrument, design detail 681604c1): the host-side record of one
+# task-channel call -- wire bytes each way, the worker's own seconds, the host's post and decode
+# seconds. The queue sets it to the job's `metrics` dict around exec-task creation (beside the
+# envelope, same context copy), the proxy writes into it, and the caller that awaited the job
+# reads the measurements off the job. Host-only: never on the wire. Default None = no queued
+# job around the call (direct proxy use), so the proxy records nothing.
+_CALL_METRICS: contextvars.ContextVar[Optional[dict]] = contextvars.ContextVar(
+    "cjm_call_metrics", default=None)
+
+
+def set_call_metrics(metrics: Optional[dict]) -> contextvars.Token:
+    """Set the current call's measurement dict; returns the token for `reset_call_metrics`."""
+    return _CALL_METRICS.set(metrics)
+
+
+def reset_call_metrics(token: contextvars.Token) -> None:
+    """Restore the prior measurement dict (always pair with `set_call_metrics` in finally)."""
+    _CALL_METRICS.reset(token)
+
+
+def call_metrics() -> Optional[dict]:
+    """The current call's measurement dict, or None outside a queued job's call."""
+    return _CALL_METRICS.get()
