@@ -34,15 +34,35 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`cjm_substrate.core.workspace`** — Workspace resolution: the marker-rooted directory that owns a pipeline's local artifacts (runs, graph data, substrate stores, TUI sidecars).
 - **`cjm_substrate.utils.__init__`**
 - **`cjm_substrate.utils.cache_paths`** — Per-(input-content, config) deterministic cache directories for capability outputs. Same (input content, action, config) always resolves to the same directory; any change to input content OR config produces a different one — no silent overwrites, no stale-artifact accumulation, and chained invalidation for capability sequences (see the cache-paths-design-provenance note for the ffmpeg-bug origin story).
-- **`cjm_substrate.utils.envrefresh`**
+- **`cjm_substrate.utils.envrefresh`** — The worker-env REFRESH verb (DEC f282571c, work item dbbaa8b4): every worker
 - **`cjm_substrate.utils.envtruth`** — Env truth for capability-served libs — the ONE sweep the six sightings demanded
 - **`cjm_substrate.utils.hashing`** — Shared cryptographic hashing primitives for content integrity verification.
 - **`cjm_substrate.utils.lifecycle`** — Artifact lifecycle sidecar — the ONE seam every picker filters through
 - **`cjm_substrate.utils.sidecar`** — JSON sidecar for shell view-state — settings and bookmarks that persist
 - **`cjm_substrate.utils.validation`** — Validation helpers for capability configuration dataclasses.
+- **`scripts.archive_canonicalize`** — The archive's one canonicalization commit (design 56c9c332 (6); work item f86be52f).
+- **`scripts.author_edits`** — Run journaled `cg-write author --edit` ops from a spec file (argv lists, no shell quoting).
 - **`scripts.cascade_manifests`** — cascade_manifests.py
+- **`scripts.code_absorb_replay`** — The element-grain absorb replayed over the code source journal's real edit history, in memory --
+- **`scripts.code_canonicalize`** — The code lane's one canonicalization commit (design abfc2829 (4), refined by d26e00f9).
+- **`scripts.code_capture_preview`** — The element capture's acceptance preview, in memory -- nothing is journaled (build b3339c8f; design
+- **`scripts.code_lane_census`** — Census of the code lane's source journal for the element source unit (design abfc2829;
+- **`scripts.cold_copy`** — cold_copy.py
+- **`scripts.evidence_pdf_check`** — Check Cloudflare's dashboard exports against the API snapshot (design 7f315830; the DoD of fbf7fc0e:
+- **`scripts.evidence_reconcile`** — Reconcile a Cloudflare evidence snapshot's derived months against Cloudflare's own figures
 - **`scripts.flywheel_backup`** — flywheel_backup.py
 - **`scripts.model_cache_inventory`** — model_cache_inventory.py
+- **`scripts.pypi_pin_bridge`** — Pin-bridge matrix over the window's unpublished repos (the sweep's inventory): every
+- **`scripts.pypi_sweep`** — Local-vs-PyPI version sweep over every cjm-* repo with a pyproject — the release-rung
+- **`scripts.site_about_page`** — Render proof of design ff0c6338 and amendments 2364f215 / 2fba772c (builds df6b8ae6 and
+- **`scripts.site_category_descriptions`** — Render proof of amendments e38d403c (4) and 397f8fa3: every earned category page states its
+- **`scripts.site_chip_links`** — Render proof of design a62f2499 (7)-(8): every chip on every rendered page (listing chips and
+- **`scripts.site_feed_compare`** — Every feed of a rendered site against a baseline's, item for item -- the render proof of the
+- **`scripts.site_graph_chips`** — Every public post's and projected page's chips from the notes graph -- the chips file the
+- **`scripts.site_home_page`** — Render proof of designs e55201e2 and 8b4f15d0 (amendment 5c3c2662, erratum 2e2abe66; builds
+- **`scripts.site_listing_items`** — Every listing page's items, in rendered order, from a rendered site — the listing-level proof
+- **`scripts.site_main_content_diff`** — Before/after MAIN-CONTENT diff of every rendered post page between two site renders.
+- **`scripts.site_review_server`** — Serve a built site for a render review: the tree as is, plus /__mode?to=<path>&m=dark|light, which
 
 ## API
 
@@ -54,7 +74,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 ### `cjm_substrate.cli`
 
 - `derive_public_capabilities_cmd` _function_ — Project the dev capabilities yaml to its PUBLIC form (ruling 8299fb9d, DEC f282571c):
-- `envs_for_cmd` _function_ — Env-truth sweep (work item 424b9781): every env the workspace manifests say serves
+- `envs_for_cmd` _function_ — Env-truth sweep (work item 424b9781; MODE-AWARE per DEC f282571c): every env the
 - `generate_adapter_manifest` _function_ — CR-17 pt 2 (stage 4): introspect a task-adapter impl in-env and write its adapter manifest.
 - `install_all` _function_ — Install and register all capabilities defined in capabilities.yaml.
 - `list_capabilities` _function_ — List installed capabilities from manifest directory.
@@ -304,12 +324,34 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `list_cache_entries` _function_ — Enumerate all per-config cache directories for a given (input, action).
 - `prune_cache_for_input` _function_ — Delete per-config cache directories for `(input, action)`, optionally
 
+### `cjm_substrate.utils.envrefresh`
+
+- `EnvPlan` _class_ — One env's refresh plan — every command the verb will run, in order, plus
+- `checkout_dist_version` _function_ — (dist name, version) from a checkout's pyproject.toml — the name from
+- `checkout_remote` _function_ — (origin url, default branch) of a checkout — `git config` for the url,
+- `checkout_root` _function_ — The checkout that owns `path`: the nearest ancestor (or `path` itself)
+- `default_checkouts_root` _function_ — Dev mode's checkouts root when none is given — env truth's
+- `derive_public_capabilities` _function_ — The public yaml: every path-valued `package` / `interface_libs[]` /
+- `execute_plan` _function_ — Run the plan's commands in order; a failed install stops the env (a
+- `find_checkout` _function_ — The checkout a dist refreshes from in dev mode: its editable origin when
+- `import_sweep` _function_ — Rung 3 of the window-close ritual as a verb: from a NEUTRAL cwd (a temp
+- `plan_env` _function_ — The pure planning step: which pip commands refresh this env, in order.
+- `public_spec` _function_ — A dev path spec -> `<dist>>=<version>` (the version the checkout
+- `pypi_release_exists` _function_ — The register's first-publish gate: read the PER-RELEASE endpoint (the
+- `raw_github_url` _function_ — A GitHub origin (ssh or https, with or without .git) -> the raw file URL
+- `render_public_yaml` _function_ — The yaml text with its provenance header — a projection (regenerate it
+- `run_argv` _function_ — The default runner: stream when the operator should watch (pip installs),
+- `running_workers` _function_ — Every live `cjm_substrate.core.worker` process whose interpreter lives in
+- `spec_floors` _function_ — Every (dist, floor version) a public yaml pins with `>=`/`==` — the set
+- `yaml_entry_for` _function_ — The capabilities-yaml entry that built this env — matched on `env_name`
+- `yaml_specs` _function_ — Every pip spec a yaml entry installs into its env: interface libs, adapter
+
 ### `cjm_substrate.utils.envtruth`
 
 - `checkouts_root` _function_ — Dev mode's checkouts root: the parent of the host substrate's own editable
 - `derive_mode` _function_ — Mode from a package spec (DEC f282571c): a filesystem path or an `-e `
 - `env_mode` _function_ — The env's mode: the manifest's recorded `install.mode` when it is one of
-- `envs_for` _function_ — Every env the manifests say serves `lib`, with what that env actually holds.
+- `envs_for` _function_ — Every env the manifests say serves `lib` — or whose interpreter would
 - `host_substrate` _function_ — The host side of the launch-time check (DEC f282571c): the substrate this
 - `main` _function_
 - `read_cjm_set` _function_ — The WHOLE cjm-* set the interpreter at `python_path` would import — the
@@ -351,6 +393,16 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `validate_config` _function_ — Validate all fields in a configuration dataclass against their metadata constraints.
 - `validate_field_value` _function_ — Validate a value against field metadata constraints.
 
+### `scripts.archive_canonicalize`
+
+- `canonical_posts` _function_ — Each kept post at HEAD beside its composed form, with the heading changes classified.
+- `main` _function_
+
+### `scripts.author_edits`
+
+- `main` _function_
+- `parse` _function_
+
 ### `scripts.cascade_manifests`
 
 - `ProjectScope` _class_ — One substrate-installation scope: a cjm.yaml + the manifests_dir it resolves to.
@@ -360,6 +412,52 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `format_only_upgrade` _function_ — Load via load_manifest (handles v1.0 shim) and re-write as v2.0.
 - `main` _function_
 - `run_regenerate` _function_ — Invoke `cjm-ctl regenerate-manifest <capability_name>` as a subprocess.
+
+### `scripts.code_absorb_replay`
+
+- `main` _function_
+- `replay` _function_
+
+### `scripts.code_canonicalize`
+
+- `canonical_text` _function_ — The module composed from its elements, its blank lines empty.
+- `main` _function_
+- `plan` _function_
+
+### `scripts.code_capture_preview`
+
+- `capture_groups` _function_ — A capture group for every live, cut-over test module, as of the journal's end (ts after its last record).
+- `fold` _function_
+- `main` _function_
+
+### `scripts.code_lane_census`
+
+- `amplification` _function_ — Full-state bytes journaled against the lines each record changed.
+- `class_seams` _function_ — Blank-line seams inside top-level classes (a member's leading comments belong to it).
+- `corpus_profile` _function_ — Modules, symbols, text-region placement and import-time order dependencies.
+- `main` _function_
+- `test_import_blocks` _function_ — Whether a test module's rendered bindings reproduce its verbatim import block (f4fb397f;
+
+### `scripts.cold_copy`
+
+- `cache_entry_path` _function_ — Where an inventory entry lives in the cache (its whole hub repo dir, or the file).
+- `copy_and_verify` _function_ — Copy, then hash source and copy; (verified, source tree hash, files, bytes).
+- `copy_tree` _function_ — rsync the source to the destination, symlinks as symlinks (`-a`); a directory's
+- `ledger_has` _function_ — The ledger's record of this entry on this volume at this tree hash, if any.
+- `load_ledger` _function_ — The cold ledger ({"copies": [...]}); absent = empty, unreadable raises.
+- `main` _function_ — CLI: copy the named cache entries (+ the flywheel's artifacts) cold, verify, record.
+- `tree_hash` _function_ — (`sha256:<hex>`, file count, bytes) over a tree: each regular file as its relative
+- `volume_identity` _function_ — (label, uuid) of the filesystem holding the cold root (`findmnt -T`) — a copy is
+- `write_ledger` _function_ — The ledger beside the inventory AND on the volume (the drive names its contents).
+
+### `scripts.evidence_pdf_check`
+
+- `main` _function_
+- `read_pdf` _function_ — The window (UTC start, UTC end) and the top paths [(path, visits)] a dashboard export states.
+
+### `scripts.evidence_reconcile`
+
+- `main` _function_
 
 ### `scripts.flywheel_backup`
 
@@ -371,16 +469,84 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 
 ### `scripts.model_cache_inventory`
 
+- `annotate_working_set` _function_ — Fold the keep pins (`kept` = the user's reason) and the cold ledger's copies onto the
 - `build_manifest` _function_ — The whole manifest: every cache entry across the stores, the flywheel's local-only
+- `entry_key` _function_ — `<source>:<repo_id>` — the one handle the keep file, the cold ledger and the
+- `entry_needles` _function_ — The strings whose presence in a tracked file means the code NAMES this entry: a hub
 - `flat_entries` _function_ — The flat checkpoint stores: whisper `<name>.pt` (re-pull by name through the whisper
 - `flywheel_entries` _function_ — The LOCAL-ONLY class the cache walk cannot see: the data flywheel's training runs
 - `hub_entries` _function_ — One entry per Hugging Face hub repo cache dir (`models--org--name` / `datasets--…`):
-- `main` _function_ — CLI: inventory the cache root (+ the flywheel workspace) into the three manifest files.
+- `load_json_file` _function_ — A JSON side file (the keep file, the cold ledger), or `default` when it does not
+- `main` _function_ — CLI: inventory the cache root (+ the flywheel workspace, + the working set) into the
 - `ollama_entries` _function_ — One entry per Ollama model manifest (`manifests/<registry>/<ns>/<model>/<tag>`); the
+- `prune` _function_ — List (and with `yes`, delete) everything outside the working set. The Ollama blobs
+- `prune_targets` _function_ — What a prune removes, path by path: each prunable entry's on-disk path (a hub repo
 - `render_markdown` _function_ — The manifest as a size-sorted table (largest first) with the totals and caveats;
 - `render_repull` _function_ — A shell script that re-pulls every entry at its recorded revision (HF_HOME must point
+- `scan_references` _function_ — Annotate each entry with `referenced_by`: every `<repo>/<path>` under the code root
+
+### `scripts.pypi_pin_bridge`
+
+- `cjm_pins` _function_ — (dep, op, floor) for every cjm-* dependency the repo's pyproject declares.
+- `main` _function_
+
+### `scripts.pypi_sweep`
+
+- `archived_repos` _function_ — Names of the owner's GitHub repos that are archived (one gh call; empty if gh is absent).
+- `local_version` _function_ — A repo's version: the static pyproject `version`, else the package's `__version__`.
+- `main` _function_
+- `pypi_releases` _function_ — The distribution's releases on PyPI, sorted (None = 404, never published). Cached.
+- `sweep` _function_ — One row per non-archived cjm-* repo with a pyproject: repo, name, version, latest, state.
+- `uploaded` _function_ — The ISO date PyPI first received `version` (None = the distribution's FIRST release), or
+- `vkey` _function_
+
+### `scripts.site_about_page`
+
+- `norm` _function_
+- `page_of` _function_ — The rendered file an About link opens (a directory -> its index.html).
+- `plain` _function_ — A markdown paragraph as its rendered text: link targets and emphasis markers dropped.
+
+### `scripts.site_category_descriptions`
+
+- `read` _function_
+- `vocab_of` _function_
+
+### `scripts.site_feed_compare`
+
+- `compare` _function_
+- `normalize` _function_
+- `parse_feed` _function_
+
+### `scripts.site_graph_chips`
+
+- `chips_map` _function_
+
+### `scripts.site_home_page`
+
+- `hubs_of` _function_ — The distinct pages of one shape a rendered index page links from its main content.
+- `listed` _function_ — How many listing items a rendered page lists (Quarto renders every item; pagination is client-side).
+- `norm` _function_
+- `page_of` _function_ — The rendered file a link opens from the page at `base` (a directory -> its index.html).
+- `pattern` _function_ — The path shape a hub page shares with its siblings: its varying segment as a wildcard.
+- `soup_of` _function_
+- `stated` _function_ — What a rendered page states: its title (the <title> before the site suffix), its meta
+
+### `scripts.site_listing_items`
+
+- `capture` _function_
+- `compare` _function_
+
+### `scripts.site_main_content_diff`
+
+- `blocks` _function_ — The page's top-level leaf blocks as normalized text (None when the page has no <main>).
+- `kind` _function_ — A known derived-block kind, or '' (unexplained).
+- `main` _function_
+
+### `scripts.site_review_server`
+
+- `H` _class_
 
 ## Dependencies
 
 **Depends on:** `fastapi`, `fastcore`, `httpx`, `psutil`, `pyyaml`, `typer`, `uvicorn`
-**Used by:** `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-context-graph-projection`, `cjm-graph-storage-adapter-interface`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-qt`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-qt`, `cjm-transcription-core`, `cjm-transcription-qt`, `cjm-vad-adapter-interface`, `cjm-workflow-hub-qt`
+**Used by:** `cjm-capability-demucs`, `cjm-capability-ffmpeg`, `cjm-capability-graph-sqlite`, `cjm-capability-monitor-nvidia`, `cjm-capability-primitives`, `cjm-capability-pyannote`, `cjm-capability-pysbd`, `cjm-capability-qwen3-forced-aligner`, `cjm-capability-silero-vad`, `cjm-capability-voxtral-hf`, `cjm-capability-whisper`, `cjm-context-graph-layer`, `cjm-context-graph-primitives`, `cjm-context-graph-projection`, `cjm-graph-storage-adapter-interface`, `cjm-markdown-decompose-core`, `cjm-sentence-segmentation-adapter-interface`, `cjm-speaker-diarization-adapter-interface`, `cjm-transcript-correction-core`, `cjm-transcript-correction-qt`, `cjm-transcript-decomp-core`, `cjm-transcript-decomp-qt`, `cjm-transcription-adapter-interface`, `cjm-transcription-core`, `cjm-transcription-qt`, `cjm-vad-adapter-interface`, `cjm-workflow-hub-qt`, `hf-utils`, `torch-utils`
