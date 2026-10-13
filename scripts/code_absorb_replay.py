@@ -1,7 +1,9 @@
 """The element-grain absorb replayed over the code source journal's real edit history, in memory --
 nothing is journaled (design abfc2829 (7); the tests pilot's leg 2, work item 8caa95e1).
 
-Every test module is captured into a shadow element state at its first snapshot, and each later
+Every module of the replayed phases (`--phase`, default every phase of `CAPTURE_PHASES`: tests and,
+since design detail ed20aa51, packages) is captured into a shadow element state at its first
+snapshot, and each later
 write to it is absorbed through `source_state.element_plan` as `journaled_emit` would land it, so a move,
 regroup or rename-module's records (one op, several modules) plan together as one write: departures
 and arrivals keep their ids, a regroup's new test module is born captured, a renamed module keeps its
@@ -38,8 +40,8 @@ from cjm_context_graph_projection.codesource import (CAPTURE, capture_records, C
                                                      derive_captured, element_canonical,
                                                      ELEMENT_VERBS, SourceState)
 from cjm_context_graph_projection.seeds import conceptual_key
-from cjm_context_graph_projection.source_state import (element_plan, IdentityWalk,
-                                                       is_test_module_path, read_source_journal)
+from cjm_context_graph_projection.source_state import (CAPTURE_PHASES, element_plan, IdentityWalk,
+                                                       read_source_journal)
 from cjm_python_decompose_core.extract import decompose_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,7 +57,10 @@ def _snapshot_ids(walk: IdentityWalk, ck: str, mp: str, a: dict) -> dict:
 MOVE_OPS = ("move", "regroup", "rename-module")
 
 
-def replay(records: list) -> dict:
+def replay(
+    records: list,                     # The code source journal's records
+    phases: tuple = tuple(CAPTURE_PHASES),  # The phases whose modules the shadow captures and absorbs
+) -> dict:  # The replay's report
     walk = IdentityWalk(conceptual_key)
     shadow = SourceState()
     clock = [0.0]
@@ -65,9 +70,9 @@ def replay(records: list) -> dict:
            "compose_mismatch": [], "id_divergence": Counter(), "divergences": [],
            "derive_failures": [], "captures_checked": 0, "capture_mismatch": []}
 
-    def is_test(a: dict) -> bool:
+    def in_phase(a: dict) -> bool:  # a module of a replayed phase: the shadow captures it
         mp = a.get("module_path") or ""
-        return mp.endswith(".py") and is_test_module_path(mp)
+        return mp.endswith(".py") and any(CAPTURE_PHASES[p](mp) for p in phases)
 
     def apply(recs: list) -> None:
         clock[0] += 1.0
@@ -77,6 +82,14 @@ def replay(records: list) -> dict:
     def process(group: list) -> None:
         op = group[0].get("op") or {}
         before = copy.deepcopy(walk.ident) if op.get("op") in MOVE_OPS else None  # as the write finds it
+        dropped = {}  # a phase module a refusal dropped from the shadow, its snapshot as this write finds it
+        if len(group) > 1:
+            lat = walk.state.latest_ops()
+            for r in group:
+                a = r.get("args") or {}
+                k = (a.get("repo_key"), a.get("module_path"))
+                if r.get("verb") == "source" and in_phase(a) and k in lat and shadow.elements.captured(k) is None:
+                    dropped[k] = dict(lat[k])
         for rec in group:
             walk.apply(rec)
         for rec in group:  # the real element regime: the horizon (its capture checked against the shadow)
@@ -90,13 +103,13 @@ def replay(records: list) -> dict:
         group = [r for r in group if r.get("verb") not in ELEMENT_VERBS]
         if not group:
             return
-        tests = [r for r in group if is_test(r.get("args") or {})]
-        snaps = [r for r in group if not is_test(r.get("args") or {})]  # the snapshot regime's, held too
-        if not tests:
+        phased = [r for r in group if in_phase(r.get("args") or {})]
+        snaps = [r for r in group if not in_phase(r.get("args") or {})]  # the snapshot regime's, held too
+        if not phased:
             apply(snaps)
             return
-        sources = [r for r in tests if r["verb"] == "source"]
-        retires = [r["args"] for r in tests if r["verb"] == "retire"]
+        sources = [r for r in phased if r["verb"] == "source"]
+        retires = [r["args"] for r in phased if r["verb"] == "retire"]
         if len(group) == 1 and sources:
             a = sources[0]["args"]
             rk, mp = a["repo_key"], a["module_path"]
@@ -109,11 +122,18 @@ def replay(records: list) -> dict:
                 out["modules"] += 1
                 return
         if not sources:  # a delete: the retire ends the key and its elements
-            apply([r for r in tests if shadow.elements.captured(
+            apply([r for r in phased if shadow.elements.captured(
                 (r["args"]["repo_key"], r["args"]["module_path"])) is not None] + snaps)
             return
+        for (rk, mp), a in dropped.items():  # re-captured before a several-module write plans, as before a single one
+            ck = conceptual_key(rk)
+            recs, _rep = capture_records(rk, ck, mp, a.get("import_name") or "", a["text"],
+                                         symbol_identity=(before or walk.ident).for_module(ck, mp),
+                                         ever=set(shadow.elements.ever))
+            apply(recs)
+            out["modules"] += 1
         out["writes"] += len(sources)
-        emissions = [{**r["args"], "cutover": is_test(r["args"]) and shadow.elements.captured(
+        emissions = [{**r["args"], "cutover": in_phase(r["args"]) and shadow.elements.captured(
             (r["args"]["repo_key"], r["args"]["module_path"])) is None}
             for r in group if r["verb"] == "source"]
         if op.get("op") in MOVE_OPS:
@@ -187,10 +207,11 @@ def replay(records: list) -> dict:
     return out
 
 
-def main(journal: str, report: str = "") -> int:
-    out = replay(read_source_journal(journal))
+def main(journal: str, report: str = "", phases: tuple = tuple(CAPTURE_PHASES)) -> int:
+    out = replay(read_source_journal(journal), phases)
     w = max(out["writes"], 1)
-    print(f"test modules captured in the shadow: {out['modules']}; later writes absorbed: {out['writes']}")
+    print(f"phases replayed: {', '.join(phases)}; modules captured in the shadow: {out['modules']}; "
+          f"later writes absorbed: {out['writes']}")
     print(f"no-op writes (layout only): {out['noop']}; records landed: {out['records']} "
           f"({out['records'] / w:.2f} per write)")
     print(f"elements touched per write: {out['elements_touched'] / w:.2f} of {out['elements_held'] / w:.1f} held")
@@ -219,5 +240,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--journal", default=str(ROOT / ".cjm" / "dev-graph.source.jsonl"))
     ap.add_argument("--report", default="", help="Write the full replay report here (JSON)")
+    ap.add_argument("--phase", action="append", choices=sorted(CAPTURE_PHASES),
+                    help="A phase to replay (repeatable; default every phase)")
     a = ap.parse_args()
-    sys.exit(main(a.journal, a.report))
+    sys.exit(main(a.journal, a.report, tuple(a.phase or CAPTURE_PHASES)))
