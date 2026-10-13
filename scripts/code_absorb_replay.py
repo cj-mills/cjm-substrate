@@ -1,18 +1,16 @@
 """The element-grain absorb replayed over the code source journal's real edit history, in memory --
-nothing is journaled (design abfc2829 (7); the tests pilot's leg 2, work item 8caa95e1).
+nothing is journaled (design abfc2829 (7); the tests pilot's leg 2, work item 8caa95e1). Since the
+snapshot regime's write side retired (design detail 25c1fadc, ruling R) it is the element regime's
+REGRESSION CORPUS: every historical write planned through the live `source_state.element_plan`.
 
-Every module of the replayed phases (`--phase`, default every phase of `CAPTURE_PHASES`: tests and,
-since design detail ed20aa51, packages) is captured into a shadow element state at its first
-snapshot, and each later
-write to it is absorbed through `source_state.element_plan` as `journaled_emit` would land it, so a move,
-regroup or rename-module's records (one op, several modules) plan together as one write: departures
-and arrivals keep their ids, a regroup's new test module is born captured, a renamed module keeps its
-id. A move across the regimes (aba8ec79 (5)) plans with the write's snapshot modules beside its
-captured ones -- the shadow holds every other module's snapshot records, so a snapshot source's text
-and the identity map are the ones the write finds -- and an adopted symbol keeps its snapshot id. Per
-write it checks the records compose the element regime's canonical form of the snapshot (a
-move's, with its travelling bindings), counts the records against the module's elements (the grain),
-and compares every symbol element's id with the id the snapshot regime derives at that record; at the
+Every .py module is captured into a shadow element state at its first snapshot, so no historical write
+is cross-regime, and each later write to it is absorbed through `element_plan` as `journaled_emit`
+would land it: a move, regroup or rename-module's records (one op, several modules) plan together as
+one write -- departures and arrivals keep their ids, a regroup's new module is born captured, a renamed
+module keeps its id. A notebook's records advance the identity walk and the shadow's snapshot state
+only. Per write it checks the records compose the element regime's canonical form of the snapshot (a
+move's, with its travelling bindings; a write's, less the bindings it drops -- ruling D), counts the
+records against the module's elements (the grain), and compares every symbol element's id with the id the snapshot regime derives at that record; at the
 end every shadow module must derive (`derive_captured`). An id divergence is expected only where the
 element regime decides differently by design -- a def an `author` edit renamed keeps its id, a name
 re-born after a retire takes a new one (6d35c07d (5)), a moved element or a renamed module's symbols
@@ -20,11 +18,14 @@ keep theirs (aba8ec79) -- and every later sighting of such a symbol is `carried`
 is `unexplained` and fails the replay. Refusals are counted by kind: `ambiguous` (a gap with several
 candidates), `unbound` (the binding check, abfc2829 (2): a write that left a name nothing binds -- in
 history the other half landed in a later write; under the element regime it lands in the same one, an
-import rider, or first); any `other` refusal fails the replay. THE HORIZON IS THE REAL CAPTURE: once the capture verb has
-journaled a module's capture group (build 0547767d), the replay checks the shadow's composition of that
-module equals the capture's, byte for byte -- the snapshot history replayed through the element regime
-lands where the real capture landed -- and every element-regime record of the journal is then the real
-regime's, held to live == rebuild, never re-applied to the shadow (a mismatch fails the replay).
+import rider, or first); any `other` refusal fails the replay. THE HORIZON IS THE REAL CAPTURE: once the
+capture verb journaled a module's capture group (builds 0547767d, 872b741e), the replay checks the
+shadow's composition of that module equals the capture's, byte for byte -- the snapshot history
+replayed through the element regime lands where the real capture landed -- and every element-regime
+record of the journal is then the real regime's, held to live == rebuild, never re-applied to the
+shadow (a mismatch fails the replay). A module whose last snapshot before its capture was refused holds
+no shadow state there: it is re-captured from that snapshot first, as before any later write, and
+reported (`recaptured_at_horizon`).
 
     python scripts/code_absorb_replay.py [--journal .cjm/dev-graph.source.jsonl] [--report out.json]
 """
@@ -40,8 +41,10 @@ from cjm_context_graph_projection.codesource import (CAPTURE, capture_records, C
                                                      derive_captured, element_canonical,
                                                      ELEMENT_VERBS, SourceState)
 from cjm_context_graph_projection.seeds import conceptual_key
-from cjm_context_graph_projection.source_state import (CAPTURE_PHASES, element_plan, IdentityWalk,
+from cjm_context_graph_projection.source_state import (element_plan, IdentityWalk,
                                                        read_source_journal)
+from cjm_python_decompose_core.elements import compose_module, IMPORTS, lift_imports
+from cjm_python_decompose_core.emit import render_binding
 from cjm_python_decompose_core.extract import decompose_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,8 +61,7 @@ MOVE_OPS = ("move", "regroup", "rename-module")
 
 
 def replay(
-    records: list,                     # The code source journal's records
-    phases: tuple = tuple(CAPTURE_PHASES),  # The phases whose modules the shadow captures and absorbs
+    records: list,  # The code source journal's records
 ) -> dict:  # The replay's report
     walk = IdentityWalk(conceptual_key)
     shadow = SourceState()
@@ -68,11 +70,11 @@ def replay(
     out = {"modules": 0, "writes": 0, "noop": 0, "records": 0, "elements_touched": 0,
            "elements_held": 0, "moves": Counter(), "refused": Counter(), "refusals": [],
            "compose_mismatch": [], "id_divergence": Counter(), "divergences": [],
-           "derive_failures": [], "captures_checked": 0, "capture_mismatch": []}
+           "derive_failures": [], "captures_checked": 0, "capture_mismatch": [],
+           "recaptured_at_horizon": [], "dropped_bindings": 0}
 
-    def in_phase(a: dict) -> bool:  # a module of a replayed phase: the shadow captures it
-        mp = a.get("module_path") or ""
-        return mp.endswith(".py") and any(CAPTURE_PHASES[p](mp) for p in phases)
+    def in_phase(a: dict) -> bool:  # a .py module: the shadow captures it (a notebook has no element form)
+        return (a.get("module_path") or "").endswith(".py")
 
     def apply(recs: list) -> None:
         clock[0] += 1.0
@@ -96,6 +98,16 @@ def replay(
             if rec.get("verb") == CAPTURE:
                 m = walk.state.elements.modules[rec["args"]["module"]]
                 key = (m.repo_key, m.module_path)
+                snap = walk.state.latest.get(key)  # the snapshot the capture captured (kept past it)
+                if shadow.elements.captured(key) is None and snap is not None:
+                    # A refusal dropped the module and no later write re-captured it: the shadow
+                    # re-captures it from that snapshot, as it would before its next write.
+                    ck = conceptual_key(key[0])
+                    recs, _rep = capture_records(key[0], ck, key[1], snap.get("import_name") or "",
+                                                 snap["text"], symbol_identity=walk.ident.for_module(ck, key[1]),
+                                                 ever=set(shadow.elements.ever))
+                    apply(recs)
+                    out["recaptured_at_horizon"].append(f"{key[0]}/{key[1]}")
                 out["captures_checked"] += 1
                 held = shadow.latest_ops()[key]["text"] if key in shadow.latest_ops() else None
                 if held != walk.state.compose(m.module):
@@ -133,13 +145,13 @@ def replay(
             apply(recs)
             out["modules"] += 1
         out["writes"] += len(sources)
-        emissions = [{**r["args"], "cutover": in_phase(r["args"]) and shadow.elements.captured(
+        emissions = [{**r["args"], "born": shadow.elements.captured(
             (r["args"]["repo_key"], r["args"]["module_path"])) is None}
-            for r in group if r["verb"] == "source"]
+            for r in phased if r["verb"] == "source"]
         if op.get("op") in MOVE_OPS:
             out["moves"][op["op"]] += 1
         try:
-            plans, absorbed = element_plan(shadow, emissions, retires, op, identity=lambda: before)
+            plans, absorbed = element_plan(shadow, emissions, retires, op)
         except CodeSourceError as e:
             msg = str(e)
             kind = "ambiguous" if "ambiguous" in msg else "unbound" if "no binding" in msg else "other"
@@ -164,8 +176,17 @@ def replay(
             out["elements_touched"] += len({r["args"]["element"] for r in recs if r["args"].get("element")})
             out["elements_held"] += held.get(i, 0)
             composed = shadow.latest_ops()[(rk, mp)]["text"]
-            expect = rep["text"] if (rep["arrived"] or rep["departed"]) else \
-                element_canonical(emissions[i]["text"], shadow.siblings((rk, mp)))
+            if rep["arrived"] or rep["departed"]:
+                expect = rep["text"]
+            elif rep["dropped"]:  # by design (ruling D): the write's lift, less the bindings it reports dropped
+                out["dropped_bindings"] += len(rep["dropped"])
+                lifted = lift_imports(emissions[i]["text"]).elements
+                for e in lifted:
+                    if e.kind == IMPORTS:
+                        e.bindings = [b for b in e.bindings if render_binding(b) not in rep["dropped"]]
+                expect = compose_module(lifted, shadow.siblings((rk, mp)))
+            else:
+                expect = element_canonical(emissions[i]["text"], shadow.siblings((rk, mp)))
             if composed != expect:
                 out["compose_mismatch"].append(f"{rk}/{mp}@{group[0].get('ts')}")
             mid = rep["module"]
@@ -207,24 +228,25 @@ def replay(
     return out
 
 
-def main(journal: str, report: str = "", phases: tuple = tuple(CAPTURE_PHASES)) -> int:
-    out = replay(read_source_journal(journal), phases)
+def main(journal: str, report: str = "") -> int:
+    out = replay(read_source_journal(journal))
     w = max(out["writes"], 1)
-    print(f"phases replayed: {', '.join(phases)}; modules captured in the shadow: {out['modules']}; "
-          f"later writes absorbed: {out['writes']}")
+    print(f"modules captured in the shadow: {out['modules']}; later writes absorbed: {out['writes']}")
     print(f"no-op writes (layout only): {out['noop']}; records landed: {out['records']} "
           f"({out['records'] / w:.2f} per write)")
     print(f"elements touched per write: {out['elements_touched'] / w:.2f} of {out['elements_held'] / w:.1f} held")
     print(f"move-like writes: {dict(out['moves'])}; refused: {dict(out['refused'])}")
     for r in out["refusals"][:12]:
         print(f"  REFUSED {r}")
-    print(f"compose mismatches: {len(out['compose_mismatch'])} {out['compose_mismatch'][:5]}")
+    print(f"compose mismatches: {len(out['compose_mismatch'])} {out['compose_mismatch'][:5]}; bindings "
+          f"dropped by design (an element stopped reading them, ruling D): {out['dropped_bindings']}")
     print(f"symbol ids diverging from the snapshot regime: {dict(out['id_divergence'])}")
     for d in out["divergences"][:12]:
         print(f"  DIVERGES {d}")
     print(f"derive failures at the end: {len(out['derive_failures'])} {out['derive_failures'][:5]}")
     print(f"real captures checked against the shadow: {out['captures_checked']}; "
-          f"mismatches: {len(out['capture_mismatch'])} {out['capture_mismatch'][:5]}")
+          f"mismatches: {len(out['capture_mismatch'])} {out['capture_mismatch'][:5]}; re-captured at the "
+          f"horizon (a refused last write): {len(out['recaptured_at_horizon'])} {out['recaptured_at_horizon'][:5]}")
     if report:
         Path(report).write_text(json.dumps({**out, "refused": dict(out["refused"]), "moves": dict(out["moves"]),
                                             "id_divergence": dict(out["id_divergence"])}, indent=1))
@@ -240,7 +262,5 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--journal", default=str(ROOT / ".cjm" / "dev-graph.source.jsonl"))
     ap.add_argument("--report", default="", help="Write the full replay report here (JSON)")
-    ap.add_argument("--phase", action="append", choices=sorted(CAPTURE_PHASES),
-                    help="A phase to replay (repeatable; default every phase)")
     a = ap.parse_args()
-    sys.exit(main(a.journal, a.report, tuple(a.phase or CAPTURE_PHASES)))
+    sys.exit(main(a.journal, a.report))
