@@ -1179,7 +1179,10 @@ def _record_call_metrics(
         raw = resp.headers.get(ACCOUNTS_HEADER)
         for acct in json.loads(raw) if raw else []:
             if acct.get("event_type") == SubstrateEventType.TASK_ACCOUNT.value:
-                metrics["worker_s"] = (acct.get("payload") or {}).get("duration_s")
+                payload = acct.get("payload") or {}
+                metrics["worker_s"] = payload.get("duration_s")
+                # the worker's own I/O over the call (design detail 2f5033bf (1)): io_<counter>
+                metrics.update({f"io_{k}": v for k, v in (payload.get("io") or {}).items()})
     except Exception as e:
         _logger.debug(f"call metrics not recorded: {e}")
 

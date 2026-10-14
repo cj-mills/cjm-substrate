@@ -452,6 +452,21 @@ def _accounts_headers() -> Dict[str, str]:
     return {ACCOUNTS_HEADER: json.dumps(accounts, default=str)}
 
 
+def _proc_io() -> Dict[str, int]:  # This worker's I/O counters ({} when unreadable)
+    """The worker's own I/O counters from /proc/self/io -- bytes that reached the block layer
+    (read_bytes / write_bytes, less cancelled_write_bytes) and bytes asked for (rchar / wchar) --
+    read around each task dispatch so its TASK_ACCOUNT carries what the call read and wrote (design
+    detail 2f5033bf (1): the store side's bytes per method). Process-wide, so concurrent calls in
+    one worker share them. {} off Linux."""
+    try:
+        with open("/proc/self/io") as f:
+            vals = {k.strip(): int(v) for k, v in (line.split(":", 1) for line in f if ":" in line)}
+        return {k: vals[k] for k in ("read_bytes", "write_bytes", "cancelled_write_bytes",
+                                     "rchar", "wchar") if k in vals}
+    except Exception:
+        return {}
+
+
 def _register_task_endpoints(
     app,             # FastAPI app under construction
     capability_instance, # The loaded capability object
@@ -589,14 +604,17 @@ def _register_task_endpoints(
             capability_instance._cancel_requested = False
         capability_instance._last_api_usage = None
         _t0 = time.monotonic()
+        _io0 = _proc_io()  # the instrument's store-side bytes (design detail 2f5033bf (1))
         try:
             loop = asyncio.get_event_loop()
             ctx = contextvars.copy_context()  # CR-14: carry identity into the executor
             result = await loop.run_in_executor(None, lambda: ctx.run(lambda: fn(**kwargs)))
             json_str = json.dumps(wire_encode(result), cls=EnhancedJSONEncoder)
+            _io1 = _proc_io()
             record_account(SubstrateEventType.TASK_ACCOUNT.value, {
                 "task": task, "method": method_name, "ok": True,
                 "duration_s": round(time.monotonic() - _t0, 3),
+                **({"io": {k: v - _io0.get(k, 0) for k, v in _io1.items()}} if _io0 and _io1 else {}),
             })
             return JSONResponse(content=json.loads(json_str),
                                 headers=_accounts_headers())
