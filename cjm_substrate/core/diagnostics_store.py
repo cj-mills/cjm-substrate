@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS stream_chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_session ON stream_chunks (worker_session_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_ts ON stream_chunks (ts);
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -161,6 +165,11 @@ def _conn(self: LocalDiagnosticsStore) -> Iterator[sqlite3.Connection]:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=10000")
             conn.execute("PRAGMA synchronous=NORMAL")
+            # the store's checkpoints belong to its one maintenance step, `maybe_sweep` (ruling
+            # b7b3976f (A)(3)): no connection auto-checkpoints or checkpoints on its close, so no
+            # writer pays for the frames other writers left
+            conn.execute("PRAGMA wal_autocheckpoint=0")
+            conn.setconfig(sqlite3.SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, True)
             conn.executescript(_DIAGNOSTICS_SCHEMA)
             self._connection = conn
         yield self._connection
@@ -182,6 +191,27 @@ def append_record(
         conn.commit()
         record.seq = cur.lastrowid
         return record.seq
+
+
+@patch
+def append_records(
+    self: LocalDiagnosticsStore,
+    records: List[DiagnosticRecord],  # Records to persist together
+) -> None:
+    """Persist several records in ONE transaction (ruling b7b3976f (A)(2): a worker's records
+    commit once per job, never one commit per record); sets each record's seq."""
+    if not records:
+        return
+    with self._conn() as conn:
+        for record in records:
+            cur = conn.execute(
+                "INSERT INTO records (ts, worker_session_id, job_id, level, "
+                "logger_name, message, exc_text) VALUES (?,?,?,?,?,?,?)",
+                (record.ts.isoformat(), record.worker_session_id, record.job_id,
+                 record.level, record.logger_name, record.message, record.exc_text),
+            )
+            record.seq = cur.lastrowid
+        conn.commit()
 
 
 @patch
@@ -328,6 +358,37 @@ def apply_retention(
     return deleted
 
 
+@patch
+def maybe_sweep(
+    self: LocalDiagnosticsStore,
+    interval_hours: float = 24.0,          # The cadence: at most one sweep per interval
+    max_age_days: Optional[float] = None,  # Retention by age (None: none)
+    max_total_mb: Optional[float] = None,  # Retention by size (None: none)
+    wal_max_mb: float = 64.0,              # A WAL grown past this makes the sweep due early
+) -> Optional[Dict[str, int]]:  # The retention counts, or None when no sweep was due
+    """The store's ONE maintenance step (ruling b7b3976f (A)(1) / (3)): at most once per interval
+    -- the last sweep's time kept in the store's own meta table, so a host start no longer sweeps
+    -- it applies retention (when any is set) and checkpoints the WAL (TRUNCATE), the only
+    checkpoint the store's connections ever run. Runs with retention disabled too: it is the
+    checkpoint's owner."""
+    if not self.db_path.exists():
+        return None
+    now = datetime.now(timezone.utc)
+    wal = Path(f"{self.db_path}-wal")
+    grown = wal.exists() and wal.stat().st_size > wal_max_mb * 1024 * 1024
+    with self._conn() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'last_sweep'").fetchone()
+    if row and not grown and now - datetime.fromisoformat(row[0]) < timedelta(hours=interval_hours):
+        return None
+    deleted = self.apply_retention(max_age_days=max_age_days, max_total_mb=max_total_mb)
+    with self._conn() as conn:
+        conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('last_sweep', ?)",
+                     (now.isoformat(),))
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    return deleted
+
+
 class DiagnosticsLogHandler(logging.Handler):
     """Worker-side logging handler writing `DiagnosticRecord`s (CR-14).
 
@@ -337,6 +398,12 @@ class DiagnosticsLogHandler(logging.Handler):
     connection (the worker runs capability execute in an executor thread;
     contextvars propagate via copy_context at the endpoint). Never raises
     into application code.
+
+    Records are BUFFERED and committed once per job (ruling b7b3976f (A)(2)):
+    `flush` writes the buffer in one transaction -- the worker flushes at each
+    request's end (`flush_worker_diagnostics`), logging.shutdown at exit -- and
+    a WARNING or worse is written at once, the buffer with it, so a crash keeps
+    its evidence.
     """
 
     def __init__(
@@ -347,6 +414,7 @@ class DiagnosticsLogHandler(logging.Handler):
         super().__init__()
         self.store = store
         self.worker_session_id = worker_session_id
+        self._buffer: List[DiagnosticRecord] = []  # records awaiting the job's one commit
 
     def emit(self, record: logging.LogRecord) -> None:
         """Write one record; job identity from the call-envelope contextvar."""
@@ -356,7 +424,7 @@ class DiagnosticsLogHandler(logging.Handler):
             exc_text = None
             if record.exc_info:
                 exc_text = logging.Formatter().formatException(record.exc_info)
-            self.store.append_record(DiagnosticRecord(
+            self._buffer.append(DiagnosticRecord(
                 message=record.getMessage(),
                 level=record.levelname,
                 logger_name=record.name,
@@ -365,8 +433,38 @@ class DiagnosticsLogHandler(logging.Handler):
                 job_id=env.job_id if env is not None else None,
                 exc_text=exc_text,
             ))
+            if record.levelno >= logging.WARNING:
+                self.flush()
         except Exception:
             self.handleError(record)
+
+    def flush(self) -> None:
+        """Commit the buffered records in one transaction (a no-op when none wait); a sink that
+        fails drops them -- a broken diagnostics sink never takes down execution."""
+        self.acquire()
+        try:
+            batch, self._buffer = self._buffer, []
+        finally:
+            self.release()
+        if not batch:
+            return
+        try:
+            if hasattr(self.store, "append_records"):
+                self.store.append_records(batch)
+            else:  # a custom sink with the per-record surface only
+                for r in batch:
+                    self.store.append_record(r)
+        except Exception:
+            pass
+
+
+def flush_worker_diagnostics() -> None:
+    """Commit the worker's buffered diagnostics records (ruling b7b3976f (A)(2)): the worker calls
+    it at each request's end, so a job's records land in one transaction. A no-op without a
+    diagnostics handler installed."""
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, DiagnosticsLogHandler):
+            handler.flush()
 
 
 def install_worker_diagnostics() -> Optional[DiagnosticsLogHandler]:

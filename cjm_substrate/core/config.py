@@ -65,6 +65,7 @@ class SubstrateConfig:
     prefetch_stall_threshold_seconds:float=60.0 # CR-4 / Session A: stall detection threshold for proxy.prefetch
     diagnostics_retention_days:float=30.0 # CR-14 follow-up: age-based diagnostics retention; <=0 disables the startup sweep
     diagnostics_retention_max_mb:Optional[float]=None # CR-14 follow-up: diagnostics.db size budget (None = no size-based deletion)
+    diagnostics_sweep_interval_hours:float=24.0 # Ruling b7b3976f (A): the diagnostics store's maintenance (retention + its WAL checkpoint) runs at most once per interval
 
 
 @dataclass
@@ -168,6 +169,9 @@ def _load_from_yaml(
             if substrate_data.get("diagnostics_retention_max_mb") is not None
             else None
         ),
+        diagnostics_sweep_interval_hours=float(substrate_data.get(
+            "diagnostics_sweep_interval_hours", 24.0
+        )),
     )
 
     # Parse top-level config

@@ -192,20 +192,28 @@ class CapabilityManager:
             sub = get_config().substrate
             days = float(getattr(sub, "diagnostics_retention_days", 0.0) or 0.0)
             max_mb = getattr(sub, "diagnostics_retention_max_mb", None)
+            hours = float(getattr(sub, "diagnostics_sweep_interval_hours", 24.0))
         except Exception:
             return
-        if days <= 0 and max_mb is None:
-            return
         store = self.diagnostics_store
-        if not hasattr(store, "apply_retention"):
-            return  # custom sink without a retention surface
+        # ruling b7b3976f (A): a store with a maintenance step sweeps at most once per interval
+        # and owns its WAL checkpoint, so it runs even with retention disabled; a custom sink
+        # keeps the per-start retention surface
+        if not hasattr(store, "maybe_sweep") and (
+                (days <= 0 and max_mb is None) or not hasattr(store, "apply_retention")):
+            return
 
         def _sweep() -> None:
             try:
-                deleted = store.apply_retention(
-                    max_age_days=days if days > 0 else None,
-                    max_total_mb=max_mb,
-                )
+                if hasattr(store, "maybe_sweep"):
+                    deleted = store.maybe_sweep(interval_hours=hours,
+                                                max_age_days=days if days > 0 else None,
+                                                max_total_mb=max_mb) or {}
+                else:
+                    deleted = store.apply_retention(
+                        max_age_days=days if days > 0 else None,
+                        max_total_mb=max_mb,
+                    )
                 if deleted.get("records_deleted") or deleted.get("chunks_deleted"):
                     self.logger.info(
                         f"diagnostics retention sweep: {deleted} "

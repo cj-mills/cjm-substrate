@@ -43,6 +43,7 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - **`scripts.archive_canonicalize`** — The archive's one canonicalization commit (design 56c9c332 (6); work item f86be52f).
 - **`scripts.author_edits`** — Run journaled `cg-write author --edit` ops from a spec file (argv lists, no shell quoting).
 - **`scripts.cascade_manifests`** — cascade_manifests.py
+- **`scripts.claude_git_rules`** — The git allow rules of .claude/settings.local.json, generated from the window's ONE inventory.
 - **`scripts.code_absorb_replay`** — The element-grain absorb replayed over the code source journal's real edit history, in memory --
 - **`scripts.code_canonicalize`** — The code lane's one canonicalization commit (design abfc2829 (4), refined by d26e00f9).
 - **`scripts.code_capture_preview`** — The element capture's acceptance preview, in memory -- nothing is journaled (build b3339c8f; design
@@ -151,8 +152,11 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `StreamChunk` _class_ — One raw stdout/stderr line the host pump captured (death-rattle floor).
 - `append_chunk` _function_ — Persist one raw stream line.
 - `append_record` _function_ — Persist one structured record.
+- `append_records` _function_ — Persist several records in ONE transaction (ruling b7b3976f (A)(2): a worker's records
 - `apply_retention` _function_ — Retention as a QUERY (the CR-14 reframe's mechanical payoff).
+- `flush_worker_diagnostics` _function_ — Commit the worker's buffered diagnostics records (ruling b7b3976f (A)(2)): the worker calls
 - `install_worker_diagnostics` _function_ — Configure worker-process logging (replaces the old `basicConfig`).
+- `maybe_sweep` _function_ — The store's ONE maintenance step (ruling b7b3976f (A)(1) / (3)): at most once per interval
 - `normalize_stream_line` _function_ — Collapse CR progress frames to the final frame; drop empty results.
 - `query_chunks` _function_ — Raw stream read, session-scoped.
 - `query_records` _function_ — Filtered structured-record read.
@@ -415,6 +419,13 @@ A dependency-isolated capability-composition runtime: heterogeneous tools run in
 - `format_only_upgrade` _function_ — Load via load_manifest (handles v1.0 shim) and re-write as v2.0.
 - `main` _function_
 - `run_regenerate` _function_ — Invoke `cjm-ctl regenerate-manifest <capability_name>` as a subprocess.
+
+### `scripts.claude_git_rules`
+
+- `generated_rules` _function_ — One rule per repo per subcommand, the checkout's path spelled out literally.
+- `is_replaced` _function_ — Every `git -C` rule: a wildcarded one (the startup warning) or an exact one this
+- `main` _function_
+- `plan` _function_ — The new allow list: the old one less every `git -C` rule, the generated rules where the
 
 ### `scripts.code_absorb_replay`
 

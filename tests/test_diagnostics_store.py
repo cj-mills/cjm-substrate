@@ -5,6 +5,7 @@ notebook never had)."""
 
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from cjm_substrate.core.diagnostics_store import (DiagnosticRecord, DiagnosticsLogHandler,
                                                   LocalDiagnosticsStore, normalize_stream_line,
@@ -52,10 +53,57 @@ def test_handler_stamps_contextvars_identity(tmp_path):
         lg.info("outside the span")
     finally:
         lg.removeHandler(handler)
+    handler.flush()  # the job's end (ruling b7b3976f (A)(2): records commit once per job)
     rows = store.query_records(worker_session_id="ws-test")
     assert [r.job_id for r in rows] == ["job-ctx", "job-ctx", None]
     assert rows[1].exc_text and "ValueError: boom" in rows[1].exc_text
     assert rows[0].logger_name == "test.cr14.handler"
+
+
+def test_records_commit_once_per_job_and_a_warning_at_once(tmp_path):
+    # Ruling b7b3976f (A)(2): INFO records wait for the job's flush (one transaction); a
+    # WARNING is written at once, the buffer with it, so a crash keeps its evidence.
+    store = LocalDiagnosticsStore(tmp_path / "diag.db")
+    handler = DiagnosticsLogHandler(store, worker_session_id="ws-buf")
+    lg = logging.getLogger("test.cr14.buffer")
+    lg.setLevel(logging.INFO)
+    lg.propagate = False
+    lg.addHandler(handler)
+    try:
+        lg.info("one")
+        lg.info("two")
+        assert store.query_records(worker_session_id="ws-buf") == []
+        lg.warning("three")
+        assert [r.message for r in store.query_records(worker_session_id="ws-buf")] == [
+            "one", "two", "three"]
+        lg.info("four")
+        handler.flush()
+        handler.flush()  # an empty buffer writes nothing
+        assert len(store.query_records(worker_session_id="ws-buf")) == 4
+    finally:
+        lg.removeHandler(handler)
+
+
+def test_the_sweep_owns_the_checkpoint_and_runs_once_per_interval(tmp_path):
+    # Ruling b7b3976f (A)(1) / (3): connections never checkpoint; maybe_sweep runs at most once
+    # per interval (its time kept in the store), applies retention and truncates the WAL; a WAL
+    # grown past its ceiling makes it due early.
+    db = tmp_path / "diag.db"
+    store = LocalDiagnosticsStore(db)
+    old = datetime.now(timezone.utc) - timedelta(days=40)
+    store.append_records([DiagnosticRecord(message="old", ts=old),
+                          DiagnosticRecord(message="new")])
+    with store._conn() as conn:
+        assert conn.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 0
+    wal = Path(f"{db}-wal")
+    assert wal.stat().st_size > 0
+    assert store.maybe_sweep(interval_hours=24, max_age_days=30) == {
+        "records_deleted": 1, "chunks_deleted": 0}
+    assert wal.stat().st_size == 0  # truncated by the sweep's checkpoint
+    store.append_record(DiagnosticRecord(message="later"))
+    assert store.maybe_sweep(interval_hours=24, max_age_days=30) is None  # not yet due
+    assert store.maybe_sweep(interval_hours=24, wal_max_mb=0) is not None  # the WAL forces it
+    assert [r.message for r in store.query_records()] == ["new", "later"]
 
 
 def test_age_based_retention_leaves_newer_rows(tmp_path):

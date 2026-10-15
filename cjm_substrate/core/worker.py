@@ -19,7 +19,8 @@ import psutil
 import uvicorn
 from cjm_substrate import __version__ as _substrate_version
 from cjm_substrate.core.capability import derive_structural_surface
-from cjm_substrate.core.diagnostics_store import install_worker_diagnostics
+from cjm_substrate.core.diagnostics_store import (flush_worker_diagnostics,
+                                                  install_worker_diagnostics)
 from cjm_substrate.core.errors import CapabilityCancelledError, map_bare_exception_to_job_error
 from cjm_substrate.core.journal_store import SubstrateEventType
 from cjm_substrate.core.platform import terminate_self
@@ -795,6 +796,14 @@ def create_app(
     capability_instance = _load_capability_instance(module_name, class_name)
     adapters = _load_adapters(capability_instance, adapter_specs)
     app = FastAPI(title="Capability Worker", lifespan=_make_lifespan(capability_instance))
+
+    @app.middleware("http")
+    async def _diagnostics_per_job(request, call_next):
+        """A job's diagnostics records commit once, at its request's end (ruling b7b3976f (A)(2))."""
+        try:
+            return await call_next(request)
+        finally:
+            flush_worker_diagnostics()
     _register_identity_endpoints(app, capability_instance)
     _register_lifecycle_endpoints(app, capability_instance)
     _register_config_endpoints(app, capability_instance)
