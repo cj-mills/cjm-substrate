@@ -119,6 +119,20 @@ algorithm change) get propagated across the ecosystem.
   introspection script, not on any other plugin's manifest. Order doesn't
   matter.
 
+## `suite_profile.py` — the suite profiler (MEASUREMENT 0723cd10)
+
+A pytest plugin that attributes each test's wall time to process startup: the
+graph-CLI subprocesses it launched, every other subprocess, and the in-process
+graph-worker load / unload — one JSON line per test — plus the report that
+reads the lines back (shares, files by wall time, slowest tests). It read the
+projection suite's 34.4 min as 89% CLI subprocesses.
+
+```bash
+SUITEPROF_OUT=/abs/suiteprof.jsonl PYTHONPATH=<cjm-substrate>/scripts \
+    python -m pytest tests/ -q -p no:cacheprovider -p suite_profile
+python scripts/suite_profile.py report /abs/suiteprof.jsonl
+```
+
 ## `pypi_sweep.py` — the release-rung sweep (PyPI window-close ritual, rung 1)
 
 Walks every `cjm-*` repo beside this one that carries a `pyproject.toml`,
