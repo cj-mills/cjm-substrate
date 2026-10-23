@@ -133,6 +133,20 @@ SUITEPROF_OUT=/abs/suiteprof.jsonl PYTHONPATH=<cjm-substrate>/scripts \
 python scripts/suite_profile.py report /abs/suiteprof.jsonl
 ```
 
+## `usage_reading.py` — the plan's limit shares, read by any agent (user input 68c33c7d)
+
+Runs `claude -p "/usage"` (Claude Code answers it in print mode, no model
+call) from a throwaway directory and parses every `<limit>: <n>% used ·
+resets <when>` line — the 5-hour window, the weekly cap, the weekly Fable cap —
+into one JSON object. `--log` appends it to `.cjm/usage-readings.jsonl` as a
+dated observation, so the share a piece of work used is the difference of the
+readings that bracket it; `--label` names what a reading brackets. The shares
+are the account's, across every session and machine.
+
+```bash
+python scripts/usage_reading.py --log --label "before the K5 challenger"
+```
+
 ## `pypi_sweep.py` — the release-rung sweep (PyPI window-close ritual, rung 1)
 
 Walks every `cjm-*` repo beside this one that carries a `pyproject.toml`,
